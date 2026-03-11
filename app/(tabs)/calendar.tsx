@@ -1,22 +1,22 @@
 import { Colors } from '@/constants/Colors';
 import { StyleSheet, Text, View } from 'react-native';
 
-export default function TodayScreen() {
+export default function CalendarScreen() {
   return (
     <View style={styles.container}>
-      <Text style={styles.pageTitle}>Oggi</Text>
+      <Text style={styles.pageTitle}>Calendario</Text>
 
       <View style={styles.card}>
-        <Text style={styles.cardTitle}>Allenamento del giorno</Text>
+        <Text style={styles.cardTitle}>Storico sessioni</Text>
         <Text style={styles.cardText}>
-          Qui traccerai l’allenamento del giorno corrente.
+          Qui vedrai lo storico delle sessioni giorno per giorno.
         </Text>
       </View>
 
       <View style={styles.card}>
-        <Text style={styles.cardTitle}>Stato</Text>
+        <Text style={styles.cardTitle}>Vista futura</Text>
         <Text style={styles.cardText}>
-          Nessun allenamento avviato per oggi.
+          Ogni data ti permetterà di controllare l’allenamento svolto e i dettagli registrati.
         </Text>
       </View>
     </View>

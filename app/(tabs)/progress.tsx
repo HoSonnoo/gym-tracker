@@ -1,22 +1,22 @@
 import { Colors } from '@/constants/Colors';
 import { StyleSheet, Text, View } from 'react-native';
 
-export default function TodayScreen() {
+export default function ProgressScreen() {
   return (
     <View style={styles.container}>
-      <Text style={styles.pageTitle}>Oggi</Text>
+      <Text style={styles.pageTitle}>Progressi</Text>
 
       <View style={styles.card}>
-        <Text style={styles.cardTitle}>Allenamento del giorno</Text>
+        <Text style={styles.cardTitle}>Evoluzione nel tempo</Text>
         <Text style={styles.cardText}>
-          Qui traccerai l’allenamento del giorno corrente.
+          Qui visualizzerai i tuoi miglioramenti nel tempo.
         </Text>
       </View>
 
       <View style={styles.card}>
-        <Text style={styles.cardTitle}>Stato</Text>
+        <Text style={styles.cardTitle}>Dati futuri</Text>
         <Text style={styles.cardText}>
-          Nessun allenamento avviato per oggi.
+          Potrai vedere record personali, andamento dei carichi e storico per esercizio.
         </Text>
       </View>
     </View>
