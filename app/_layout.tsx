@@ -42,7 +42,11 @@ export default function RootLayout() {
       <Stack.Screen name="(tabs)" />
       <Stack.Screen name="exercises" />
       <Stack.Screen name="template/[id]" />
-      <Stack.Screen name="template-exercise/[id]" />
+      <Stack.Screen name="template/exercise/[id]" />
+      <Stack.Screen
+        name="template/exercise/set/[id]"
+        options={{ presentation: 'modal' }}
+      />
     </Stack>
   );
 }

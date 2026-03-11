@@ -1,23 +1,23 @@
 import { Colors } from '@/constants/Colors';
 import {
-    addExerciseToTemplate,
-    Exercise,
-    getExercises,
-    getTemplateExercises,
-    getWorkoutTemplateById,
-    removeExerciseFromTemplate,
-    TemplateExercise,
-    WorkoutTemplate,
+  addExerciseToTemplate,
+  Exercise,
+  getExercises,
+  getTemplateExercises,
+  getWorkoutTemplateById,
+  removeExerciseFromTemplate,
+  TemplateExercise,
+  WorkoutTemplate,
 } from '@/database';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useState } from 'react';
 import {
-    Alert,
-    FlatList,
-    Pressable,
-    StyleSheet,
-    Text,
-    View,
+  Alert,
+  FlatList,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -97,32 +97,6 @@ export default function TemplateDetailScreen() {
     [loadData]
   );
 
-  const formatTemplateExerciseMeta = (item: TemplateExercise) => {
-    const parts: string[] = [];
-
-    if (item.target_sets) {
-      parts.push(`${item.target_sets} serie`);
-    }
-
-    if (item.target_reps_min && item.target_reps_max) {
-      parts.push(`${item.target_reps_min}-${item.target_reps_max} reps`);
-    } else if (item.target_reps_min) {
-      parts.push(`min ${item.target_reps_min} reps`);
-    } else if (item.target_reps_max) {
-      parts.push(`max ${item.target_reps_max} reps`);
-    }
-
-    if (item.rest_seconds) {
-      parts.push(`${item.rest_seconds}s recupero`);
-    }
-
-    if (item.notes?.trim()) {
-      parts.push('note presenti');
-    }
-
-    return parts.length > 0 ? parts.join(' • ') : 'Tocca per impostare i parametri';
-  };
-
   useFocusEffect(
     useCallback(() => {
       loadData();
@@ -179,34 +153,34 @@ export default function TemplateDetailScreen() {
             ) : (
               <View style={styles.templateExercisesWrapper}>
                 {templateExercises.map((item) => (
-                  <Pressable
-                    key={item.id}
-                    style={styles.templateExerciseItem}
-                    onPress={() => router.push(`/template-exercise/${item.id}`)}
-                  >
+                  <View key={item.id} style={styles.templateExerciseItem}>
                     <View style={styles.templateExerciseHeader}>
                       <View style={styles.templateExerciseTextContainer}>
                         <Text style={styles.templateExerciseName}>
                           {item.exercise_order}. {item.exercise_name}
                         </Text>
-
                         <Text style={styles.templateExerciseCategory}>
                           {item.exercise_category ?? 'Nessuna categoria'}
                         </Text>
-
-                        <Text style={styles.templateExerciseMeta}>
-                          {formatTemplateExerciseMeta(item)}
-                        </Text>
                       </View>
 
-                      <Pressable
-                        style={styles.removeButton}
-                        onPress={() => handleRemoveExerciseFromTemplate(item)}
-                      >
-                        <Text style={styles.removeButtonText}>Rimuovi</Text>
-                      </Pressable>
+                      <View style={styles.templateActions}>
+                        <Pressable
+                          style={styles.configureButton}
+                          onPress={() => router.push(`/template/exercise/${item.id}`)}
+                        >
+                          <Text style={styles.configureButtonText}>Configura</Text>
+                        </Pressable>
+
+                        <Pressable
+                          style={styles.removeButton}
+                          onPress={() => handleRemoveExerciseFromTemplate(item)}
+                        >
+                          <Text style={styles.removeButtonText}>Rimuovi</Text>
+                        </Pressable>
+                      </View>
                     </View>
-                  </Pressable>
+                  </View>
                 ))}
               </View>
             )}
@@ -372,10 +346,22 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: Colors.dark.textMuted,
   },
-  templateExerciseMeta: {
-    fontSize: 13,
+  templateActions: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  configureButton: {
+    backgroundColor: 'rgba(126, 71, 255, 0.14)',
+    borderWidth: 1,
+    borderColor: Colors.dark.primary,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 12,
+  },
+  configureButtonText: {
     color: Colors.dark.primarySoft,
-    marginTop: 6,
+    fontSize: 14,
+    fontWeight: '700',
   },
   removeButton: {
     backgroundColor: 'rgba(239, 68, 68, 0.14)',

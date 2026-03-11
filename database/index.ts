@@ -5,7 +5,7 @@ let db: SQLite.SQLiteDatabase | null = null;
 export async function getDb() {
   if (db) return db;
 
-  db = await SQLite.openDatabaseAsync('gym-tracker.db');
+  db = await SQLite.openDatabaseAsync('gym-tracker-v2.db');
   return db;
 }
 
@@ -41,6 +41,22 @@ export async function initDatabase() {
       notes TEXT,
       FOREIGN KEY (template_id) REFERENCES workout_templates(id) ON DELETE CASCADE,
       FOREIGN KEY (exercise_id) REFERENCES exercises(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS template_exercise_sets (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      template_exercise_id INTEGER NOT NULL,
+      set_order INTEGER NOT NULL,
+      set_type TEXT NOT NULL,
+      weight_kg REAL,
+      reps_min INTEGER,
+      reps_max INTEGER,
+      rest_seconds INTEGER,
+      effort_type TEXT NOT NULL DEFAULT 'none',
+      buffer_value INTEGER,
+      notes TEXT,
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (template_exercise_id) REFERENCES workout_template_exercises(id) ON DELETE CASCADE
     );
 
     CREATE TABLE IF NOT EXISTS workout_sessions (
@@ -90,12 +106,12 @@ export async function seedExercises() {
   const database = await getDb();
 
   const defaultExercises = [
-    { name: 'Incline Bench Press', category: 'Petto' },
-    { name: 'Squat Rack', category: 'Gambe' },
-    { name: 'Lat Machine - Presa Inversa', category: 'Schiena' },
+    { name: 'Panca Piana', category: 'Petto' },
+    { name: 'Squat', category: 'Gambe' },
+    { name: 'Lat Machine', category: 'Schiena' },
     { name: 'Shoulder Press', category: 'Spalle' },
-    { name: 'Curl Cavo Basso', category: 'Bicipiti' },
-    { name: 'Pushdown Cavo Alto', category: 'Tricipiti' },
+    { name: 'Curl Manubri', category: 'Bicipiti' },
+    { name: 'Pushdown Cavo', category: 'Tricipiti' },
   ];
 
   for (const exercise of defaultExercises) {
@@ -147,10 +163,7 @@ export async function addExercise(name: string, category: string | null) {
 export async function deleteExercise(id: number) {
   const database = await getDb();
 
-  await database.runAsync(
-    `DELETE FROM exercises WHERE id = ?`,
-    [id]
-  );
+  await database.runAsync(`DELETE FROM exercises WHERE id = ?`, [id]);
 }
 
 export type WorkoutTemplate = {
@@ -195,10 +208,7 @@ export async function getWorkoutTemplates(): Promise<WorkoutTemplate[]> {
 export async function deleteWorkoutTemplate(id: number) {
   const database = await getDb();
 
-  await database.runAsync(
-    `DELETE FROM workout_templates WHERE id = ?`,
-    [id]
-  );
+  await database.runAsync(`DELETE FROM workout_templates WHERE id = ?`, [id]);
 }
 
 export type TemplateExercise = {
@@ -215,7 +225,9 @@ export type TemplateExercise = {
   exercise_category: string | null;
 };
 
-export async function getWorkoutTemplateById(id: number): Promise<WorkoutTemplate | null> {
+export async function getWorkoutTemplateById(
+  id: number
+): Promise<WorkoutTemplate | null> {
   const database = await getDb();
 
   const row = await database.getFirstAsync<WorkoutTemplate>(
@@ -228,7 +240,9 @@ export async function getWorkoutTemplateById(id: number): Promise<WorkoutTemplat
   return row ?? null;
 }
 
-export async function getTemplateExercises(templateId: number): Promise<TemplateExercise[]> {
+export async function getTemplateExercises(
+  templateId: number
+): Promise<TemplateExercise[]> {
   const database = await getDb();
 
   const rows = await database.getAllAsync<TemplateExercise>(
@@ -300,38 +314,6 @@ export async function removeExerciseFromTemplate(templateExerciseId: number) {
   );
 }
 
-export async function updateTemplateExercise(
-  id: number,
-  data: {
-    targetSets: number | null;
-    targetRepsMin: number | null;
-    targetRepsMax: number | null;
-    restSeconds: number | null;
-    notes: string | null;
-  }
-) {
-  const database = await getDb();
-
-  await database.runAsync(
-    `UPDATE workout_template_exercises
-     SET
-       target_sets = ?,
-       target_reps_min = ?,
-       target_reps_max = ?,
-       rest_seconds = ?,
-       notes = ?
-     WHERE id = ?`,
-    [
-      data.targetSets,
-      data.targetRepsMin,
-      data.targetRepsMax,
-      data.restSeconds,
-      data.notes,
-      id,
-    ]
-  );
-}
-
 export async function getTemplateExerciseById(
   id: number
 ): Promise<TemplateExercise | null> {
@@ -353,6 +335,152 @@ export async function getTemplateExerciseById(
      FROM workout_template_exercises wte
      INNER JOIN exercises e ON e.id = wte.exercise_id
      WHERE wte.id = ?`,
+    [id]
+  );
+
+  return row ?? null;
+}
+
+export type TemplateExerciseSet = {
+  id: number;
+  template_exercise_id: number;
+  set_order: number;
+  set_type: 'warmup' | 'target';
+  weight_kg: number | null;
+  reps_min: number | null;
+  reps_max: number | null;
+  rest_seconds: number | null;
+  effort_type: 'none' | 'buffer' | 'failure' | 'drop_set';
+  buffer_value: number | null;
+  notes: string | null;
+  created_at: string;
+};
+
+export async function getTemplateExerciseSets(
+  templateExerciseId: number
+): Promise<TemplateExerciseSet[]> {
+  const database = await getDb();
+
+  const rows = await database.getAllAsync<TemplateExerciseSet>(
+    `SELECT
+      id,
+      template_exercise_id,
+      set_order,
+      set_type,
+      weight_kg,
+      reps_min,
+      reps_max,
+      rest_seconds,
+      effort_type,
+      buffer_value,
+      notes,
+      created_at
+     FROM template_exercise_sets
+     WHERE template_exercise_id = ?
+     ORDER BY set_order ASC`,
+    [templateExerciseId]
+  );
+
+  return rows;
+}
+
+export async function addTemplateExerciseSet(
+  templateExerciseId: number,
+  setType: 'warmup' | 'target'
+) {
+  const database = await getDb();
+
+  const maxOrderRow = await database.getFirstAsync<{ maxOrder: number | null }>(
+    `SELECT MAX(set_order) as maxOrder
+     FROM template_exercise_sets
+     WHERE template_exercise_id = ?`,
+    [templateExerciseId]
+  );
+
+  const nextOrder = (maxOrderRow?.maxOrder ?? 0) + 1;
+
+  await database.runAsync(
+    `INSERT INTO template_exercise_sets (
+      template_exercise_id,
+      set_order,
+      set_type,
+      effort_type
+    ) VALUES (?, ?, ?, 'none')`,
+    [templateExerciseId, nextOrder, setType]
+  );
+}
+
+export async function updateTemplateExerciseSet(
+  id: number,
+  data: {
+    set_type: 'warmup' | 'target';
+    weight_kg: number | null;
+    reps_min: number | null;
+    reps_max: number | null;
+    rest_seconds: number | null;
+    effort_type: 'none' | 'buffer' | 'failure' | 'drop_set';
+    buffer_value: number | null;
+    notes: string | null;
+  }
+) {
+  const database = await getDb();
+
+  await database.runAsync(
+    `UPDATE template_exercise_sets
+     SET
+      set_type = ?,
+      weight_kg = ?,
+      reps_min = ?,
+      reps_max = ?,
+      rest_seconds = ?,
+      effort_type = ?,
+      buffer_value = ?,
+      notes = ?
+     WHERE id = ?`,
+    [
+      data.set_type,
+      data.weight_kg,
+      data.reps_min,
+      data.reps_max,
+      data.rest_seconds,
+      data.effort_type,
+      data.buffer_value,
+      data.notes,
+      id,
+    ]
+  );
+}
+
+export async function deleteTemplateExerciseSet(id: number) {
+  const database = await getDb();
+
+  await database.runAsync(
+    `DELETE FROM template_exercise_sets WHERE id = ?`,
+    [id]
+  );
+}
+
+export async function getTemplateExerciseSetById(
+  id: number
+): Promise<TemplateExerciseSet | null> {
+  const database = await getDb();
+
+  const row = await database.getFirstAsync<TemplateExerciseSet>(
+    `SELECT
+      id,
+      template_exercise_id,
+      set_order,
+      set_type,
+      weight_kg,
+      reps_min,
+      reps_max,
+      rest_seconds,
+      effort_type,
+      buffer_value,
+      notes,
+      created_at
+     FROM template_exercise_sets
+     WHERE id = ?`,
     [id]
   );
 
