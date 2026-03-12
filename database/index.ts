@@ -15,6 +15,11 @@ export async function initDatabase() {
   await database.execAsync(`
     PRAGMA journal_mode = WAL;
 
+    DROP TABLE IF EXISTS set_entries;
+    DROP TABLE IF EXISTS workout_session_sets;
+    DROP TABLE IF EXISTS workout_session_exercises;
+    DROP TABLE IF EXISTS workout_sessions;
+
     CREATE TABLE IF NOT EXISTS exercises (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       name TEXT NOT NULL UNIQUE,
@@ -61,11 +66,12 @@ export async function initDatabase() {
 
     CREATE TABLE IF NOT EXISTS workout_sessions (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
-      session_date TEXT NOT NULL,
       template_id INTEGER,
       name TEXT NOT NULL,
       notes TEXT,
-      status TEXT NOT NULL DEFAULT 'planned',
+      status TEXT NOT NULL DEFAULT 'active',
+      started_at TEXT NOT NULL,
+      completed_at TEXT,
       created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (template_id) REFERENCES workout_templates(id) ON DELETE SET NULL
     );
@@ -73,24 +79,46 @@ export async function initDatabase() {
     CREATE TABLE IF NOT EXISTS workout_session_exercises (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       session_id INTEGER NOT NULL,
-      exercise_id INTEGER NOT NULL,
+      template_exercise_id INTEGER,
+      exercise_id INTEGER,
+      exercise_name TEXT NOT NULL,
+      category TEXT,
       exercise_order INTEGER NOT NULL,
       notes TEXT,
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (session_id) REFERENCES workout_sessions(id) ON DELETE CASCADE,
-      FOREIGN KEY (exercise_id) REFERENCES exercises(id) ON DELETE CASCADE
+      FOREIGN KEY (template_exercise_id) REFERENCES workout_template_exercises(id) ON DELETE SET NULL,
+      FOREIGN KEY (exercise_id) REFERENCES exercises(id) ON DELETE SET NULL
     );
 
-    CREATE TABLE IF NOT EXISTS set_entries (
+    CREATE TABLE IF NOT EXISTS workout_session_sets (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       session_exercise_id INTEGER NOT NULL,
-      set_number INTEGER NOT NULL,
-      weight REAL,
-      reps INTEGER,
-      rir INTEGER,
+      template_set_id INTEGER,
+      set_order INTEGER NOT NULL,
+
+      target_set_type TEXT NOT NULL,
+      target_weight_kg REAL,
+      target_reps_min INTEGER,
+      target_reps_max INTEGER,
+      target_rest_seconds INTEGER,
+      target_effort_type TEXT NOT NULL DEFAULT 'none',
+      target_buffer_value INTEGER,
+      target_notes TEXT,
+
+      actual_weight_kg REAL,
+      actual_reps INTEGER,
+      actual_effort_type TEXT,
+      actual_buffer_value INTEGER,
+      actual_rir INTEGER,
+      actual_notes TEXT,
+
       is_completed INTEGER NOT NULL DEFAULT 0,
-      notes TEXT,
+      completed_at TEXT,
       created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-      FOREIGN KEY (session_exercise_id) REFERENCES workout_session_exercises(id) ON DELETE CASCADE
+
+      FOREIGN KEY (session_exercise_id) REFERENCES workout_session_exercises(id) ON DELETE CASCADE,
+      FOREIGN KEY (template_set_id) REFERENCES template_exercise_sets(id) ON DELETE SET NULL
     );
   `);
 }
@@ -99,6 +127,92 @@ export type Exercise = {
   id: number;
   name: string;
   category: string | null;
+  created_at: string;
+};
+
+export type WorkoutTemplate = {
+  id: number;
+  name: string;
+  notes: string | null;
+  created_at: string;
+};
+
+export type TemplateExercise = {
+  id: number;
+  template_id: number;
+  exercise_id: number;
+  exercise_order: number;
+  target_sets: number | null;
+  target_reps_min: number | null;
+  target_reps_max: number | null;
+  rest_seconds: number | null;
+  notes: string | null;
+  exercise_name: string;
+  exercise_category: string | null;
+};
+
+export type TemplateExerciseSet = {
+  id: number;
+  template_exercise_id: number;
+  set_order: number;
+  set_type: 'warmup' | 'target';
+  weight_kg: number | null;
+  reps_min: number | null;
+  reps_max: number | null;
+  rest_seconds: number | null;
+  effort_type: 'none' | 'buffer' | 'failure' | 'drop_set';
+  buffer_value: number | null;
+  notes: string | null;
+  created_at: string;
+};
+
+export type WorkoutSession = {
+  id: number;
+  template_id: number | null;
+  name: string;
+  notes: string | null;
+  status: 'active' | 'completed' | 'cancelled';
+  started_at: string;
+  completed_at: string | null;
+  created_at: string;
+};
+
+export type WorkoutSessionExercise = {
+  id: number;
+  session_id: number;
+  template_exercise_id: number | null;
+  exercise_id: number | null;
+  exercise_name: string;
+  category: string | null;
+  exercise_order: number;
+  notes: string | null;
+  created_at: string;
+};
+
+export type WorkoutSessionSet = {
+  id: number;
+  session_exercise_id: number;
+  template_set_id: number | null;
+  set_order: number;
+
+  target_set_type: 'warmup' | 'target';
+  target_weight_kg: number | null;
+  target_reps_min: number | null;
+  target_reps_max: number | null;
+  target_rest_seconds: number | null;
+  target_effort_type: 'none' | 'buffer' | 'failure' | 'drop_set';
+  target_buffer_value: number | null;
+  target_notes: string | null;
+
+  actual_weight_kg: number | null;
+  actual_reps: number | null;
+  actual_effort_type: 'none' | 'buffer' | 'failure' | 'drop_set' | null;
+  actual_buffer_value: number | null;
+  actual_rir: number | null;
+  actual_notes: string | null;
+
+  is_completed: number;
+  completed_at: string | null;
   created_at: string;
 };
 
@@ -166,13 +280,6 @@ export async function deleteExercise(id: number) {
   await database.runAsync(`DELETE FROM exercises WHERE id = ?`, [id]);
 }
 
-export type WorkoutTemplate = {
-  id: number;
-  name: string;
-  notes: string | null;
-  created_at: string;
-};
-
 export async function addWorkoutTemplate(name: string, notes: string | null) {
   const database = await getDb();
 
@@ -188,7 +295,7 @@ export async function addWorkoutTemplate(name: string, notes: string | null) {
       `INSERT INTO workout_templates (name, notes) VALUES (?, ?)`,
       [normalizedName, normalizedNotes]
     );
-  } catch (error) {
+  } catch {
     throw new Error('Impossibile creare il template.');
   }
 }
@@ -210,20 +317,6 @@ export async function deleteWorkoutTemplate(id: number) {
 
   await database.runAsync(`DELETE FROM workout_templates WHERE id = ?`, [id]);
 }
-
-export type TemplateExercise = {
-  id: number;
-  template_id: number;
-  exercise_id: number;
-  exercise_order: number;
-  target_sets: number | null;
-  target_reps_min: number | null;
-  target_reps_max: number | null;
-  rest_seconds: number | null;
-  notes: string | null;
-  exercise_name: string;
-  exercise_category: string | null;
-};
 
 export async function getWorkoutTemplateById(
   id: number
@@ -340,21 +433,6 @@ export async function getTemplateExerciseById(
 
   return row ?? null;
 }
-
-export type TemplateExerciseSet = {
-  id: number;
-  template_exercise_id: number;
-  set_order: number;
-  set_type: 'warmup' | 'target';
-  weight_kg: number | null;
-  reps_min: number | null;
-  reps_max: number | null;
-  rest_seconds: number | null;
-  effort_type: 'none' | 'buffer' | 'failure' | 'drop_set';
-  buffer_value: number | null;
-  notes: string | null;
-  created_at: string;
-};
 
 export async function getTemplateExerciseSets(
   templateExerciseId: number
@@ -485,4 +563,346 @@ export async function getTemplateExerciseSetById(
   );
 
   return row ?? null;
+}
+
+export async function getActiveWorkoutSession(): Promise<WorkoutSession | null> {
+  const database = await getDb();
+
+  const row = await database.getFirstAsync<WorkoutSession>(
+    `SELECT
+      id,
+      template_id,
+      name,
+      notes,
+      status,
+      started_at,
+      completed_at,
+      created_at
+     FROM workout_sessions
+     WHERE status = 'active'
+     ORDER BY started_at DESC
+     LIMIT 1`
+  );
+
+  return row ?? null;
+}
+
+export async function getWorkoutSessionById(
+  id: number
+): Promise<WorkoutSession | null> {
+  const database = await getDb();
+
+  const row = await database.getFirstAsync<WorkoutSession>(
+    `SELECT
+      id,
+      template_id,
+      name,
+      notes,
+      status,
+      started_at,
+      completed_at,
+      created_at
+     FROM workout_sessions
+     WHERE id = ?`,
+    [id]
+  );
+
+  return row ?? null;
+}
+
+export async function startWorkoutSessionFromTemplate(templateId: number) {
+  const database = await getDb();
+
+  const template = await database.getFirstAsync<{
+    id: number;
+    name: string;
+    notes: string | null;
+  }>(
+    `SELECT id, name, notes
+     FROM workout_templates
+     WHERE id = ?`,
+    [templateId]
+  );
+
+  if (!template) {
+    throw new Error('Template non trovato.');
+  }
+
+  const existingActive = await database.getFirstAsync<{ id: number }>(
+    `SELECT id
+     FROM workout_sessions
+     WHERE status = 'active'
+     LIMIT 1`
+  );
+
+  if (existingActive) {
+    throw new Error('Esiste già una sessione attiva.');
+  }
+
+  const startedAt = new Date().toISOString();
+
+  const sessionResult = await database.runAsync(
+    `INSERT INTO workout_sessions (
+      template_id,
+      name,
+      notes,
+      status,
+      started_at
+    ) VALUES (?, ?, ?, 'active', ?)`,
+    [template.id, template.name, template.notes, startedAt]
+  );
+
+  const sessionId = Number(sessionResult.lastInsertRowId);
+
+  const templateExercises = await database.getAllAsync<{
+    id: number;
+    exercise_id: number;
+    exercise_order: number;
+    notes: string | null;
+    exercise_name: string;
+    category: string | null;
+  }>(
+    `SELECT
+      te.id,
+      te.exercise_id,
+      te.exercise_order,
+      te.notes,
+      e.name as exercise_name,
+      e.category as category
+     FROM workout_template_exercises te
+     INNER JOIN exercises e ON e.id = te.exercise_id
+     WHERE te.template_id = ?
+     ORDER BY te.exercise_order ASC`,
+    [templateId]
+  );
+
+  for (const templateExercise of templateExercises) {
+    const sessionExerciseResult = await database.runAsync(
+      `INSERT INTO workout_session_exercises (
+        session_id,
+        template_exercise_id,
+        exercise_id,
+        exercise_name,
+        category,
+        exercise_order,
+        notes
+      ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [
+        sessionId,
+        templateExercise.id,
+        templateExercise.exercise_id,
+        templateExercise.exercise_name,
+        templateExercise.category,
+        templateExercise.exercise_order,
+        templateExercise.notes,
+      ]
+    );
+
+    const sessionExerciseId = Number(sessionExerciseResult.lastInsertRowId);
+
+    const templateSets = await database.getAllAsync<{
+      id: number;
+      set_order: number;
+      set_type: 'warmup' | 'target';
+      weight_kg: number | null;
+      reps_min: number | null;
+      reps_max: number | null;
+      rest_seconds: number | null;
+      effort_type: 'none' | 'buffer' | 'failure' | 'drop_set';
+      buffer_value: number | null;
+      notes: string | null;
+    }>(
+      `SELECT
+        id,
+        set_order,
+        set_type,
+        weight_kg,
+        reps_min,
+        reps_max,
+        rest_seconds,
+        effort_type,
+        buffer_value,
+        notes
+       FROM template_exercise_sets
+       WHERE template_exercise_id = ?
+       ORDER BY set_order ASC`,
+      [templateExercise.id]
+    );
+
+    for (const templateSet of templateSets) {
+      await database.runAsync(
+        `INSERT INTO workout_session_sets (
+          session_exercise_id,
+          template_set_id,
+          set_order,
+          target_set_type,
+          target_weight_kg,
+          target_reps_min,
+          target_reps_max,
+          target_rest_seconds,
+          target_effort_type,
+          target_buffer_value,
+          target_notes
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          sessionExerciseId,
+          templateSet.id,
+          templateSet.set_order,
+          templateSet.set_type,
+          templateSet.weight_kg,
+          templateSet.reps_min,
+          templateSet.reps_max,
+          templateSet.rest_seconds,
+          templateSet.effort_type,
+          templateSet.buffer_value,
+          templateSet.notes,
+        ]
+      );
+    }
+  }
+
+  return sessionId;
+}
+
+export async function getWorkoutSessionExercises(
+  sessionId: number
+): Promise<WorkoutSessionExercise[]> {
+  const database = await getDb();
+
+  return database.getAllAsync<WorkoutSessionExercise>(
+    `SELECT
+      id,
+      session_id,
+      template_exercise_id,
+      exercise_id,
+      exercise_name,
+      category,
+      exercise_order,
+      notes,
+      created_at
+     FROM workout_session_exercises
+     WHERE session_id = ?
+     ORDER BY exercise_order ASC`,
+    [sessionId]
+  );
+}
+
+export async function getWorkoutSessionSets(
+  sessionExerciseId: number
+): Promise<WorkoutSessionSet[]> {
+  const database = await getDb();
+
+  return database.getAllAsync<WorkoutSessionSet>(
+    `SELECT
+      id,
+      session_exercise_id,
+      template_set_id,
+      set_order,
+      target_set_type,
+      target_weight_kg,
+      target_reps_min,
+      target_reps_max,
+      target_rest_seconds,
+      target_effort_type,
+      target_buffer_value,
+      target_notes,
+      actual_weight_kg,
+      actual_reps,
+      actual_effort_type,
+      actual_buffer_value,
+      actual_rir,
+      actual_notes,
+      is_completed,
+      completed_at,
+      created_at
+     FROM workout_session_sets
+     WHERE session_exercise_id = ?
+     ORDER BY set_order ASC`,
+    [sessionExerciseId]
+  );
+}
+
+export async function updateWorkoutSessionSet(
+  id: number,
+  data: {
+    actual_weight_kg: number | null;
+    actual_reps: number | null;
+    actual_effort_type: 'none' | 'buffer' | 'failure' | 'drop_set' | null;
+    actual_buffer_value: number | null;
+    actual_rir: number | null;
+    actual_notes: string | null;
+    is_completed: number;
+  }
+) {
+  const database = await getDb();
+
+  await database.runAsync(
+    `UPDATE workout_session_sets
+     SET
+      actual_weight_kg = ?,
+      actual_reps = ?,
+      actual_effort_type = ?,
+      actual_buffer_value = ?,
+      actual_rir = ?,
+      actual_notes = ?,
+      is_completed = ?,
+      completed_at = CASE WHEN ? = 1 THEN CURRENT_TIMESTAMP ELSE NULL END
+     WHERE id = ?`,
+    [
+      data.actual_weight_kg,
+      data.actual_reps,
+      data.actual_effort_type,
+      data.actual_buffer_value,
+      data.actual_rir,
+      data.actual_notes,
+      data.is_completed,
+      data.is_completed,
+      id,
+    ]
+  );
+}
+
+export async function completeWorkoutSession(sessionId: number) {
+  const database = await getDb();
+
+  await database.runAsync(
+    `UPDATE workout_sessions
+     SET
+      status = 'completed',
+      completed_at = CURRENT_TIMESTAMP
+     WHERE id = ?`,
+    [sessionId]
+  );
+}
+
+export async function cancelWorkoutSession(sessionId: number) {
+  const database = await getDb();
+
+  await database.runAsync(
+    `UPDATE workout_sessions
+     SET
+      status = 'cancelled',
+      completed_at = CURRENT_TIMESTAMP
+     WHERE id = ?`,
+    [sessionId]
+  );
+}
+
+export async function getCompletedWorkoutSessions(): Promise<WorkoutSession[]> {
+  const database = await getDb();
+
+  return database.getAllAsync<WorkoutSession>(
+    `SELECT
+      id,
+      template_id,
+      name,
+      notes,
+      status,
+      started_at,
+      completed_at,
+      created_at
+     FROM workout_sessions
+     WHERE status = 'completed'
+     ORDER BY completed_at DESC, started_at DESC`
+  );
 }
