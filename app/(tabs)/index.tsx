@@ -13,10 +13,11 @@ import {
   type WorkoutTemplate,
 } from '@/database';
 import { useFocusEffect } from '@react-navigation/native';
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  LayoutChangeEvent,
   ScrollView,
   StyleSheet,
   Text,
@@ -32,13 +33,20 @@ type SessionExerciseWithSets = {
   sets: WorkoutSessionSet[];
 };
 
+type EffortType = 'none' | 'buffer' | 'failure' | 'drop_set';
+
 type SetFormState = {
   actual_weight_kg: string;
   actual_reps: string;
   actual_notes: string;
+  actual_effort_type: EffortType | '';
 };
 
 export default function TodayScreen() {
+  const scrollRef = useRef<ScrollView | null>(null);
+  const nextSetSectionY = useRef(0);
+  const exercisesSectionY = useRef(0);
+
   const [loading, setLoading] = useState(true);
   const [startingSession, setStartingSession] = useState(false);
   const [savingSetId, setSavingSetId] = useState<number | null>(null);
@@ -90,13 +98,16 @@ export default function TodayScreen() {
             actual_reps:
               set.actual_reps !== null ? String(set.actual_reps) : '',
             actual_notes: set.actual_notes ?? '',
+            actual_effort_type:
+              (set.actual_effort_type as EffortType | null) ??
+              (set.target_effort_type as EffortType),
           };
         }
       }
 
       setSessionData(exercisesWithSets);
       setSetForms(initialForms);
-    } catch (error) {
+    } catch {
       Alert.alert('Errore', 'Impossibile caricare la schermata di oggi.');
     } finally {
       setLoading(false);
@@ -109,15 +120,23 @@ export default function TodayScreen() {
     }, [loadScreenData])
   );
 
-  const completedSetsCount = useMemo(() => {
-    return sessionData.reduce((total, item) => {
-      return total + item.sets.filter((set) => set.is_completed === 1).length;
-    }, 0);
+  const allSets = useMemo(() => {
+    return sessionData.flatMap((item) => item.sets);
   }, [sessionData]);
 
+  const nextIncompleteSet = useMemo(() => {
+    return allSets.find((set) => set.is_completed === 0) ?? null;
+  }, [allSets]);
+
+  const completedSetsCount = useMemo(() => {
+    return allSets.filter((set) => set.is_completed === 1).length;
+  }, [allSets]);
+
   const totalSetsCount = useMemo(() => {
-    return sessionData.reduce((total, item) => total + item.sets.length, 0);
-  }, [sessionData]);
+    return allSets.length;
+  }, [allSets]);
+
+  const remainingSetsCount = totalSetsCount - completedSetsCount;
 
   const updateSetField = (
     setId: number,
@@ -171,6 +190,27 @@ export default function TodayScreen() {
     return set.target_set_type === 'warmup' ? 'Warmup' : 'Target';
   };
 
+  const formatEffortType = (value: string | null) => {
+    switch (value) {
+      case 'buffer':
+        return 'Buffer';
+      case 'failure':
+        return 'Cedimento';
+      case 'drop_set':
+        return 'Drop set';
+      case 'none':
+      default:
+        return 'Nessuno';
+    }
+  };
+
+  const scrollToY = (y: number) => {
+    scrollRef.current?.scrollTo({
+      y: Math.max(y - 16, 0),
+      animated: true,
+    });
+  };
+
   const handleStartSession = async (templateId: number) => {
     try {
       setStartingSession(true);
@@ -198,7 +238,8 @@ export default function TodayScreen() {
       await updateWorkoutSessionSet(set.id, {
         actual_weight_kg: parseNullableNumber(form.actual_weight_kg),
         actual_reps: parseNullableNumber(form.actual_reps),
-        actual_effort_type: null,
+        actual_effort_type:
+          (form.actual_effort_type as EffortType | '') || null,
         actual_buffer_value: null,
         actual_rir: null,
         actual_notes: form.actual_notes.trim() || null,
@@ -222,7 +263,8 @@ export default function TodayScreen() {
       await updateWorkoutSessionSet(set.id, {
         actual_weight_kg: parseNullableNumber(form?.actual_weight_kg ?? ''),
         actual_reps: parseNullableNumber(form?.actual_reps ?? ''),
-        actual_effort_type: null,
+        actual_effort_type:
+          ((form?.actual_effort_type as EffortType | '') || null),
         actual_buffer_value: null,
         actual_rir: null,
         actual_notes: form?.actual_notes?.trim() || null,
@@ -240,8 +282,6 @@ export default function TodayScreen() {
   const handleCompleteSession = async () => {
     if (!activeSession) return;
 
-    const incompleteSets = totalSetsCount - completedSetsCount;
-
     const proceed = async () => {
       try {
         setFinishingSession(true);
@@ -254,10 +294,10 @@ export default function TodayScreen() {
       }
     };
 
-    if (incompleteSets > 0) {
+    if (remainingSetsCount > 0) {
       Alert.alert(
         'Serie non completate',
-        `Ci sono ancora ${incompleteSets} serie non completate. Vuoi chiudere comunque l’allenamento?`,
+        `Ci sono ancora ${remainingSetsCount} serie da eseguire. Vuoi chiudere comunque l’allenamento?`,
         [
           { text: 'Annulla', style: 'cancel' },
           { text: 'Conferma', onPress: proceed },
@@ -267,6 +307,14 @@ export default function TodayScreen() {
     }
 
     await proceed();
+  };
+
+  const onNextSetSectionLayout = (event: LayoutChangeEvent) => {
+    nextSetSectionY.current = event.nativeEvent.layout.y;
+  };
+
+  const onExercisesSectionLayout = (event: LayoutChangeEvent) => {
+    exercisesSectionY.current = event.nativeEvent.layout.y;
   };
 
   if (loading) {
@@ -279,6 +327,7 @@ export default function TodayScreen() {
 
   return (
     <ScrollView
+      ref={scrollRef}
       style={styles.container}
       contentContainerStyle={styles.content}
       showsVerticalScrollIndicator={false}
@@ -346,11 +395,38 @@ export default function TodayScreen() {
         </>
       ) : (
         <>
-          <View style={styles.card}>
-            <Text style={styles.cardTitle}>{activeSession.name}</Text>
+          <TouchableOpacity
+            style={[styles.card, styles.clickableCard]}
+            activeOpacity={0.88}
+            onPress={() => scrollToY(exercisesSectionY.current)}
+          >
+            <Text style={styles.cardTitle}>Allenamento del giorno</Text>
+            <Text style={styles.activeSessionTitle}>{activeSession.name}</Text>
             <Text style={styles.cardText}>
-              Sessione attiva. Compila le serie e salva i dati reali man mano che
-              procedi.
+              Tocca per tornare rapidamente all’allenamento attivo.
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.card, styles.clickableCard]}
+            activeOpacity={0.88}
+            onPress={() => scrollToY(nextSetSectionY.current)}
+          >
+            <Text style={styles.cardTitle}>Stato</Text>
+            <Text style={styles.statusMainText}>
+              {completedSetsCount}/{totalSetsCount} serie completate
+            </Text>
+            <Text style={styles.cardText}>
+              {remainingSetsCount > 0
+                ? `${remainingSetsCount} serie ancora da eseguire`
+                : 'Allenamento completato, puoi chiuderlo quando vuoi'}
+            </Text>
+          </TouchableOpacity>
+
+          <View style={styles.card}>
+            <Text style={styles.cardTitle}>Sessione attiva</Text>
+            <Text style={styles.cardText}>
+              Compila le serie e salva i dati reali durante l’allenamento.
             </Text>
 
             <View style={styles.sessionStatsRow}>
@@ -362,188 +438,265 @@ export default function TodayScreen() {
               </View>
 
               <View style={styles.statBadge}>
-                <Text style={styles.statBadgeLabel}>Stato</Text>
-                <Text style={styles.statBadgeValue}>Attiva</Text>
+                <Text style={styles.statBadgeLabel}>Rimanenti</Text>
+                <Text style={styles.statBadgeValue}>{remainingSetsCount}</Text>
               </View>
             </View>
+
+            {nextIncompleteSet ? (
+              <TouchableOpacity
+                style={styles.nextSetButton}
+                activeOpacity={0.9}
+                onPress={() => scrollToY(nextSetSectionY.current)}
+              >
+                <Text style={styles.nextSetButtonText}>Prossima serie</Text>
+              </TouchableOpacity>
+            ) : null}
           </View>
 
-          {sessionData.map(({ exercise, sets }) => (
-            <View key={exercise.id} style={styles.exerciseCard}>
-              <View style={styles.exerciseHeader}>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.exerciseTitle}>{exercise.exercise_name}</Text>
-                  <Text style={styles.exerciseSubtitle}>
-                    {exercise.category || 'Nessuna categoria'}
-                  </Text>
+          <View onLayout={onExercisesSectionLayout}>
+            {sessionData.map(({ exercise, sets }) => (
+              <View key={exercise.id} style={styles.exerciseCard}>
+                <View style={styles.exerciseHeader}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.exerciseTitle}>
+                      {exercise.exercise_name}
+                    </Text>
+                    <Text style={styles.exerciseSubtitle}>
+                      {exercise.category || 'Nessuna categoria'}
+                    </Text>
+                  </View>
                 </View>
-              </View>
 
-              {exercise.notes ? (
-                <View style={styles.noteBox}>
-                  <Text style={styles.noteLabel}>Note esercizio</Text>
-                  <Text style={styles.noteText}>{exercise.notes}</Text>
-                </View>
-              ) : null}
+                {exercise.notes ? (
+                  <View style={styles.noteBox}>
+                    <Text style={styles.noteLabel}>Note esercizio</Text>
+                    <Text style={styles.noteText}>{exercise.notes}</Text>
+                  </View>
+                ) : null}
 
-              <View style={styles.setsList}>
-                {sets.map((set, index) => {
-                  const form = setForms[set.id] ?? {
-                    actual_weight_kg: '',
-                    actual_reps: '',
-                    actual_notes: '',
-                  };
+                <View style={styles.setsList}>
+                  {sets.map((set, index) => {
+                    const form = setForms[set.id] ?? {
+                      actual_weight_kg: '',
+                      actual_reps: '',
+                      actual_notes: '',
+                      actual_effort_type:
+                        (set.target_effort_type as EffortType) ?? 'none',
+                    };
 
-                  const isSaving = savingSetId === set.id;
-                  const isCompleted = set.is_completed === 1;
+                    const isSaving = savingSetId === set.id;
+                    const isCompleted = set.is_completed === 1;
+                    const isNextIncomplete =
+                      nextIncompleteSet?.id === set.id && !isCompleted;
 
-                  return (
-                    <View
-                      key={set.id}
-                      style={[
-                        styles.setCard,
-                        isCompleted && styles.setCardCompleted,
-                      ]}
-                    >
-                      <View style={styles.setHeaderRow}>
-                        <Text style={styles.setTitle}>
-                          Serie {index + 1} · {formatSetType(set)}
-                        </Text>
+                    return (
+                      <View
+                        key={set.id}
+                        onLayout={
+                          isNextIncomplete ? onNextSetSectionLayout : undefined
+                        }
+                        style={[
+                          styles.setCard,
+                          isCompleted && styles.setCardCompleted,
+                          isNextIncomplete && styles.setCardNext,
+                        ]}
+                      >
+                        <View style={styles.setHeaderRow}>
+                          <Text style={styles.setTitle}>
+                            Serie {index + 1} · {formatSetType(set)}
+                          </Text>
 
-                        <View
-                          style={[
-                            styles.statusPill,
-                            isCompleted && styles.statusPillCompleted,
-                          ]}
-                        >
-                          <Text
+                          <View
                             style={[
-                              styles.statusPillText,
-                              isCompleted && styles.statusPillTextCompleted,
+                              styles.statusPill,
+                              isCompleted && styles.statusPillCompleted,
+                              isNextIncomplete && styles.statusPillNext,
                             ]}
                           >
-                            {isCompleted ? 'Completata' : 'Da fare'}
-                          </Text>
-                        </View>
-                      </View>
-
-                      <View style={styles.targetGrid}>
-                        <View style={styles.targetBox}>
-                          <Text style={styles.targetLabel}>Target peso</Text>
-                          <Text style={styles.targetValue}>
-                            {formatTargetWeight(set)}
-                          </Text>
-                        </View>
-
-                        <View style={styles.targetBox}>
-                          <Text style={styles.targetLabel}>Target reps</Text>
-                          <Text style={styles.targetValue}>
-                            {formatTargetReps(set)}
-                          </Text>
+                            <Text
+                              style={[
+                                styles.statusPillText,
+                                isCompleted && styles.statusPillTextCompleted,
+                                isNextIncomplete && styles.statusPillTextNext,
+                              ]}
+                            >
+                              {isCompleted
+                                ? 'Completata'
+                                : isNextIncomplete
+                                ? 'Prossima'
+                                : 'Da fare'}
+                            </Text>
+                          </View>
                         </View>
 
-                        <View style={styles.targetBox}>
-                          <Text style={styles.targetLabel}>Pausa</Text>
-                          <Text style={styles.targetValue}>{formatRest(set)}</Text>
+                        <View style={styles.targetGrid}>
+                          <View style={styles.targetBox}>
+                            <Text style={styles.targetLabel}>Target peso</Text>
+                            <Text style={styles.targetValue}>
+                              {formatTargetWeight(set)}
+                            </Text>
+                          </View>
+
+                          <View style={styles.targetBox}>
+                            <Text style={styles.targetLabel}>Target reps</Text>
+                            <Text style={styles.targetValue}>
+                              {formatTargetReps(set)}
+                            </Text>
+                          </View>
+
+                          <View style={styles.targetBox}>
+                            <Text style={styles.targetLabel}>Pausa</Text>
+                            <Text style={styles.targetValue}>
+                              {formatRest(set)}
+                            </Text>
+                          </View>
+
+                          <View style={styles.targetBox}>
+                            <Text style={styles.targetLabel}>Sforzo</Text>
+                            <Text style={styles.targetValue}>
+                              {formatEffortType(set.target_effort_type)}
+                            </Text>
+                          </View>
                         </View>
 
-                        <View style={styles.targetBox}>
-                          <Text style={styles.targetLabel}>Sforzo</Text>
-                          <Text style={styles.targetValue}>
-                            {set.target_effort_type}
-                          </Text>
-                        </View>
-                      </View>
+                        {set.target_notes ? (
+                          <View style={styles.noteBox}>
+                            <Text style={styles.noteLabel}>Note target</Text>
+                            <Text style={styles.noteText}>
+                              {set.target_notes}
+                            </Text>
+                          </View>
+                        ) : null}
 
-                      {set.target_notes ? (
-                        <View style={styles.noteBox}>
-                          <Text style={styles.noteLabel}>Note target</Text>
-                          <Text style={styles.noteText}>{set.target_notes}</Text>
-                        </View>
-                      ) : null}
+                        <View style={styles.inputsRow}>
+                          <View style={styles.inputGroup}>
+                            <Text style={styles.inputLabel}>Peso reale</Text>
+                            <TextInput
+                              value={form.actual_weight_kg}
+                              onChangeText={(value) =>
+                                updateSetField(set.id, 'actual_weight_kg', value)
+                              }
+                              placeholder="Es. 60"
+                              placeholderTextColor={Colors.dark.textMuted}
+                              keyboardType="decimal-pad"
+                              style={styles.input}
+                            />
+                          </View>
 
-                      <View style={styles.inputsRow}>
+                          <View style={styles.inputGroup}>
+                            <Text style={styles.inputLabel}>Reps reali</Text>
+                            <TextInput
+                              value={form.actual_reps}
+                              onChangeText={(value) =>
+                                updateSetField(set.id, 'actual_reps', value)
+                              }
+                              placeholder="Es. 8"
+                              placeholderTextColor={Colors.dark.textMuted}
+                              keyboardType="number-pad"
+                              style={styles.input}
+                            />
+                          </View>
+                        </View>
+
                         <View style={styles.inputGroup}>
-                          <Text style={styles.inputLabel}>Peso reale</Text>
+                          <Text style={styles.inputLabel}>Sforzo reale</Text>
+
+                          <View style={styles.effortRow}>
+                            {(
+                              [
+                                { key: 'none', label: 'Nessuno' },
+                                { key: 'buffer', label: 'Buffer' },
+                                { key: 'failure', label: 'Cedimento' },
+                                { key: 'drop_set', label: 'Drop set' },
+                              ] as { key: EffortType; label: string }[]
+                            ).map((option) => {
+                              const selected =
+                                form.actual_effort_type === option.key;
+
+                              return (
+                                <TouchableOpacity
+                                  key={option.key}
+                                  style={[
+                                    styles.effortChip,
+                                    selected && styles.effortChipSelected,
+                                  ]}
+                                  activeOpacity={0.85}
+                                  onPress={() =>
+                                    updateSetField(
+                                      set.id,
+                                      'actual_effort_type',
+                                      option.key
+                                    )
+                                  }
+                                >
+                                  <Text
+                                    style={[
+                                      styles.effortChipText,
+                                      selected && styles.effortChipTextSelected,
+                                    ]}
+                                  >
+                                    {option.label}
+                                  </Text>
+                                </TouchableOpacity>
+                              );
+                            })}
+                          </View>
+                        </View>
+
+                        <View style={styles.inputGroup}>
+                          <Text style={styles.inputLabel}>Note serie</Text>
                           <TextInput
-                            value={form.actual_weight_kg}
+                            value={form.actual_notes}
                             onChangeText={(value) =>
-                              updateSetField(set.id, 'actual_weight_kg', value)
+                              updateSetField(set.id, 'actual_notes', value)
                             }
-                            placeholder="Es. 60"
+                            placeholder="Note opzionali"
                             placeholderTextColor={Colors.dark.textMuted}
-                            keyboardType="decimal-pad"
-                            style={styles.input}
+                            multiline
+                            style={[styles.input, styles.notesInput]}
                           />
                         </View>
 
-                        <View style={styles.inputGroup}>
-                          <Text style={styles.inputLabel}>Reps reali</Text>
-                          <TextInput
-                            value={form.actual_reps}
-                            onChangeText={(value) =>
-                              updateSetField(set.id, 'actual_reps', value)
-                            }
-                            placeholder="Es. 8"
-                            placeholderTextColor={Colors.dark.textMuted}
-                            keyboardType="number-pad"
-                            style={styles.input}
-                          />
-                        </View>
-                      </View>
-
-                      <View style={styles.inputGroup}>
-                        <Text style={styles.inputLabel}>Note serie</Text>
-                        <TextInput
-                          value={form.actual_notes}
-                          onChangeText={(value) =>
-                            updateSetField(set.id, 'actual_notes', value)
-                          }
-                          placeholder="Note opzionali"
-                          placeholderTextColor={Colors.dark.textMuted}
-                          multiline
-                          style={[styles.input, styles.notesInput]}
-                        />
-                      </View>
-
-                      <View style={styles.setActions}>
-                        <TouchableOpacity
-                          style={[
-                            styles.primaryButton,
-                            isSaving && styles.disabledButton,
-                          ]}
-                          onPress={() => handleSaveSet(set)}
-                          disabled={isSaving}
-                          activeOpacity={0.85}
-                        >
-                          <Text style={styles.primaryButtonText}>
-                            {isSaving
-                              ? 'Salvataggio...'
-                              : isCompleted
-                              ? 'Aggiorna serie'
-                              : 'Completa serie'}
-                          </Text>
-                        </TouchableOpacity>
-
-                        {isCompleted ? (
+                        <View style={styles.setActions}>
                           <TouchableOpacity
-                            style={styles.secondaryButton}
-                            onPress={() => handleUncheckSet(set)}
+                            style={[
+                              styles.primaryButton,
+                              isSaving && styles.disabledButton,
+                            ]}
+                            onPress={() => handleSaveSet(set)}
                             disabled={isSaving}
                             activeOpacity={0.85}
                           >
-                            <Text style={styles.secondaryButtonText}>
-                              Segna come non completata
+                            <Text style={styles.primaryButtonText}>
+                              {isSaving
+                                ? 'Salvataggio...'
+                                : isCompleted
+                                ? 'Aggiorna serie'
+                                : 'Completa serie'}
                             </Text>
                           </TouchableOpacity>
-                        ) : null}
+
+                          {isCompleted ? (
+                            <TouchableOpacity
+                              style={styles.secondaryButton}
+                              onPress={() => handleUncheckSet(set)}
+                              disabled={isSaving}
+                              activeOpacity={0.85}
+                            >
+                              <Text style={styles.secondaryButtonText}>
+                                Segna come non completata
+                              </Text>
+                            </TouchableOpacity>
+                          ) : null}
+                        </View>
                       </View>
-                    </View>
-                  );
-                })}
+                    );
+                  })}
+                </View>
               </View>
-            </View>
-          ))}
+            ))}
+          </View>
 
           <TouchableOpacity
             style={[
@@ -555,7 +708,9 @@ export default function TodayScreen() {
             activeOpacity={0.9}
           >
             <Text style={styles.finishButtonText}>
-              {finishingSession ? 'Chiusura allenamento...' : 'Completa allenamento'}
+              {finishingSession
+                ? 'Chiusura allenamento...'
+                : 'Completa allenamento'}
             </Text>
           </TouchableOpacity>
         </>
@@ -594,10 +749,25 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: Colors.dark.border,
   },
+  clickableCard: {
+    borderColor: 'rgba(126, 71, 255, 0.35)',
+  },
   cardTitle: {
     fontSize: 18,
     fontWeight: '700',
     color: Colors.dark.text,
+    marginBottom: 8,
+  },
+  activeSessionTitle: {
+    fontSize: 22,
+    fontWeight: '800',
+    color: Colors.dark.text,
+    marginBottom: 8,
+  },
+  statusMainText: {
+    color: Colors.dark.text,
+    fontSize: 22,
+    fontWeight: '800',
     marginBottom: 8,
   },
   cardText: {
@@ -667,6 +837,19 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '700',
   },
+  nextSetButton: {
+    marginTop: 14,
+    backgroundColor: PRIMARY,
+    borderRadius: 14,
+    paddingVertical: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  nextSetButtonText: {
+    color: '#fff',
+    fontSize: 15,
+    fontWeight: '800',
+  },
   exerciseCard: {
     backgroundColor: Colors.dark.surface,
     borderRadius: 18,
@@ -704,6 +887,13 @@ const styles = StyleSheet.create({
   setCardCompleted: {
     borderColor: PRIMARY,
   },
+  setCardNext: {
+    borderColor: 'rgba(126, 71, 255, 0.7)',
+    shadowColor: PRIMARY,
+    shadowOpacity: 0.18,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 0 },
+  },
   setHeaderRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -725,12 +915,18 @@ const styles = StyleSheet.create({
   statusPillCompleted: {
     backgroundColor: 'rgba(126, 71, 255, 0.18)',
   },
+  statusPillNext: {
+    backgroundColor: 'rgba(126, 71, 255, 0.18)',
+  },
   statusPillText: {
     color: Colors.dark.textMuted,
     fontSize: 12,
     fontWeight: '700',
   },
   statusPillTextCompleted: {
+    color: PRIMARY,
+  },
+  statusPillTextNext: {
     color: PRIMARY,
   },
   targetGrid: {
@@ -799,6 +995,31 @@ const styles = StyleSheet.create({
   notesInput: {
     minHeight: 92,
     textAlignVertical: 'top',
+  },
+  effortRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  effortChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 12,
+    backgroundColor: '#16161d',
+    borderWidth: 1,
+    borderColor: Colors.dark.border,
+  },
+  effortChipSelected: {
+    backgroundColor: 'rgba(126, 71, 255, 0.18)',
+    borderColor: PRIMARY,
+  },
+  effortChipText: {
+    color: Colors.dark.textMuted,
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  effortChipTextSelected: {
+    color: PRIMARY,
   },
   setActions: {
     gap: 10,
