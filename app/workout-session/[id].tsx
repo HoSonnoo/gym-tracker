@@ -15,6 +15,7 @@ import React, { useCallback, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  LayoutChangeEvent,
   ScrollView,
   StyleSheet,
   Text,
@@ -24,12 +25,19 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-const PRIMARY = '#7e47ff';
+// ─── Constants ────────────────────────────────────────────────────────────────
 
-type SessionExerciseWithSets = {
-  exercise: WorkoutSessionExercise;
-  sets: WorkoutSessionSet[];
-};
+const PRIMARY = '#7e47ff';
+const NEXT_SET_SCROLL_OFFSET = 20;
+
+const EFFORT_OPTIONS: { key: EffortType; label: string }[] = [
+  { key: 'none', label: 'Nessuno' },
+  { key: 'buffer', label: 'Buffer' },
+  { key: 'failure', label: 'Cedimento' },
+  { key: 'drop_set', label: 'Drop set' },
+];
+
+// ─── Types ────────────────────────────────────────────────────────────────────
 
 type EffortType = 'none' | 'buffer' | 'failure' | 'drop_set';
 
@@ -40,14 +48,251 @@ type SetFormState = {
   actual_effort_type: EffortType | '';
 };
 
+type SessionExerciseWithSets = {
+  exercise: WorkoutSessionExercise;
+  sets: WorkoutSessionSet[];
+};
+
+// ─── Pure helpers (hoisted outside component to avoid re-creation on render) ──
+
+function parseNullableNumber(value: string): number | null {
+  const normalized = value.replace(',', '.').trim();
+  if (!normalized) return null;
+  const parsed = Number(normalized);
+  return Number.isNaN(parsed) ? null : parsed;
+}
+
+function buildInitialForm(set: WorkoutSessionSet): SetFormState {
+  return {
+    actual_weight_kg: set.actual_weight_kg !== null ? String(set.actual_weight_kg) : '',
+    actual_reps: set.actual_reps !== null ? String(set.actual_reps) : '',
+    actual_notes: set.actual_notes ?? '',
+    actual_effort_type:
+      (set.actual_effort_type as EffortType | null) ??
+      (set.target_effort_type as EffortType) ??
+      'none',
+  };
+}
+
+function formatTargetReps(set: WorkoutSessionSet): string {
+  const { target_reps_min: min, target_reps_max: max } = set;
+  if (min && max) return min === max ? `${min}` : `${min}–${max}`;
+  return `${min ?? max ?? '—'}`;
+}
+
+function formatTargetWeight(set: WorkoutSessionSet): string {
+  return set.target_weight_kg !== null ? `${set.target_weight_kg} kg` : '—';
+}
+
+function formatRest(set: WorkoutSessionSet): string {
+  return set.target_rest_seconds !== null ? `${set.target_rest_seconds}s` : '—';
+}
+
+function formatSetType(set: WorkoutSessionSet): string {
+  return set.target_set_type === 'warmup' ? 'Warmup' : 'Target';
+}
+
+function formatEffortType(value: string | null): string {
+  switch (value) {
+    case 'buffer':   return 'Buffer';
+    case 'failure':  return 'Cedimento';
+    case 'drop_set': return 'Drop set';
+    default:         return 'Nessuno';
+  }
+}
+
+// ─── Sub-components ───────────────────────────────────────────────────────────
+
+function BackButton({ onPress, label = 'Indietro' }: { onPress: () => void; label?: string }) {
+  return (
+    <TouchableOpacity style={styles.topBackButton} onPress={onPress} activeOpacity={0.85}>
+      <Text style={styles.topBackButtonText}>{label}</Text>
+    </TouchableOpacity>
+  );
+}
+
+function StatBadge({ label, value }: { label: string; value: string }) {
+  return (
+    <View style={styles.statBadge}>
+      <Text style={styles.statBadgeLabel}>{label}</Text>
+      <Text style={styles.statBadgeValue}>{value}</Text>
+    </View>
+  );
+}
+
+function TargetBox({ label, value }: { label: string; value: string }) {
+  return (
+    <View style={styles.targetBox}>
+      <Text style={styles.targetLabel}>{label}</Text>
+      <Text style={styles.targetValue}>{value}</Text>
+    </View>
+  );
+}
+
+type SetCardProps = {
+  set: WorkoutSessionSet;
+  index: number;
+  form: SetFormState;
+  isCompleted: boolean;
+  isNextIncomplete: boolean;
+  isSaving: boolean;
+  onLayout: (e: LayoutChangeEvent) => void;
+  onFieldChange: (field: keyof SetFormState, value: string) => void;
+  onSave: () => void;
+  onUncheck: () => void;
+};
+
+function SetCard({
+  set,
+  index,
+  form,
+  isCompleted,
+  isNextIncomplete,
+  isSaving,
+  onLayout,
+  onFieldChange,
+  onSave,
+  onUncheck,
+}: SetCardProps) {
+  const isHighlighted = isCompleted || isNextIncomplete;
+  const statusLabel = isCompleted ? 'Completata' : isNextIncomplete ? 'Prossima' : 'Da fare';
+
+  return (
+    <View
+      onLayout={onLayout}
+      style={[
+        styles.setCard,
+        isCompleted && styles.setCardCompleted,
+        isNextIncomplete && styles.setCardNext,
+      ]}
+    >
+      {/* Header */}
+      <View style={styles.setHeaderRow}>
+        <Text style={styles.setTitle}>
+          Serie {index + 1} · {formatSetType(set)}
+        </Text>
+        <View style={[styles.statusPill, isHighlighted && styles.statusPillActive]}>
+          <Text style={[styles.statusPillText, isHighlighted && styles.statusPillTextActive]}>
+            {statusLabel}
+          </Text>
+        </View>
+      </View>
+
+      {/* Target grid */}
+      <View style={styles.targetGrid}>
+        <TargetBox label="Target peso" value={formatTargetWeight(set)} />
+        <TargetBox label="Target reps" value={formatTargetReps(set)} />
+        <TargetBox label="Pausa" value={formatRest(set)} />
+        <TargetBox label="Sforzo" value={formatEffortType(set.target_effort_type)} />
+      </View>
+
+      {/* Target notes */}
+      {set.target_notes ? (
+        <View style={styles.inlineNoteBox}>
+          <Text style={styles.noteLabel}>Note target</Text>
+          <Text style={styles.noteText}>{set.target_notes}</Text>
+        </View>
+      ) : null}
+
+      {/* Peso + Reps */}
+      <View style={styles.inputsRow}>
+        <View style={styles.inputGroup}>
+          <Text style={styles.inputLabel}>Peso reale</Text>
+          <TextInput
+            value={form.actual_weight_kg}
+            onChangeText={(v) => onFieldChange('actual_weight_kg', v)}
+            placeholder="Es. 60"
+            placeholderTextColor={Colors.dark.textMuted}
+            keyboardType="decimal-pad"
+            style={styles.input}
+          />
+        </View>
+        <View style={styles.inputGroup}>
+          <Text style={styles.inputLabel}>Reps reali</Text>
+          <TextInput
+            value={form.actual_reps}
+            onChangeText={(v) => onFieldChange('actual_reps', v)}
+            placeholder="Es. 8"
+            placeholderTextColor={Colors.dark.textMuted}
+            keyboardType="number-pad"
+            style={styles.input}
+          />
+        </View>
+      </View>
+
+      {/* Effort chips */}
+      <View style={styles.inputGroup}>
+        <Text style={styles.inputLabel}>Sforzo reale</Text>
+        <View style={styles.effortRow}>
+          {EFFORT_OPTIONS.map((option) => {
+            const selected = form.actual_effort_type === option.key;
+            return (
+              <TouchableOpacity
+                key={option.key}
+                style={[styles.effortChip, selected && styles.effortChipSelected]}
+                activeOpacity={0.85}
+                onPress={() => onFieldChange('actual_effort_type', option.key)}
+              >
+                <Text style={[styles.effortChipText, selected && styles.effortChipTextSelected]}>
+                  {option.label}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+      </View>
+
+      {/* Notes */}
+      <View style={styles.inputGroup}>
+        <Text style={styles.inputLabel}>Note serie</Text>
+        <TextInput
+          value={form.actual_notes}
+          onChangeText={(v) => onFieldChange('actual_notes', v)}
+          placeholder="Note opzionali"
+          placeholderTextColor={Colors.dark.textMuted}
+          multiline
+          style={[styles.input, styles.notesInput]}
+        />
+      </View>
+
+      {/* Actions */}
+      <View style={styles.setActions}>
+        <TouchableOpacity
+          style={[styles.primaryButton, isSaving && styles.disabledButton]}
+          onPress={onSave}
+          disabled={isSaving}
+          activeOpacity={0.85}
+        >
+          <Text style={styles.primaryButtonText}>
+            {isSaving ? 'Salvataggio...' : isCompleted ? 'Aggiorna serie' : 'Completa serie'}
+          </Text>
+        </TouchableOpacity>
+
+        {isCompleted ? (
+          <TouchableOpacity
+            style={styles.secondaryButton}
+            onPress={onUncheck}
+            disabled={isSaving}
+            activeOpacity={0.85}
+          >
+            <Text style={styles.secondaryButtonText}>Segna come non completata</Text>
+          </TouchableOpacity>
+        ) : null}
+      </View>
+    </View>
+  );
+}
+
+// ─── Screen ───────────────────────────────────────────────────────────────────
+
 export default function WorkoutSessionScreen() {
   const router = useRouter();
-  const params = useLocalSearchParams<{ id: string }>();
-  const sessionId = Number(params.id);
+  const { id } = useLocalSearchParams<{ id: string }>();
+  const sessionId = Number(id);
 
   const scrollRef = useRef<ScrollView | null>(null);
-  const setCardRefs = useRef<Record<number, View | null>>({});
-  const scrollOffsetRef = useRef(0);
+  const exerciseCardPositionsRef = useRef<Record<number, number>>({});
+  const setCardRelativePositionsRef = useRef<Record<number, number>>({});
 
   const [loading, setLoading] = useState(true);
   const [session, setSession] = useState<WorkoutSession | null>(null);
@@ -56,6 +301,8 @@ export default function WorkoutSessionScreen() {
   const [savingSetId, setSavingSetId] = useState<number | null>(null);
   const [finishingSession, setFinishingSession] = useState(false);
 
+  // ── Data loading ─────────────────────────────────────────────────────────────
+
   const loadSessionData = useCallback(async () => {
     if (!sessionId || Number.isNaN(sessionId)) {
       setLoading(false);
@@ -63,45 +310,29 @@ export default function WorkoutSessionScreen() {
     }
 
     setLoading(true);
-
     try {
-      const sessionDataFromDb = await getWorkoutSessionById(sessionId);
+      const sessionFromDb = await getWorkoutSessionById(sessionId);
+      setSession(sessionFromDb);
 
-      setSession(sessionDataFromDb);
-
-      if (!sessionDataFromDb) {
+      if (!sessionFromDb) {
         setSessionData([]);
         setSetForms({});
         return;
       }
 
-      const exercises = await getWorkoutSessionExercises(sessionDataFromDb.id);
+      const exercises = await getWorkoutSessionExercises(sessionFromDb.id);
 
       const exercisesWithSets = await Promise.all(
-        exercises.map(async (exercise) => {
-          const sets = await getWorkoutSessionSets(exercise.id);
-
-          return {
-            exercise,
-            sets,
-          };
-        })
+        exercises.map(async (exercise) => ({
+          exercise,
+          sets: await getWorkoutSessionSets(exercise.id),
+        }))
       );
 
       const initialForms: Record<number, SetFormState> = {};
-
-      for (const item of exercisesWithSets) {
-        for (const set of item.sets) {
-          initialForms[set.id] = {
-            actual_weight_kg:
-              set.actual_weight_kg !== null ? String(set.actual_weight_kg) : '',
-            actual_reps:
-              set.actual_reps !== null ? String(set.actual_reps) : '',
-            actual_notes: set.actual_notes ?? '',
-            actual_effort_type:
-              (set.actual_effort_type as EffortType | null) ??
-              (set.target_effort_type as EffortType),
-          };
+      for (const { sets } of exercisesWithSets) {
+        for (const set of sets) {
+          initialForms[set.id] = buildInitialForm(set);
         }
       }
 
@@ -120,165 +351,129 @@ export default function WorkoutSessionScreen() {
     }, [loadSessionData])
   );
 
-  const allSets = useMemo(() => {
-    return sessionData.flatMap((item) => item.sets);
-  }, [sessionData]);
+  // ── Derived state ─────────────────────────────────────────────────────────────
 
-  const nextIncompleteSet = useMemo(() => {
-    return allSets.find((set) => set.is_completed === 0) ?? null;
-  }, [allSets]);
+  const allSets = useMemo(
+    () => sessionData.flatMap((item) => item.sets),
+    [sessionData]
+  );
 
-  const completedSetsCount = useMemo(() => {
-    return allSets.filter((set) => set.is_completed === 1).length;
-  }, [allSets]);
+  const completedSetsCount = useMemo(
+    () => allSets.filter((s) => s.is_completed === 1).length,
+    [allSets]
+  );
 
-  const totalSetsCount = useMemo(() => {
-    return allSets.length;
-  }, [allSets]);
-
+  const totalSetsCount = allSets.length;
   const remainingSetsCount = totalSetsCount - completedSetsCount;
 
-  const updateSetField = (
-    setId: number,
-    field: keyof SetFormState,
-    value: string
-  ) => {
-    setSetForms((prev) => ({
-      ...prev,
-      [setId]: {
-        ...prev[setId],
-        [field]: value,
-      },
-    }));
-  };
+  const nextIncompleteSet = useMemo(
+    () => allSets.find((s) => s.is_completed === 0) ?? null,
+    [allSets]
+  );
 
-  const parseNullableNumber = (value: string): number | null => {
-    const normalized = value.replace(',', '.').trim();
+  // ── Scroll ────────────────────────────────────────────────────────────────────
 
-    if (!normalized) return null;
+  const registerExerciseCardPosition = useCallback(
+    (exerciseId: number) => (event: LayoutChangeEvent) => {
+      exerciseCardPositionsRef.current[exerciseId] = event.nativeEvent.layout.y;
+    },
+    []
+  );
 
-    const parsed = Number(normalized);
-    return Number.isNaN(parsed) ? null : parsed;
-  };
+  const registerSetCardPosition = useCallback(
+    (setId: number) => (event: LayoutChangeEvent) => {
+      setCardRelativePositionsRef.current[setId] = event.nativeEvent.layout.y;
+    },
+    []
+  );
 
-  const formatTargetReps = (set: WorkoutSessionSet) => {
-    if (set.target_reps_min && set.target_reps_max) {
-      if (set.target_reps_min === set.target_reps_max) {
-        return `${set.target_reps_min}`;
-      }
+  const scrollToTop = useCallback(() => {
+    scrollRef.current?.scrollTo({ y: 0, animated: true });
+  }, []);
 
-      return `${set.target_reps_min}-${set.target_reps_max}`;
-    }
-
-    if (set.target_reps_min) return `${set.target_reps_min}`;
-    if (set.target_reps_max) return `${set.target_reps_max}`;
-
-    return '—';
-  };
-
-  const formatTargetWeight = (set: WorkoutSessionSet) => {
-    if (set.target_weight_kg === null) return '—';
-    return `${set.target_weight_kg} kg`;
-  };
-
-  const formatRest = (set: WorkoutSessionSet) => {
-    if (set.target_rest_seconds === null) return '—';
-    return `${set.target_rest_seconds}s`;
-  };
-
-  const formatSetType = (set: WorkoutSessionSet) => {
-    return set.target_set_type === 'warmup' ? 'Warmup' : 'Target';
-  };
-
-  const formatEffortType = (value: string | null) => {
-    switch (value) {
-      case 'buffer':
-        return 'Buffer';
-      case 'failure':
-        return 'Cedimento';
-      case 'drop_set':
-        return 'Drop set';
-      case 'none':
-      default:
-        return 'Nessuno';
-    }
-  };
-
-  const scrollToNextIncompleteSet = () => {
+  const scrollToNextIncompleteSet = useCallback(() => {
     if (!nextIncompleteSet || !scrollRef.current) return;
 
-    const targetRef = setCardRefs.current[nextIncompleteSet.id];
-    if (!targetRef) return;
+    // Find which exercise this set belongs to
+    const ownerExercise = sessionData.find((item) =>
+      item.sets.some((s) => s.id === nextIncompleteSet.id)
+    );
+    if (!ownerExercise) return;
 
-    requestAnimationFrame(() => {
-      targetRef.measure?.((_x, _y, _w, _h, _pageX, setPageY) => {
-        scrollRef.current?.measure?.(
-          (_sx, _sy, _sw, _sh, _spx, scrollPageY) => {
-            const targetY =
-              setPageY - scrollPageY + scrollOffsetRef.current - 12;
+    const exerciseY = exerciseCardPositionsRef.current[ownerExercise.exercise.id] ?? 0;
+    const setRelativeY = setCardRelativePositionsRef.current[nextIncompleteSet.id];
+    if (typeof setRelativeY !== 'number') return;
 
-            scrollRef.current?.scrollTo({
-              y: Math.max(targetY, 0),
-              animated: true,
-            });
-          }
-        );
-      });
+    scrollRef.current.scrollTo({
+      y: Math.max(exerciseY + setRelativeY - NEXT_SET_SCROLL_OFFSET, 0),
+      animated: true,
     });
-  };
+  }, [nextIncompleteSet, sessionData]);
 
-  const handleSaveSet = async (set: WorkoutSessionSet) => {
-    const form = setForms[set.id];
-    if (!form) return;
+  // ── Shared payload builder (deduplicates handleSave / handleUncheck) ──────────
 
-    try {
-      setSavingSetId(set.id);
-
-      await updateWorkoutSessionSet(set.id, {
-        actual_weight_kg: parseNullableNumber(form.actual_weight_kg),
-        actual_reps: parseNullableNumber(form.actual_reps),
-        actual_effort_type:
-          (form.actual_effort_type as EffortType | '') || null,
-        actual_buffer_value: null,
-        actual_rir: null,
-        actual_notes: form.actual_notes.trim() || null,
-        is_completed: 1,
-      });
-
-      await loadSessionData();
-    } catch {
-      Alert.alert('Errore', 'Impossibile salvare la serie.');
-    } finally {
-      setSavingSetId(null);
-    }
-  };
-
-  const handleUncheckSet = async (set: WorkoutSessionSet) => {
-    const form = setForms[set.id];
-
-    try {
-      setSavingSetId(set.id);
-
-      await updateWorkoutSessionSet(set.id, {
+  const buildSetPayload = useCallback(
+    (setId: number, isCompleted: 0 | 1) => {
+      const form = setForms[setId];
+      return {
         actual_weight_kg: parseNullableNumber(form?.actual_weight_kg ?? ''),
         actual_reps: parseNullableNumber(form?.actual_reps ?? ''),
-        actual_effort_type:
-          ((form?.actual_effort_type as EffortType | '') || null),
+        actual_effort_type: (form?.actual_effort_type as EffortType | '') || null,
         actual_buffer_value: null,
         actual_rir: null,
         actual_notes: form?.actual_notes?.trim() || null,
-        is_completed: 0,
-      });
+        is_completed: isCompleted,
+      };
+    },
+    [setForms]
+  );
 
-      await loadSessionData();
-    } catch {
-      Alert.alert('Errore', 'Impossibile aggiornare la serie.');
-    } finally {
-      setSavingSetId(null);
-    }
-  };
+  // ── Handlers ──────────────────────────────────────────────────────────────────
 
-  const handleCompleteSession = async () => {
+  const updateSetField = useCallback(
+    (setId: number, field: keyof SetFormState, value: string) => {
+      setSetForms((prev) => ({
+        ...prev,
+        [setId]: { ...prev[setId], [field]: value },
+      }));
+    },
+    []
+  );
+
+  const handleSaveSet = useCallback(
+    async (set: WorkoutSessionSet) => {
+      if (!setForms[set.id]) return;
+      try {
+        setSavingSetId(set.id);
+        await updateWorkoutSessionSet(set.id, buildSetPayload(set.id, 1));
+        await loadSessionData();
+        scrollToTop();
+      } catch {
+        Alert.alert('Errore', 'Impossibile salvare la serie.');
+      } finally {
+        setSavingSetId(null);
+      }
+    },
+    [setForms, buildSetPayload, loadSessionData, scrollToTop]
+  );
+
+  const handleUncheckSet = useCallback(
+    async (set: WorkoutSessionSet) => {
+      try {
+        setSavingSetId(set.id);
+        await updateWorkoutSessionSet(set.id, buildSetPayload(set.id, 0));
+        await loadSessionData();
+        scrollToTop();
+      } catch {
+        Alert.alert('Errore', 'Impossibile aggiornare la serie.');
+      } finally {
+        setSavingSetId(null);
+      }
+    },
+    [buildSetPayload, loadSessionData, scrollToTop]
+  );
+
+  const handleCompleteSession = useCallback(async () => {
     if (!session) return;
 
     const proceed = async () => {
@@ -296,7 +491,7 @@ export default function WorkoutSessionScreen() {
     if (remainingSetsCount > 0) {
       Alert.alert(
         'Serie non completate',
-        `Ci sono ancora ${remainingSetsCount} serie da eseguire. Vuoi chiudere comunque l’allenamento?`,
+        `Ci sono ancora ${remainingSetsCount} serie da eseguire. Vuoi chiudere comunque l'allenamento?`,
         [
           { text: 'Annulla', style: 'cancel' },
           { text: 'Conferma', onPress: proceed },
@@ -306,20 +501,16 @@ export default function WorkoutSessionScreen() {
     }
 
     await proceed();
-  };
+  }, [session, remainingSetsCount, router]);
+
+  // ── Guards ────────────────────────────────────────────────────────────────────
 
   if (!sessionId || Number.isNaN(sessionId)) {
     return (
       <SafeAreaView style={styles.safeArea} edges={['top']}>
         <View style={styles.centered}>
           <Text style={styles.errorText}>ID sessione non valido.</Text>
-          <TouchableOpacity
-            style={styles.topBackButton}
-            onPress={() => router.back()}
-            activeOpacity={0.85}
-          >
-            <Text style={styles.topBackButtonText}>Indietro</Text>
-          </TouchableOpacity>
+          <BackButton onPress={() => router.back()} />
         </View>
       </SafeAreaView>
     );
@@ -340,17 +531,13 @@ export default function WorkoutSessionScreen() {
       <SafeAreaView style={styles.safeArea} edges={['top']}>
         <View style={styles.centered}>
           <Text style={styles.errorText}>Sessione non trovata.</Text>
-          <TouchableOpacity
-            style={styles.topBackButton}
-            onPress={() => router.back()}
-            activeOpacity={0.85}
-          >
-            <Text style={styles.topBackButtonText}>Torna a Oggi</Text>
-          </TouchableOpacity>
+          <BackButton onPress={() => router.back()} label="Torna a Oggi" />
         </View>
       </SafeAreaView>
     );
   }
+
+  // ── Render ────────────────────────────────────────────────────────────────────
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top']}>
@@ -360,320 +547,106 @@ export default function WorkoutSessionScreen() {
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
-        onScroll={(event) => {
-          scrollOffsetRef.current = event.nativeEvent.contentOffset.y;
-        }}
-        scrollEventThrottle={16}
       >
+        <View style={styles.topBar}>
+          <BackButton onPress={() => router.back()} />
+        </View>
 
-        <View collapsable={false}>
-          <View style={styles.topBar}>
+        <Text style={styles.pageTitle}>{session.name}</Text>
+        <Text style={styles.pageSubtitle}>
+          Sessione attiva. Inserisci i dati reali e completa le serie durante l'allenamento.
+        </Text>
+
+        {/* Progress card */}
+        <View style={styles.progressCard}>
+          <Text style={styles.cardTitle}>Stato</Text>
+
+          <View style={styles.sessionStatsRow}>
+            <StatBadge label="Completate" value={`${completedSetsCount}/${totalSetsCount}`} />
+            <StatBadge label="Rimanenti" value={`${remainingSetsCount}`} />
+          </View>
+
+          {nextIncompleteSet ? (
             <TouchableOpacity
-              style={styles.topBackButton}
-              onPress={() => router.back()}
-              activeOpacity={0.85}
+              style={styles.nextSetButton}
+              activeOpacity={0.9}
+              onPress={scrollToNextIncompleteSet}
             >
-              <Text style={styles.topBackButtonText}>Indietro</Text>
+              <Text style={styles.nextSetButtonText}>Prossima serie</Text>
             </TouchableOpacity>
-          </View>
-
-          <Text style={styles.pageTitle}>{session.name}</Text>
-          <Text style={styles.pageSubtitle}>
-            Sessione attiva. Inserisci i dati reali e completa le serie durante
-            l’allenamento.
-          </Text>
-
-          <View style={styles.card}>
-            <Text style={styles.cardTitle}>Stato</Text>
-
-            <View style={styles.sessionStatsRow}>
-              <View style={styles.statBadge}>
-                <Text style={styles.statBadgeLabel}>Completate</Text>
-                <Text style={styles.statBadgeValue}>
-                  {completedSetsCount}/{totalSetsCount}
-                </Text>
-              </View>
-
-              <View style={styles.statBadge}>
-                <Text style={styles.statBadgeLabel}>Rimanenti</Text>
-                <Text style={styles.statBadgeValue}>{remainingSetsCount}</Text>
-              </View>
-            </View>
-
-            {nextIncompleteSet ? (
-              <TouchableOpacity
-                style={styles.nextSetButton}
-                activeOpacity={0.9}
-                onPress={scrollToNextIncompleteSet}
-              >
-                <Text style={styles.nextSetButtonText}>Prossima serie</Text>
-              </TouchableOpacity>
-            ) : (
-              <Text style={styles.cardText}>
-                Tutte le serie risultano completate. Puoi chiudere
-                l’allenamento.
-              </Text>
-            )}
-          </View>
-
-          {sessionData.map(({ exercise, sets }) => (
-            <View key={exercise.id} style={styles.exerciseCard}>
-              <View style={styles.exerciseHeader}>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.exerciseTitle}>{exercise.exercise_name}</Text>
-                  <Text style={styles.exerciseSubtitle}>
-                    {exercise.category || 'Nessuna categoria'}
-                  </Text>
-                </View>
-              </View>
-
-              {exercise.notes ? (
-                <View style={styles.noteBox}>
-                  <Text style={styles.noteLabel}>Note esercizio</Text>
-                  <Text style={styles.noteText}>{exercise.notes}</Text>
-                </View>
-              ) : null}
-
-              <View style={styles.setsList}>
-                {sets.map((set, index) => {
-                  const form = setForms[set.id] ?? {
-                    actual_weight_kg: '',
-                    actual_reps: '',
-                    actual_notes: '',
-                    actual_effort_type:
-                      (set.target_effort_type as EffortType) ?? 'none',
-                  };
-
-                  const isSaving = savingSetId === set.id;
-                  const isCompleted = set.is_completed === 1;
-                  const isNextIncomplete =
-                    nextIncompleteSet?.id === set.id && !isCompleted;
-
-                  return (
-                    <View
-                      key={set.id}
-                      ref={(node) => {
-                        setCardRefs.current[set.id] = node;
-                      }}
-                      collapsable={false}
-                      style={[
-                        styles.setCard,
-                        isCompleted && styles.setCardCompleted,
-                        isNextIncomplete && styles.setCardNext,
-                      ]}
-                    >
-                      <View style={styles.setHeaderRow}>
-                        <Text style={styles.setTitle}>
-                          Serie {index + 1} · {formatSetType(set)}
-                        </Text>
-
-                        <View
-                          style={[
-                            styles.statusPill,
-                            isCompleted && styles.statusPillCompleted,
-                            isNextIncomplete && styles.statusPillNext,
-                          ]}
-                        >
-                          <Text
-                            style={[
-                              styles.statusPillText,
-                              isCompleted && styles.statusPillTextCompleted,
-                              isNextIncomplete && styles.statusPillTextNext,
-                            ]}
-                          >
-                            {isCompleted
-                              ? 'Completata'
-                              : isNextIncomplete
-                              ? 'Prossima'
-                              : 'Da fare'}
-                          </Text>
-                        </View>
-                      </View>
-
-                      <View style={styles.targetGrid}>
-                        <View style={styles.targetBox}>
-                          <Text style={styles.targetLabel}>Target peso</Text>
-                          <Text style={styles.targetValue}>
-                            {formatTargetWeight(set)}
-                          </Text>
-                        </View>
-
-                        <View style={styles.targetBox}>
-                          <Text style={styles.targetLabel}>Target reps</Text>
-                          <Text style={styles.targetValue}>
-                            {formatTargetReps(set)}
-                          </Text>
-                        </View>
-
-                        <View style={styles.targetBox}>
-                          <Text style={styles.targetLabel}>Pausa</Text>
-                          <Text style={styles.targetValue}>
-                            {formatRest(set)}
-                          </Text>
-                        </View>
-
-                        <View style={styles.targetBox}>
-                          <Text style={styles.targetLabel}>Sforzo</Text>
-                          <Text style={styles.targetValue}>
-                            {formatEffortType(set.target_effort_type)}
-                          </Text>
-                        </View>
-                      </View>
-
-                      {set.target_notes ? (
-                        <View style={styles.noteBox}>
-                          <Text style={styles.noteLabel}>Note target</Text>
-                          <Text style={styles.noteText}>{set.target_notes}</Text>
-                        </View>
-                      ) : null}
-
-                      <View style={styles.inputsRow}>
-                        <View style={styles.inputGroup}>
-                          <Text style={styles.inputLabel}>Peso reale</Text>
-                          <TextInput
-                            value={form.actual_weight_kg}
-                            onChangeText={(value) =>
-                              updateSetField(set.id, 'actual_weight_kg', value)
-                            }
-                            placeholder="Es. 60"
-                            placeholderTextColor={Colors.dark.textMuted}
-                            keyboardType="decimal-pad"
-                            style={styles.input}
-                          />
-                        </View>
-
-                        <View style={styles.inputGroup}>
-                          <Text style={styles.inputLabel}>Reps reali</Text>
-                          <TextInput
-                            value={form.actual_reps}
-                            onChangeText={(value) =>
-                              updateSetField(set.id, 'actual_reps', value)
-                            }
-                            placeholder="Es. 8"
-                            placeholderTextColor={Colors.dark.textMuted}
-                            keyboardType="number-pad"
-                            style={styles.input}
-                          />
-                        </View>
-                      </View>
-
-                      <View style={styles.inputGroup}>
-                        <Text style={styles.inputLabel}>Sforzo reale</Text>
-
-                        <View style={styles.effortRow}>
-                          {(
-                            [
-                              { key: 'none', label: 'Nessuno' },
-                              { key: 'buffer', label: 'Buffer' },
-                              { key: 'failure', label: 'Cedimento' },
-                              { key: 'drop_set', label: 'Drop set' },
-                            ] as { key: EffortType; label: string }[]
-                          ).map((option) => {
-                            const selected = form.actual_effort_type === option.key;
-
-                            return (
-                              <TouchableOpacity
-                                key={option.key}
-                                style={[
-                                  styles.effortChip,
-                                  selected && styles.effortChipSelected,
-                                ]}
-                                activeOpacity={0.85}
-                                onPress={() =>
-                                  updateSetField(
-                                    set.id,
-                                    'actual_effort_type',
-                                    option.key
-                                  )
-                                }
-                              >
-                                <Text
-                                  style={[
-                                    styles.effortChipText,
-                                    selected && styles.effortChipTextSelected,
-                                  ]}
-                                >
-                                  {option.label}
-                                </Text>
-                              </TouchableOpacity>
-                            );
-                          })}
-                        </View>
-                      </View>
-
-                      <View style={styles.inputGroup}>
-                        <Text style={styles.inputLabel}>Note serie</Text>
-                        <TextInput
-                          value={form.actual_notes}
-                          onChangeText={(value) =>
-                            updateSetField(set.id, 'actual_notes', value)
-                          }
-                          placeholder="Note opzionali"
-                          placeholderTextColor={Colors.dark.textMuted}
-                          multiline
-                          style={[styles.input, styles.notesInput]}
-                        />
-                      </View>
-
-                      <View style={styles.setActions}>
-                        <TouchableOpacity
-                          style={[
-                            styles.primaryButton,
-                            isSaving && styles.disabledButton,
-                          ]}
-                          onPress={() => handleSaveSet(set)}
-                          disabled={isSaving}
-                          activeOpacity={0.85}
-                        >
-                          <Text style={styles.primaryButtonText}>
-                            {isSaving
-                              ? 'Salvataggio...'
-                              : isCompleted
-                              ? 'Aggiorna serie'
-                              : 'Completa serie'}
-                          </Text>
-                        </TouchableOpacity>
-
-                        {isCompleted ? (
-                          <TouchableOpacity
-                            style={styles.secondaryButton}
-                            onPress={() => handleUncheckSet(set)}
-                            disabled={isSaving}
-                            activeOpacity={0.85}
-                          >
-                            <Text style={styles.secondaryButtonText}>
-                              Segna come non completata
-                            </Text>
-                          </TouchableOpacity>
-                        ) : null}
-                      </View>
-                    </View>
-                  );
-                })}
-              </View>
-            </View>
-          ))}
-
+          ) : (
+            <Text style={styles.cardText}>
+              Tutte le serie risultano completate. Puoi chiudere l'allenamento.
+            </Text>
+          )}
+          {/* Finish button */}
           <TouchableOpacity
-            style={[
-              styles.finishButton,
-              finishingSession && styles.disabledButton,
-            ]}
+            style={[styles.finishButton, finishingSession && styles.disabledButton]}
             onPress={handleCompleteSession}
             disabled={finishingSession}
             activeOpacity={0.9}
           >
             <Text style={styles.finishButtonText}>
-              {finishingSession
-                ? 'Chiusura allenamento...'
-                : 'Completa allenamento'}
+              {finishingSession ? 'Chiusura allenamento...' : 'Completa allenamento'}
             </Text>
           </TouchableOpacity>
         </View>
+
+        {/* Exercise list */}
+        {sessionData.map(({ exercise, sets }) => (
+          <View key={exercise.id} onLayout={registerExerciseCardPosition(exercise.id)} style={styles.exerciseCard}>
+            <View style={styles.exerciseHeader}>
+              <View style={styles.exerciseHeaderText}>
+                <Text style={styles.exerciseTitle}>{exercise.exercise_name}</Text>
+                <Text style={styles.exerciseSubtitle}>
+                  {exercise.category ?? 'Nessuna categoria'}
+                </Text>
+              </View>
+            </View>
+
+            {exercise.notes ? (
+              <View style={styles.exerciseNoteBox}>
+                <Text style={styles.noteLabel}>Note esercizio</Text>
+                <Text style={styles.noteText}>{exercise.notes}</Text>
+              </View>
+            ) : null}
+
+            <View style={styles.exerciseSetsList}>
+              {sets.map((set, index) => {
+                const form: SetFormState = setForms[set.id] ?? {
+                  actual_weight_kg: '',
+                  actual_reps: '',
+                  actual_notes: '',
+                  actual_effort_type: (set.target_effort_type as EffortType) ?? 'none',
+                };
+                const isCompleted = set.is_completed === 1;
+                const isNextIncomplete = nextIncompleteSet?.id === set.id && !isCompleted;
+
+                return (
+                  <SetCard
+                    key={set.id}
+                    set={set}
+                    index={index}
+                    form={form}
+                    isCompleted={isCompleted}
+                    isNextIncomplete={isNextIncomplete}
+                    isSaving={savingSetId === set.id}
+                    onLayout={registerSetCardPosition(set.id)}
+                    onFieldChange={(field, value) => updateSetField(set.id, field, value)}
+                    onSave={() => handleSaveSet(set)}
+                    onUncheck={() => handleUncheckSet(set)}
+                  />
+                );
+              })}
+            </View>
+          </View>
+        ))}
       </ScrollView>
     </SafeAreaView>
   );
 }
+
+// ─── Styles ───────────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
   safeArea: {
@@ -688,7 +661,6 @@ const styles = StyleSheet.create({
     padding: 20,
     paddingTop: 8,
     paddingBottom: 40,
-    gap: 16,
   },
   loadingContainer: {
     flex: 1,
@@ -710,7 +682,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   topBar: {
-    marginBottom: 8,
+    marginBottom: 12,
   },
   topBackButton: {
     alignSelf: 'flex-start',
@@ -735,14 +707,15 @@ const styles = StyleSheet.create({
     fontSize: 15,
     lineHeight: 22,
     color: Colors.dark.textMuted,
-    marginBottom: 10,   // aggiunto spazio sotto la descrizione
+    marginBottom: 12,
   },
-  card: {
+  progressCard: {
     backgroundColor: Colors.dark.surface,
     borderRadius: 18,
     padding: 18,
     borderWidth: 1,
     borderColor: Colors.dark.border,
+    marginBottom: 14,
   },
   cardTitle: {
     fontSize: 18,
@@ -798,13 +771,13 @@ const styles = StyleSheet.create({
     padding: 18,
     borderWidth: 1,
     borderColor: Colors.dark.border,
-    gap: 14,
-    marginTop: 8,   // spazio tra Stato e primo esercizio
+    marginTop: 12,
   },
   exerciseHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
+  exerciseHeaderText: {
+    flex: 1,
   },
   exerciseTitle: {
     color: Colors.dark.text,
@@ -816,7 +789,15 @@ const styles = StyleSheet.create({
     fontSize: 14,
     marginTop: 4,
   },
-  setsList: {
+  exerciseNoteBox: {
+    backgroundColor: '#1a1a21',
+    borderRadius: 12,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: Colors.dark.border,
+    marginBottom: 14,
+  },
+  exerciseSetsList: {
     gap: 14,
   },
   setCard: {
@@ -825,7 +806,6 @@ const styles = StyleSheet.create({
     padding: 14,
     borderWidth: 1,
     borderColor: Colors.dark.border,
-    gap: 12,
   },
   setCardCompleted: {
     borderColor: PRIMARY,
@@ -842,6 +822,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: 10,
+    marginBottom: 12,
   },
   setTitle: {
     color: Colors.dark.text,
@@ -855,10 +836,7 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     borderRadius: 999,
   },
-  statusPillCompleted: {
-    backgroundColor: 'rgba(126, 71, 255, 0.18)',
-  },
-  statusPillNext: {
+  statusPillActive: {
     backgroundColor: 'rgba(126, 71, 255, 0.18)',
   },
   statusPillText: {
@@ -866,16 +844,14 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '700',
   },
-  statusPillTextCompleted: {
-    color: PRIMARY,
-  },
-  statusPillTextNext: {
+  statusPillTextActive: {
     color: PRIMARY,
   },
   targetGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 10,
+    marginBottom: 12,
   },
   targetBox: {
     width: '48%',
@@ -895,12 +871,13 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '700',
   },
-  noteBox: {
+  inlineNoteBox: {
     backgroundColor: '#1a1a21',
     borderRadius: 12,
     padding: 12,
     borderWidth: 1,
     borderColor: Colors.dark.border,
+    marginBottom: 12,
   },
   noteLabel: {
     color: Colors.dark.textMuted,
@@ -915,10 +892,12 @@ const styles = StyleSheet.create({
   inputsRow: {
     flexDirection: 'row',
     gap: 10,
+    marginBottom: 12,
   },
   inputGroup: {
     flex: 1,
     gap: 6,
+    marginBottom: 12,
   },
   inputLabel: {
     color: Colors.dark.textMuted,
@@ -966,7 +945,7 @@ const styles = StyleSheet.create({
   },
   setActions: {
     gap: 10,
-    marginTop: 4,
+    marginTop: 2,
   },
   primaryButton: {
     backgroundColor: PRIMARY,
@@ -1000,7 +979,7 @@ const styles = StyleSheet.create({
     paddingVertical: 16,
     alignItems: 'center',
     justifyContent: 'center',
-    marginTop: 4,
+    marginTop: 18,
     marginBottom: 12,
   },
   finishButtonText: {
