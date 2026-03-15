@@ -909,3 +909,137 @@ export async function getWorkoutSessionDetail(
 
   return { session, exercises: exercisesWithSets };
 }
+
+// ─── Progressi ────────────────────────────────────────────────────────────────
+
+export type ExercisePR = {
+  exercise_name: string;
+  max_weight_kg: number;
+  reps_at_max: number | null;
+  achieved_at: string; // completed_at della sessione
+};
+
+export type ExerciseVolume = {
+  exercise_name: string;
+  total_sets: number;
+  total_reps: number;
+  total_volume_kg: number; // somma di (peso × reps) per ogni serie completata
+};
+
+export async function getPersonalRecords(): Promise<ExercisePR[]> {
+  const database = await getDb();
+
+  return database.getAllAsync<ExercisePR>(`
+    SELECT
+      wse.exercise_name,
+      MAX(wss.actual_weight_kg) AS max_weight_kg,
+      wss.actual_reps AS reps_at_max,
+      ws.completed_at AS achieved_at
+    FROM workout_session_sets wss
+    INNER JOIN workout_session_exercises wse ON wse.id = wss.session_exercise_id
+    INNER JOIN workout_sessions ws ON ws.id = wse.session_id
+    WHERE
+      wss.is_completed = 1
+      AND wss.actual_weight_kg IS NOT NULL
+      AND ws.status = 'completed'
+    GROUP BY wse.exercise_name
+    ORDER BY wse.exercise_name ASC
+  `);
+}
+
+export async function getExerciseVolumeSummary(): Promise<ExerciseVolume[]> {
+  const database = await getDb();
+
+  return database.getAllAsync<ExerciseVolume>(`
+    SELECT
+      wse.exercise_name,
+      COUNT(wss.id) AS total_sets,
+      COALESCE(SUM(wss.actual_reps), 0) AS total_reps,
+      COALESCE(SUM(
+        CASE
+          WHEN wss.actual_weight_kg IS NOT NULL AND wss.actual_reps IS NOT NULL
+          THEN wss.actual_weight_kg * wss.actual_reps
+          ELSE 0
+        END
+      ), 0) AS total_volume_kg
+    FROM workout_session_sets wss
+    INNER JOIN workout_session_exercises wse ON wse.id = wss.session_exercise_id
+    INNER JOIN workout_sessions ws ON ws.id = wse.session_id
+    WHERE
+      wss.is_completed = 1
+      AND ws.status = 'completed'
+    GROUP BY wse.exercise_name
+    ORDER BY total_volume_kg DESC
+  `);
+}
+
+export async function getWeeklyFrequency(): Promise<{
+  average_per_week: number;
+  total_sessions: number;
+  weeks_active: number;
+  first_session_at: string | null;
+}> {
+  const database = await getDb();
+
+  const row = await database.getFirstAsync<{
+    total_sessions: number;
+    first_session_at: string | null;
+  }>(`
+    SELECT
+      COUNT(*) AS total_sessions,
+      MIN(completed_at) AS first_session_at
+    FROM workout_sessions
+    WHERE status = 'completed'
+  `);
+
+  if (!row || !row.first_session_at || row.total_sessions === 0) {
+    return { average_per_week: 0, total_sessions: 0, weeks_active: 0, first_session_at: null };
+  }
+
+  const firstDate = new Date(row.first_session_at);
+  const now = new Date();
+  const diffMs = now.getTime() - firstDate.getTime();
+  const weeks = Math.max(diffMs / (1000 * 60 * 60 * 24 * 7), 1);
+  const average = row.total_sessions / weeks;
+
+  return {
+    average_per_week: Math.round(average * 10) / 10,
+    total_sessions: row.total_sessions,
+    weeks_active: Math.ceil(weeks),
+    first_session_at: row.first_session_at,
+  };
+}
+
+export type ExerciseWeightHistory = {
+  session_name: string;
+  completed_at: string;
+  set_order: number;
+  actual_weight_kg: number;
+  actual_reps: number | null;
+  target_set_type: string;
+};
+
+export async function getExerciseWeightHistory(
+  exerciseName: string
+): Promise<ExerciseWeightHistory[]> {
+  const database = await getDb();
+
+  return database.getAllAsync<ExerciseWeightHistory>(`
+    SELECT
+      ws.name AS session_name,
+      ws.completed_at,
+      wss.set_order,
+      wss.actual_weight_kg,
+      wss.actual_reps,
+      wss.target_set_type
+    FROM workout_session_sets wss
+    INNER JOIN workout_session_exercises wse ON wse.id = wss.session_exercise_id
+    INNER JOIN workout_sessions ws ON ws.id = wse.session_id
+    WHERE
+      wss.is_completed = 1
+      AND wss.actual_weight_kg IS NOT NULL
+      AND wse.exercise_name = ?
+      AND ws.status = 'completed'
+    ORDER BY ws.completed_at ASC, wss.set_order ASC
+  `, [exerciseName]);
+}

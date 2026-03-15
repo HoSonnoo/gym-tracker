@@ -525,6 +525,14 @@ export default function CalendarScreen() {
                   onPress={() => handleDayPress(day)}
                   disabled={!hasSession}
                 >
+                  {/* Cerchio "oggi" come elemento assoluto — non impatta il layout */}
+                  {isToday && (
+                    <View style={[
+                      screenStyles.todayRing,
+                      hasSession && screenStyles.todayRingWithSession,
+                    ]} />
+                  )}
+
                   <Text style={[
                     screenStyles.dayNumber,
                     isToday && screenStyles.dayNumberToday,
@@ -532,7 +540,7 @@ export default function CalendarScreen() {
                   ]}>
                     {day.getDate()}
                   </Text>
-                  {hasSession && <View style={screenStyles.dot} />}
+                  {hasSession && !isToday && <View style={screenStyles.dot} />}
                 </Pressable>
               );
             })}
@@ -658,16 +666,11 @@ const screenStyles = StyleSheet.create({
     aspectRatio: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: 'transparent',  // ← aggiunto
     position: 'relative',
   },
   dayCellToday: {
-    borderColor: 'rgba(126,71,255,0.4)',  // sovrascrive solo il colore
   },
   dayCellActive: {
-    backgroundColor: 'rgba(126,71,255,0.12)',
   },
   dayNumber: {
     fontSize: 14,
@@ -751,5 +754,27 @@ const screenStyles = StyleSheet.create({
     fontSize: 20,
     color: Colors.dark.textMuted,
     fontWeight: '300',
+  },
+  todayRing: {
+  position: 'absolute',
+  top: 8,
+  left: 2,
+  right: 2,
+  bottom: -6,
+  borderRadius: 10,
+  borderWidth: 1,
+  borderColor: 'rgba(126,71,255,0.4)',
+  },
+  todayRingWithSession: {
+  backgroundColor: 'rgba(126,71,255,0.12)',
+  },
+  sessionBg: {
+    position: 'absolute',
+    top: 8,
+    left: 2,
+    right: 2,
+    bottom: -6,
+    borderRadius: 10,
+    backgroundColor: 'rgba(126,71,255,0.12)',
   },
 });
