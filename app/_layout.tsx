@@ -1,5 +1,6 @@
 import { Colors } from '@/constants/Colors';
 import { RestTimerProvider } from '@/context/RestTimerContext';
+import { UserPreferencesProvider } from '@/context/UserPreferencesContext';
 import { initDatabase } from '@/database';
 import { Stack } from 'expo-router';
 import { useEffect, useState } from 'react';
@@ -12,7 +13,6 @@ export default function RootLayout() {
     async function setupApp() {
       try {
         await initDatabase();
-        // seedExercises rimosso
       } catch (error) {
         console.error('Errore inizializzazione database:', error);
       } finally {
@@ -36,17 +36,23 @@ export default function RootLayout() {
   }
 
   return (
-    <RestTimerProvider>
-      <Stack screenOptions={{ headerShown: false }}>
-        <Stack.Screen name="(tabs)" />
-        <Stack.Screen name="exercises" />
-        <Stack.Screen name="template/[id]" />
-        <Stack.Screen name="template/exercise/[id]" />
-        <Stack.Screen
-          name="template/exercise/set/[id]"
-          options={{ presentation: 'modal' }}
-        />
-      </Stack>
-    </RestTimerProvider>
+    <UserPreferencesProvider>
+      <RestTimerProvider>
+        <Stack screenOptions={{ headerShown: false }}>
+          <Stack.Screen name="(tabs)" />
+          <Stack.Screen name="exercises" />
+          <Stack.Screen name="template/[id]" />
+          <Stack.Screen name="template/exercise/[id]" />
+          <Stack.Screen
+            name="template/exercise/set/[id]"
+            options={{ presentation: 'modal' }}
+          />
+          <Stack.Screen
+            name="settings"
+            options={{ presentation: 'modal', headerShown: false }}
+          />
+        </Stack>
+      </RestTimerProvider>
+    </UserPreferencesProvider>
   );
 }

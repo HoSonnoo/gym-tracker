@@ -1,5 +1,6 @@
 import { Colors } from '@/constants/Colors';
 import { useRestTimer } from '@/context/RestTimerContext';
+import { formatWeight, useUserPreferences } from '@/context/UserPreferencesContext';
 import {
   getActiveWorkoutSession,
   getWorkoutSessionExercises,
@@ -92,15 +93,15 @@ const bannerStyles = StyleSheet.create({
   trackFill: { height: '100%', borderRadius: 4 },
 });
 
-// ─── Exercise Breakdown Card (unifica "Prossima serie" + "Esercizi") ──────────
+// ─── Exercise Breakdown Card ──────────────────────────────────────────────────
 
 type ExerciseBreakdownCardProps = {
   sessionData: SessionExerciseWithSets[];
+  unit: 'kg' | 'lbs';
   onPress: () => void;
 };
 
-function ExerciseBreakdownCard({ sessionData, onPress }: ExerciseBreakdownCardProps) {
-  // Trova la prossima serie non completata in assoluto
+function ExerciseBreakdownCard({ sessionData, unit, onPress }: ExerciseBreakdownCardProps) {
   const nextSetInfo = useMemo(() => {
     for (const item of sessionData) {
       for (const set of item.sets) {
@@ -125,14 +126,12 @@ function ExerciseBreakdownCard({ sessionData, onPress }: ExerciseBreakdownCardPr
       onPress={onPress}
       activeOpacity={0.88}
     >
-      {/* Intestazione card */}
       <View style={exerciseCardStyles.header}>
         <Text style={exerciseCardStyles.title}>
           {allCompleted ? 'Allenamento completato 💪' : 'Esercizi'}
         </Text>
       </View>
 
-      {/* Lista esercizi */}
       <View style={exerciseCardStyles.list}>
         {sessionData.map((item) => {
           const done = item.sets.filter((s) => s.is_completed === 1).length;
@@ -143,14 +142,9 @@ function ExerciseBreakdownCard({ sessionData, onPress }: ExerciseBreakdownCardPr
 
           return (
             <View key={item.exercise.id} style={exerciseCardStyles.row}>
-
-              {/* Nome + contatore */}
               <View style={exerciseCardStyles.rowTop}>
                 <View style={exerciseCardStyles.rowLeft}>
-                  {/* Indicatore "corrente" */}
-                  {isCurrentExercise && (
-                    <View style={exerciseCardStyles.currentDot} />
-                  )}
+                  {isCurrentExercise && <View style={exerciseCardStyles.currentDot} />}
                   <Text style={[
                     exerciseCardStyles.exerciseName,
                     allDone && exerciseCardStyles.exerciseNameDone,
@@ -159,15 +153,11 @@ function ExerciseBreakdownCard({ sessionData, onPress }: ExerciseBreakdownCardPr
                     {item.exercise.exercise_name}
                   </Text>
                 </View>
-                <Text style={[
-                  exerciseCardStyles.setCount,
-                  allDone && exerciseCardStyles.setCountDone,
-                ]}>
+                <Text style={[exerciseCardStyles.setCount, allDone && exerciseCardStyles.setCountDone]}>
                   {done}/{total} serie
                 </Text>
               </View>
 
-              {/* Mini progressbar */}
               <View style={exerciseCardStyles.progressTrack}>
                 <View style={[
                   exerciseCardStyles.progressFill,
@@ -176,7 +166,6 @@ function ExerciseBreakdownCard({ sessionData, onPress }: ExerciseBreakdownCardPr
                 ]} />
               </View>
 
-              {/* Dettagli prossima serie — solo per l'esercizio corrente */}
               {isCurrentExercise && nextSetInfo && (
                 <View style={exerciseCardStyles.nextSetRow}>
                   <Text style={exerciseCardStyles.nextSetLabel}>
@@ -186,7 +175,7 @@ function ExerciseBreakdownCard({ sessionData, onPress }: ExerciseBreakdownCardPr
                   {nextSetInfo.set.target_weight_kg != null && (
                     <View style={exerciseCardStyles.badge}>
                       <Text style={exerciseCardStyles.badgeText}>
-                        {nextSetInfo.set.target_weight_kg} kg
+                        {formatWeight(nextSetInfo.set.target_weight_kg, unit)}
                       </Text>
                     </View>
                   )}
@@ -213,7 +202,6 @@ function ExerciseBreakdownCard({ sessionData, onPress }: ExerciseBreakdownCardPr
         })}
       </View>
 
-      {/* CTA bottom */}
       <View style={[exerciseCardStyles.openButton, allCompleted && exerciseCardStyles.openButtonDone]}>
         <Text style={exerciseCardStyles.openButtonText}>
           {allCompleted ? 'Vai al riepilogo →' : 'Apri allenamento →'}
@@ -224,133 +212,37 @@ function ExerciseBreakdownCard({ sessionData, onPress }: ExerciseBreakdownCardPr
 }
 
 const exerciseCardStyles = StyleSheet.create({
-  card: {
-    backgroundColor: Colors.dark.surface,
-    borderRadius: 18,
-    padding: 18,
-    borderWidth: 1,
-    borderColor: 'rgba(126,71,255,0.25)',
-  },
-  cardDone: {
-    borderColor: Colors.dark.success + '55',
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-  title: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: Colors.dark.text,
-  },
-  cta: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: Colors.dark.textMuted,
-  },
-  list: {
-    gap: 16,
-    marginBottom: 16,
-  },
-  row: {
-    gap: 6,
-  },
-  rowTop: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  rowLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    flex: 1,
-  },
-  currentDot: {
-    width: 7,
-    height: 7,
-    borderRadius: 4,
-    backgroundColor: PRIMARY,
-  },
-  exerciseName: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: Colors.dark.text,
-    flex: 1,
-  },
-  exerciseNameCurrent: {
-    color: Colors.dark.text,
-    fontWeight: '700',
-  },
-  exerciseNameDone: {
-    color: Colors.dark.success,
-  },
-  setCount: {
-    fontSize: 13,
-    color: Colors.dark.textMuted,
-  },
-  setCountDone: {
-    color: Colors.dark.success,
-  },
-  progressTrack: {
-    height: 4,
-    backgroundColor: '#2a2a35',
-    borderRadius: 4,
-    overflow: 'hidden',
-  },
-  progressFill: {
-    height: '100%',
-    backgroundColor: PRIMARY,
-    borderRadius: 4,
-  },
-  progressFillDone: {
-    backgroundColor: Colors.dark.success,
-  },
-  nextSetRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 6,
-    marginTop: 4,
-    alignItems: 'center',
-  },
-  nextSetLabel: {
-    fontSize: 12,
-    color: Colors.dark.textMuted,
-    fontWeight: '600',
-    marginRight: 2,
-  },
-  badge: {
-    backgroundColor: '#2a2a35',
-    borderRadius: 8,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-  },
-  badgeText: {
-    color: Colors.dark.text,
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  openButton: {
-    backgroundColor: PRIMARY,
-    borderRadius: 14,
-    paddingVertical: 14,
-    alignItems: 'center',
-  },
-  openButtonDone: {
-    backgroundColor: Colors.dark.success,
-  },
-  openButtonText: {
-    color: '#fff',
-    fontSize: 15,
-    fontWeight: '800',
-  },
+  card: { backgroundColor: Colors.dark.surface, borderRadius: 18, padding: 18, borderWidth: 1, borderColor: 'rgba(126,71,255,0.25)' },
+  cardDone: { borderColor: Colors.dark.success + '55' },
+  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
+  title: { fontSize: 18, fontWeight: '700', color: Colors.dark.text },
+  list: { gap: 16, marginBottom: 16 },
+  row: { gap: 6 },
+  rowTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  rowLeft: { flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1 },
+  currentDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: PRIMARY },
+  exerciseName: { fontSize: 15, fontWeight: '600', color: Colors.dark.text, flex: 1 },
+  exerciseNameCurrent: { fontWeight: '700' },
+  exerciseNameDone: { color: Colors.dark.success },
+  setCount: { fontSize: 13, color: Colors.dark.textMuted },
+  setCountDone: { color: Colors.dark.success },
+  progressTrack: { height: 4, backgroundColor: '#2a2a35', borderRadius: 4, overflow: 'hidden' },
+  progressFill: { height: '100%', backgroundColor: PRIMARY, borderRadius: 4 },
+  progressFillDone: { backgroundColor: Colors.dark.success },
+  nextSetRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 4, alignItems: 'center' },
+  nextSetLabel: { fontSize: 12, color: Colors.dark.textMuted, fontWeight: '600', marginRight: 2 },
+  badge: { backgroundColor: '#2a2a35', borderRadius: 8, paddingHorizontal: 8, paddingVertical: 3 },
+  badgeText: { color: Colors.dark.text, fontSize: 12, fontWeight: '600' },
+  openButton: { backgroundColor: PRIMARY, borderRadius: 14, paddingVertical: 14, alignItems: 'center' },
+  openButtonDone: { backgroundColor: Colors.dark.success },
+  openButtonText: { color: '#fff', fontSize: 15, fontWeight: '800' },
 });
 
 // ─── Screen ───────────────────────────────────────────────────────────────────
 
 export default function TodayScreen() {
   const router = useRouter();
+  const { preferences } = useUserPreferences();
 
   const [loading, setLoading] = useState(true);
   const [startingSession, setStartingSession] = useState(false);
@@ -438,28 +330,19 @@ export default function TodayScreen() {
   }
 
   return (
-    <ScrollView
-      style={styles.container}
-      contentContainerStyle={styles.content}
-      showsVerticalScrollIndicator={false}
-    >
+    <ScrollView style={styles.container} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
       <Text style={styles.pageTitle}>Oggi</Text>
 
       {!activeSession ? (
         <>
           <View style={styles.card}>
             <Text style={styles.cardTitle}>Allenamento del giorno</Text>
-            <Text style={styles.cardText}>
-              Seleziona un template per avviare la sessione di oggi.
-            </Text>
+            <Text style={styles.cardText}>Seleziona un template per avviare la sessione di oggi.</Text>
           </View>
-
           <View style={styles.card}>
             <Text style={styles.cardTitle}>Scegli un template</Text>
             {templates.length === 0 ? (
-              <Text style={styles.cardText}>
-                Non hai ancora creato template di allenamento.
-              </Text>
+              <Text style={styles.cardText}>Non hai ancora creato template di allenamento.</Text>
             ) : (
               <View style={styles.templateList}>
                 {templates.map((template) => (
@@ -474,8 +357,7 @@ export default function TodayScreen() {
                       <Text style={styles.templateButtonTitle}>{template.name}</Text>
                       {template.notes
                         ? <Text style={styles.templateButtonText}>{template.notes}</Text>
-                        : <Text style={styles.templateButtonTextMuted}>Nessuna nota</Text>
-                      }
+                        : <Text style={styles.templateButtonTextMuted}>Nessuna nota</Text>}
                     </View>
                     <Text style={styles.templateButtonAction}>
                       {startingSession ? 'Avvio...' : 'Inizia →'}
@@ -488,7 +370,6 @@ export default function TodayScreen() {
         </>
       ) : (
         <>
-          {/* Header sessione attiva */}
           <View style={styles.sessionHeaderCard}>
             <View style={styles.sessionHeaderTop}>
               <View>
@@ -502,17 +383,14 @@ export default function TodayScreen() {
             <View style={styles.progressBarTrack}>
               <View style={[styles.progressBarFill, { width: `${progressPercent * 100}%` as any }]} />
             </View>
-            <Text style={styles.progressLabel}>
-              {completedSetsCount} / {totalSetsCount} serie completate
-            </Text>
+            <Text style={styles.progressLabel}>{completedSetsCount} / {totalSetsCount} serie completate</Text>
           </View>
 
-          {/* Banner recupero */}
           <RestTimerBanner />
 
-          {/* Card unificata esercizi */}
           <ExerciseBreakdownCard
             sessionData={sessionData}
+            unit={preferences.unit}
             onPress={handleOpenActiveSession}
           />
         </>
@@ -524,124 +402,25 @@ export default function TodayScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.dark.background },
   content: { padding: 20, paddingBottom: 40, gap: 16 },
-  loadingContainer: {
-    flex: 1,
-    backgroundColor: Colors.dark.background,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  pageTitle: {
-    fontSize: 30,
-    fontWeight: '800',
-    color: Colors.dark.text,
-    marginTop: 8,
-    marginBottom: 8,
-  },
-  card: {
-    backgroundColor: Colors.dark.surface,
-    borderRadius: 18,
-    padding: 18,
-    borderWidth: 1,
-    borderColor: Colors.dark.border,
-  },
-  cardTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: Colors.dark.text,
-    marginBottom: 12,
-  },
-  cardText: {
-    fontSize: 15,
-    lineHeight: 22,
-    color: Colors.dark.textMuted,
-  },
+  loadingContainer: { flex: 1, backgroundColor: Colors.dark.background, alignItems: 'center', justifyContent: 'center' },
+  pageTitle: { fontSize: 30, fontWeight: '800', color: Colors.dark.text, marginTop: 8, marginBottom: 8 },
+  card: { backgroundColor: Colors.dark.surface, borderRadius: 18, padding: 18, borderWidth: 1, borderColor: Colors.dark.border },
+  cardTitle: { fontSize: 18, fontWeight: '700', color: Colors.dark.text, marginBottom: 12 },
+  cardText: { fontSize: 15, lineHeight: 22, color: Colors.dark.textMuted },
   templateList: { gap: 12, marginTop: 4 },
-  templateButton: {
-    backgroundColor: '#17171c',
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: Colors.dark.border,
-    padding: 16,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 14,
-  },
+  templateButton: { backgroundColor: '#17171c', borderRadius: 16, borderWidth: 1, borderColor: Colors.dark.border, padding: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 14 },
   templateButtonContent: { flex: 1 },
-  templateButtonTitle: {
-    color: Colors.dark.text,
-    fontSize: 16,
-    fontWeight: '700',
-    marginBottom: 4,
-  },
-  templateButtonText: {
-    color: Colors.dark.textMuted,
-    fontSize: 14,
-    lineHeight: 20,
-  },
-  templateButtonTextMuted: {
-    color: Colors.dark.textMuted,
-    fontSize: 14,
-    fontStyle: 'italic',
-  },
-  templateButtonAction: {
-    color: PRIMARY,
-    fontWeight: '700',
-    fontSize: 14,
-  },
-  sessionHeaderCard: {
-    backgroundColor: Colors.dark.surface,
-    borderRadius: 18,
-    padding: 18,
-    borderWidth: 1,
-    borderColor: 'rgba(126, 71, 255, 0.4)',
-  },
-  sessionHeaderTop: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: 16,
-  },
-  sessionHeaderLabel: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: PRIMARY,
-    letterSpacing: 1.2,
-    marginBottom: 4,
-  },
-  sessionHeaderName: {
-    fontSize: 22,
-    fontWeight: '800',
-    color: Colors.dark.text,
-  },
-  timerBadge: {
-    backgroundColor: 'rgba(126,71,255,0.15)',
-    borderRadius: 12,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderWidth: 1,
-    borderColor: 'rgba(126,71,255,0.3)',
-  },
-  timerText: {
-    color: PRIMARY,
-    fontSize: 18,
-    fontWeight: '800',
-    fontVariant: ['tabular-nums'],
-  },
-  progressBarTrack: {
-    height: 6,
-    backgroundColor: '#2a2a35',
-    borderRadius: 6,
-    overflow: 'hidden',
-  },
-  progressBarFill: {
-    height: '100%',
-    backgroundColor: PRIMARY,
-    borderRadius: 6,
-  },
-  progressLabel: {
-    marginTop: 8,
-    fontSize: 13,
-    color: Colors.dark.textMuted,
-  },
+  templateButtonTitle: { color: Colors.dark.text, fontSize: 16, fontWeight: '700', marginBottom: 4 },
+  templateButtonText: { color: Colors.dark.textMuted, fontSize: 14, lineHeight: 20 },
+  templateButtonTextMuted: { color: Colors.dark.textMuted, fontSize: 14, fontStyle: 'italic' },
+  templateButtonAction: { color: PRIMARY, fontWeight: '700', fontSize: 14 },
+  sessionHeaderCard: { backgroundColor: Colors.dark.surface, borderRadius: 18, padding: 18, borderWidth: 1, borderColor: 'rgba(126,71,255,0.4)' },
+  sessionHeaderTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 },
+  sessionHeaderLabel: { fontSize: 11, fontWeight: '700', color: PRIMARY, letterSpacing: 1.2, marginBottom: 4 },
+  sessionHeaderName: { fontSize: 22, fontWeight: '800', color: Colors.dark.text },
+  timerBadge: { backgroundColor: 'rgba(126,71,255,0.15)', borderRadius: 12, paddingHorizontal: 14, paddingVertical: 8, borderWidth: 1, borderColor: 'rgba(126,71,255,0.3)' },
+  timerText: { color: PRIMARY, fontSize: 18, fontWeight: '800', fontVariant: ['tabular-nums'] },
+  progressBarTrack: { height: 6, backgroundColor: '#2a2a35', borderRadius: 6, overflow: 'hidden' },
+  progressBarFill: { height: '100%', backgroundColor: PRIMARY, borderRadius: 6 },
+  progressLabel: { marginTop: 8, fontSize: 13, color: Colors.dark.textMuted },
 });

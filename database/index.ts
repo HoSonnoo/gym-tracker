@@ -1043,3 +1043,25 @@ export async function getExerciseWeightHistory(
     ORDER BY ws.completed_at ASC, wss.set_order ASC
   `, [exerciseName]);
 }
+
+export async function resetSessions() {
+  const database = await getDb();
+  await database.execAsync(`
+    DELETE FROM workout_session_sets;
+    DELETE FROM workout_session_exercises;
+    DELETE FROM workout_sessions;
+  `);
+}
+
+export async function resetAll() {
+  const database = await getDb();
+  await database.execAsync(`
+    DELETE FROM workout_session_sets;
+    DELETE FROM workout_session_exercises;
+    DELETE FROM workout_sessions;
+    DELETE FROM template_exercise_sets;
+    DELETE FROM workout_template_exercises;
+    DELETE FROM workout_templates;
+    DELETE FROM exercises;
+  `);
+}

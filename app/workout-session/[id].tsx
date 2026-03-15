@@ -1,5 +1,6 @@
 import { Colors } from '@/constants/Colors';
 import { useRestTimer } from '@/context/RestTimerContext';
+import { formatWeight, useUserPreferences } from '@/context/UserPreferencesContext';
 import {
   completeWorkoutSession,
   getWorkoutSessionById,
@@ -81,10 +82,6 @@ function formatTargetReps(set: WorkoutSessionSet): string {
   return `${min ?? max ?? '—'}`;
 }
 
-function formatTargetWeight(set: WorkoutSessionSet): string {
-  return set.target_weight_kg !== null ? `${set.target_weight_kg} kg` : '—';
-}
-
 function formatRest(set: WorkoutSessionSet): string {
   return set.target_rest_seconds !== null ? `${set.target_rest_seconds}s` : '—';
 }
@@ -112,15 +109,6 @@ function BackButton({ onPress, label = 'Indietro' }: { onPress: () => void; labe
   );
 }
 
-function StatBadge({ label, value }: { label: string; value: string }) {
-  return (
-    <View style={styles.statBadge}>
-      <Text style={styles.statBadgeLabel}>{label}</Text>
-      <Text style={styles.statBadgeValue}>{value}</Text>
-    </View>
-  );
-}
-
 function TargetBox({ label, value }: { label: string; value: string }) {
   return (
     <View style={styles.targetBox}>
@@ -137,6 +125,7 @@ type SetCardProps = {
   isCompleted: boolean;
   isNextIncomplete: boolean;
   isSaving: boolean;
+  unit: 'kg' | 'lbs';
   onLayout: (e: LayoutChangeEvent) => void;
   onFieldChange: (field: keyof SetFormState, value: string) => void;
   onSave: () => void;
@@ -150,6 +139,7 @@ function SetCard({
   isCompleted,
   isNextIncomplete,
   isSaving,
+  unit,
   onLayout,
   onFieldChange,
   onSave,
@@ -181,7 +171,7 @@ function SetCard({
 
       {/* Target grid */}
       <View style={styles.targetGrid}>
-        <TargetBox label="Target peso" value={formatTargetWeight(set)} />
+        <TargetBox label="Target peso" value={formatWeight(set.target_weight_kg, unit)} />
         <TargetBox label="Target reps" value={formatTargetReps(set)} />
         <TargetBox label="Pausa" value={formatRest(set)} />
         <TargetBox label="Sforzo" value={formatEffortType(set.target_effort_type)} />
@@ -198,11 +188,11 @@ function SetCard({
       {/* Peso + Reps */}
       <View style={styles.inputsRow}>
         <View style={styles.inputGroup}>
-          <Text style={styles.inputLabel}>Peso reale</Text>
+          <Text style={styles.inputLabel}>Peso reale ({unit})</Text>
           <TextInput
             value={form.actual_weight_kg}
             onChangeText={(v) => onFieldChange('actual_weight_kg', v)}
-            placeholder="Es. 60"
+            placeholder={unit === 'kg' ? 'Es. 60' : 'Es. 132'}
             placeholderTextColor={Colors.dark.textMuted}
             keyboardType="decimal-pad"
             style={styles.input}
@@ -288,13 +278,11 @@ function SetCard({
 
 function RestTimerBanner() {
   const { timer, stopTimer } = useRestTimer();
-
   if (!timer.isActive && timer.remainingSeconds === 0) return null;
 
   const progress = timer.durationSeconds > 0
     ? timer.remainingSeconds / timer.durationSeconds
     : 0;
-
   const isExpired = !timer.isActive && timer.remainingSeconds === 0 && timer.durationSeconds > 0;
   const accentColor = isExpired ? Colors.dark.success : PRIMARY;
 
@@ -319,72 +307,23 @@ function RestTimerBanner() {
         </View>
       </View>
       <View style={bannerStyles.trackOuter}>
-        <View
-          style={[
-            bannerStyles.trackFill,
-            { width: `${progress * 100}%` as any, backgroundColor: accentColor },
-          ]}
-        />
+        <View style={[bannerStyles.trackFill, { width: `${progress * 100}%` as any, backgroundColor: accentColor }]} />
       </View>
     </View>
   );
 }
 
 const bannerStyles = StyleSheet.create({
-  container: {
-    backgroundColor: Colors.dark.surface,
-    borderRadius: 16,
-    padding: 14,
-    borderWidth: 1,
-    marginBottom: 14,
-  },
-  top: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 10,
-  },
-  label: {
-    fontSize: 10,
-    fontWeight: '800',
-    letterSpacing: 1.2,
-    marginBottom: 3,
-  },
-  context: {
-    fontSize: 13,
-    color: Colors.dark.text,
-    fontWeight: '600',
-  },
-  right: {
-    alignItems: 'flex-end',
-    gap: 4,
-  },
-  countdown: {
-    fontSize: 26,
-    fontWeight: '800',
-    fontVariant: ['tabular-nums'],
-  },
-  skipButton: {
-    backgroundColor: Colors.dark.surfaceSoft,
-    borderRadius: 8,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-  },
-  skipText: {
-    color: Colors.dark.textMuted,
-    fontSize: 12,
-    fontWeight: '700',
-  },
-  trackOuter: {
-    height: 4,
-    backgroundColor: '#2a2a35',
-    borderRadius: 4,
-    overflow: 'hidden',
-  },
-  trackFill: {
-    height: '100%',
-    borderRadius: 4,
-  },
+  container: { backgroundColor: Colors.dark.surface, borderRadius: 16, padding: 14, borderWidth: 1, marginBottom: 14 },
+  top: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 },
+  label: { fontSize: 10, fontWeight: '800', letterSpacing: 1.2, marginBottom: 3 },
+  context: { fontSize: 13, color: Colors.dark.text, fontWeight: '600' },
+  right: { alignItems: 'flex-end', gap: 4 },
+  countdown: { fontSize: 26, fontWeight: '800', fontVariant: ['tabular-nums'] },
+  skipButton: { backgroundColor: Colors.dark.surfaceSoft, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 4 },
+  skipText: { color: Colors.dark.textMuted, fontSize: 12, fontWeight: '700' },
+  trackOuter: { height: 4, backgroundColor: '#2a2a35', borderRadius: 4, overflow: 'hidden' },
+  trackFill: { height: '100%', borderRadius: 4 },
 });
 
 // ─── Screen ───────────────────────────────────────────────────────────────────
@@ -394,6 +333,7 @@ export default function WorkoutSessionScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const sessionId = Number(id);
   const { startTimer } = useRestTimer();
+  const { preferences } = useUserPreferences();
 
   const scrollRef = useRef<ScrollView | null>(null);
   const exerciseCardPositionsRef = useRef<Record<number, number>>({});
@@ -445,9 +385,7 @@ export default function WorkoutSessionScreen() {
   }, [sessionId]);
 
   useFocusEffect(
-    useCallback(() => {
-      loadSessionData();
-    }, [loadSessionData])
+    useCallback(() => { loadSessionData(); }, [loadSessionData])
   );
 
   // ── Derived state ─────────────────────────────────────────────────────────────
@@ -464,15 +402,13 @@ export default function WorkoutSessionScreen() {
   const registerExerciseCardPosition = useCallback(
     (exerciseId: number) => (event: LayoutChangeEvent) => {
       exerciseCardPositionsRef.current[exerciseId] = event.nativeEvent.layout.y;
-    },
-    []
+    }, []
   );
 
   const registerSetCardPosition = useCallback(
     (setId: number) => (event: LayoutChangeEvent) => {
       setCardRelativePositionsRef.current[setId] = event.nativeEvent.layout.y;
-    },
-    []
+    }, []
   );
 
   const scrollToTop = useCallback(() => {
@@ -508,8 +444,7 @@ export default function WorkoutSessionScreen() {
         actual_notes: form?.actual_notes?.trim() || null,
         is_completed: isCompleted,
       };
-    },
-    [setForms]
+    }, [setForms]
   );
 
   // ── Handlers ──────────────────────────────────────────────────────────────────
@@ -520,8 +455,7 @@ export default function WorkoutSessionScreen() {
         ...prev,
         [setId]: { ...prev[setId], [field]: value },
       }));
-    },
-    []
+    }, []
   );
 
   const handleSaveSet = useCallback(
@@ -530,10 +464,7 @@ export default function WorkoutSessionScreen() {
       try {
         setSavingSetId(set.id);
         await updateWorkoutSessionSet(set.id, buildSetPayload(set.id, 1));
-
-        // Avvia timer recupero se la serie ha un tempo di pausa configurato
         if (set.target_rest_seconds && set.target_rest_seconds > 0) {
-          // Trova il nome dell'esercizio proprietario di questa serie
           const ownerItem = sessionData.find((item) =>
             item.sets.some((s) => s.id === set.id)
           );
@@ -542,7 +473,6 @@ export default function WorkoutSessionScreen() {
           const setLabel = `Serie ${setIndex + 1} · ${formatSetType(set)}`;
           startTimer(set.target_rest_seconds, exerciseName, setLabel);
         }
-
         await loadSessionData();
         scrollToTop();
       } catch {
@@ -651,33 +581,24 @@ export default function WorkoutSessionScreen() {
           Sessione attiva. Inserisci i dati reali e completa le serie durante l'allenamento.
         </Text>
 
-        {/* Banner recupero — visibile solo quando attivo */}
         <RestTimerBanner />
 
         {/* Progress card */}
         <View style={styles.progressCard}>
           <Text style={styles.cardTitle}>Stato</Text>
-
-          {/* Barra progresso */}
           <View style={styles.progressBarTrack}>
-            <View
-              style={[
-                styles.progressBarFill,
-                { width: `${progressPercent * 100}%` as any },
-                progressPercent === 1 && styles.progressBarFillComplete,
-              ]}
-            />
+            <View style={[
+              styles.progressBarFill,
+              { width: `${progressPercent * 100}%` as any },
+              progressPercent === 1 && styles.progressBarFillComplete,
+            ]} />
           </View>
           <Text style={styles.progressLabel}>
             {completedSetsCount} / {totalSetsCount} serie completate
           </Text>
 
           {nextIncompleteSet ? (
-            <TouchableOpacity
-              style={styles.nextSetButton}
-              activeOpacity={0.9}
-              onPress={scrollToNextIncompleteSet}
-            >
+            <TouchableOpacity style={styles.nextSetButton} activeOpacity={0.9} onPress={scrollToNextIncompleteSet}>
               <Text style={styles.nextSetButtonText}>Prossima serie</Text>
             </TouchableOpacity>
           ) : (
@@ -706,12 +627,10 @@ export default function WorkoutSessionScreen() {
             style={styles.exerciseCard}
           >
             <View style={styles.exerciseHeader}>
-              <View style={styles.exerciseHeaderText}>
-                <Text style={styles.exerciseTitle}>{exercise.exercise_name}</Text>
-                <Text style={styles.exerciseSubtitle}>
-                  {exercise.category ?? 'Nessuna categoria'}
-                </Text>
-              </View>
+              <Text style={styles.exerciseTitle}>{exercise.exercise_name}</Text>
+              <Text style={styles.exerciseSubtitle}>
+                {exercise.category ?? 'Nessuna categoria'}
+              </Text>
             </View>
 
             {exercise.notes ? (
@@ -741,6 +660,7 @@ export default function WorkoutSessionScreen() {
                     isCompleted={isCompleted}
                     isNextIncomplete={isNextIncomplete}
                     isSaving={savingSetId === set.id}
+                    unit={preferences.unit}
                     onLayout={registerSetCardPosition(set.id)}
                     onFieldChange={(field, value) => updateSetField(set.id, field, value)}
                     onSave={() => handleSaveSet(set)}
@@ -770,33 +690,28 @@ const styles = StyleSheet.create({
   topBackButtonText: { color: Colors.dark.text, fontSize: 14, fontWeight: '600' },
   pageTitle: { fontSize: 30, fontWeight: '800', color: Colors.dark.text },
   pageSubtitle: { fontSize: 15, lineHeight: 22, color: Colors.dark.textMuted, marginBottom: 12 },
-  progressCard: { backgroundColor: Colors.dark.surface, borderRadius: 18, padding: 18, borderWidth: 1, borderColor: Colors.dark.border, marginBottom: 14 },
+  progressCard: { backgroundColor: Colors.dark.surface, borderRadius: 18, padding: 18, borderWidth: 1, borderColor: 'rgba(126,71,255,0.35)', marginBottom: 14 },
   cardTitle: { fontSize: 18, fontWeight: '700', color: Colors.dark.text, marginBottom: 10 },
   cardText: { fontSize: 15, lineHeight: 22, color: Colors.dark.textMuted },
   progressBarTrack: { height: 6, backgroundColor: '#2a2a35', borderRadius: 6, overflow: 'hidden', marginBottom: 6 },
   progressBarFill: { height: '100%', backgroundColor: PRIMARY, borderRadius: 6 },
   progressBarFillComplete: { backgroundColor: Colors.dark.success },
   progressLabel: { fontSize: 13, color: Colors.dark.textMuted, marginBottom: 14 },
-  sessionStatsRow: { flexDirection: 'row', gap: 10, marginBottom: 0 },
-  statBadge: { flex: 1, backgroundColor: '#17171c', borderRadius: 14, padding: 12, borderWidth: 1, borderColor: Colors.dark.border },
-  statBadgeLabel: { color: Colors.dark.textMuted, fontSize: 12, marginBottom: 6 },
-  statBadgeValue: { color: Colors.dark.text, fontSize: 16, fontWeight: '700' },
-  nextSetButton: { marginTop: 14, backgroundColor: PRIMARY, borderRadius: 14, paddingVertical: 14, alignItems: 'center', justifyContent: 'center' },
+  nextSetButton: { backgroundColor: PRIMARY, borderRadius: 14, paddingVertical: 14, alignItems: 'center', justifyContent: 'center' },
   nextSetButtonText: { color: '#fff', fontSize: 15, fontWeight: '800' },
   exerciseCard: { backgroundColor: Colors.dark.surface, borderRadius: 18, padding: 18, borderWidth: 1, borderColor: Colors.dark.border, marginTop: 12 },
   exerciseHeader: { marginBottom: 12 },
-  exerciseHeaderText: { flex: 1 },
   exerciseTitle: { color: Colors.dark.text, fontSize: 20, fontWeight: '800' },
   exerciseSubtitle: { color: Colors.dark.textMuted, fontSize: 14, marginTop: 4 },
   exerciseNoteBox: { backgroundColor: '#1a1a21', borderRadius: 12, padding: 12, borderWidth: 1, borderColor: Colors.dark.border, marginBottom: 14 },
   exerciseSetsList: { gap: 14 },
   setCard: { backgroundColor: '#141419', borderRadius: 16, padding: 14, borderWidth: 1, borderColor: Colors.dark.border },
   setCardCompleted: { borderColor: PRIMARY },
-  setCardNext: { borderColor: 'rgba(126, 71, 255, 0.7)', shadowColor: PRIMARY, shadowOpacity: 0.18, shadowRadius: 8, shadowOffset: { width: 0, height: 0 } },
+  setCardNext: { borderColor: 'rgba(126,71,255,0.7)', shadowColor: PRIMARY, shadowOpacity: 0.18, shadowRadius: 8, shadowOffset: { width: 0, height: 0 } },
   setHeaderRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10, marginBottom: 12 },
   setTitle: { color: Colors.dark.text, fontSize: 16, fontWeight: '700', flex: 1 },
   statusPill: { backgroundColor: '#24242b', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999 },
-  statusPillActive: { backgroundColor: 'rgba(126, 71, 255, 0.18)' },
+  statusPillActive: { backgroundColor: 'rgba(126,71,255,0.18)' },
   statusPillText: { color: Colors.dark.textMuted, fontSize: 12, fontWeight: '700' },
   statusPillTextActive: { color: PRIMARY },
   targetGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 12 },
@@ -813,7 +728,7 @@ const styles = StyleSheet.create({
   notesInput: { minHeight: 92, textAlignVertical: 'top' },
   effortRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   effortChip: { paddingHorizontal: 12, paddingVertical: 10, borderRadius: 12, backgroundColor: '#16161d', borderWidth: 1, borderColor: Colors.dark.border },
-  effortChipSelected: { backgroundColor: 'rgba(126, 71, 255, 0.18)', borderColor: PRIMARY },
+  effortChipSelected: { backgroundColor: 'rgba(126,71,255,0.18)', borderColor: PRIMARY },
   effortChipText: { color: Colors.dark.textMuted, fontSize: 13, fontWeight: '700' },
   effortChipTextSelected: { color: PRIMARY },
   setActions: { gap: 10, marginTop: 2 },

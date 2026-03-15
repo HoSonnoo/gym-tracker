@@ -1,23 +1,31 @@
 import { Colors } from '@/constants/Colors';
 import { Ionicons } from '@expo/vector-icons';
-import { Tabs } from 'expo-router';
+import { Tabs, useRouter } from 'expo-router';
+import { TouchableOpacity } from 'react-native';
+
+function SettingsButton() {
+  const router = useRouter();
+  return (
+    <TouchableOpacity
+      onPress={() => router.push('/settings')}
+      style={{ marginRight: 16, padding: 4 }}
+      activeOpacity={0.7}
+    >
+      <Ionicons name="settings-outline" size={22} color={Colors.dark.textMuted} />
+    </TouchableOpacity>
+  );
+}
 
 export default function TabsLayout() {
   return (
     <Tabs
       screenOptions={{
         headerTitleAlign: 'center',
-        headerStyle: {
-          backgroundColor: Colors.dark.background,
-        },
-        headerTitleStyle: {
-          color: Colors.dark.text,
-          fontWeight: '700',
-        },
+        headerStyle: { backgroundColor: Colors.dark.background },
+        headerTitleStyle: { color: Colors.dark.text, fontWeight: '700' },
         headerShadowVisible: false,
-        sceneStyle: {
-          backgroundColor: Colors.dark.background,
-        },
+        headerRight: () => <SettingsButton />,
+        sceneStyle: { backgroundColor: Colors.dark.background },
         tabBarStyle: {
           backgroundColor: Colors.dark.surface,
           borderTopColor: Colors.dark.border,
@@ -27,10 +35,7 @@ export default function TabsLayout() {
         },
         tabBarActiveTintColor: Colors.dark.tabIconSelected,
         tabBarInactiveTintColor: Colors.dark.tabIconDefault,
-        tabBarLabelStyle: {
-          fontSize: 12,
-          fontWeight: '600',
-        },
+        tabBarLabelStyle: { fontSize: 12, fontWeight: '600' },
       }}
     >
       <Tabs.Screen

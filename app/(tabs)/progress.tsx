@@ -1,4 +1,5 @@
 import { Colors } from '@/constants/Colors';
+import { formatWeight, useUserPreferences } from '@/context/UserPreferencesContext';
 import {
   getExerciseVolumeSummary,
   getExerciseWeightHistory,
@@ -29,7 +30,6 @@ function formatDateShort(isoString: string): string {
   return `${d.getDate()} ${MESI_SHORT[d.getMonth()]} ${String(d.getFullYear())}`;
 }
 
-// Raggruppa le serie per sessione (completed_at + session_name)
 type SessionGroup = {
   session_name: string;
   completed_at: string;
@@ -45,7 +45,6 @@ function groupBySession(history: ExerciseWeightHistory[]): SessionGroup[] {
     }
     map.get(key)!.sets.push(row);
   }
-  // Ordine cronologico inverso (più recente in cima)
   return Array.from(map.values()).reverse();
 }
 
@@ -53,19 +52,12 @@ function groupBySession(history: ExerciseWeightHistory[]): SessionGroup[] {
 
 type TabKey = 'pr' | 'volume' | 'frequency';
 
-function SegmentedControl({
-  active,
-  onChange,
-}: {
-  active: TabKey;
-  onChange: (key: TabKey) => void;
-}) {
+function SegmentedControl({ active, onChange }: { active: TabKey; onChange: (key: TabKey) => void }) {
   const tabs: { key: TabKey; label: string }[] = [
     { key: 'pr', label: 'PR' },
     { key: 'volume', label: 'Volume' },
     { key: 'frequency', label: 'Frequenza' },
   ];
-
   return (
     <View style={segStyles.container}>
       {tabs.map((tab) => (
@@ -85,21 +77,8 @@ function SegmentedControl({
 }
 
 const segStyles = StyleSheet.create({
-  container: {
-    flexDirection: 'row',
-    backgroundColor: Colors.dark.surface,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: Colors.dark.border,
-    padding: 4,
-    gap: 4,
-  },
-  tab: {
-    flex: 1,
-    paddingVertical: 10,
-    borderRadius: 10,
-    alignItems: 'center',
-  },
+  container: { flexDirection: 'row', backgroundColor: Colors.dark.surface, borderRadius: 14, borderWidth: 1, borderColor: Colors.dark.border, padding: 4, gap: 4 },
+  tab: { flex: 1, paddingVertical: 10, borderRadius: 10, alignItems: 'center' },
   tabActive: { backgroundColor: PRIMARY },
   label: { fontSize: 14, fontWeight: '700', color: Colors.dark.textMuted },
   labelActive: { color: '#fff' },
@@ -109,9 +88,11 @@ const segStyles = StyleSheet.create({
 
 function ExerciseHistoryDetail({
   exerciseName,
+  unit,
   onClose,
 }: {
   exerciseName: string;
+  unit: 'kg' | 'lbs';
   onClose: () => void;
 }) {
   const [history, setHistory] = useState<ExerciseWeightHistory[]>([]);
@@ -126,15 +107,10 @@ function ExerciseHistoryDetail({
   }, [exerciseName]);
 
   const groups = groupBySession(history);
-
-  // Trova il PR (massimo peso) per evidenziarlo
-  const maxWeight = history.length > 0
-    ? Math.max(...history.map((h) => h.actual_weight_kg))
-    : null;
+  const maxWeight = history.length > 0 ? Math.max(...history.map((h) => h.actual_weight_kg)) : null;
 
   return (
     <View style={histStyles.container}>
-      {/* Header */}
       <View style={histStyles.header}>
         <TouchableOpacity onPress={onClose} style={histStyles.backButton} activeOpacity={0.8}>
           <Text style={histStyles.backButtonText}>← Indietro</Text>
@@ -149,23 +125,16 @@ function ExerciseHistoryDetail({
       ) : groups.length === 0 ? (
         <View style={styles.emptyCard}>
           <Text style={styles.emptyTitle}>Nessuno storico</Text>
-          <Text style={styles.emptyText}>
-            Non sono ancora stati registrati pesi per questo esercizio.
-          </Text>
+          <Text style={styles.emptyText}>Non sono ancora stati registrati pesi per questo esercizio.</Text>
         </View>
       ) : (
         <View style={histStyles.list}>
           {groups.map((group) => (
             <View key={group.completed_at} style={histStyles.sessionCard}>
-              {/* Data sessione */}
               <View style={histStyles.sessionHeader}>
-                <Text style={histStyles.sessionDate}>
-                  {formatDateShort(group.completed_at)}
-                </Text>
+                <Text style={histStyles.sessionDate}>{formatDateShort(group.completed_at)}</Text>
                 <Text style={histStyles.sessionName}>{group.session_name}</Text>
               </View>
-
-              {/* Serie */}
               <View style={histStyles.setsList}>
                 {group.sets.map((set, idx) => {
                   const isPR = set.actual_weight_kg === maxWeight;
@@ -174,7 +143,7 @@ function ExerciseHistoryDetail({
                       <Text style={histStyles.setIndex}>{idx + 1}</Text>
                       <View style={histStyles.setBadge}>
                         <Text style={[histStyles.setWeight, isPR && histStyles.setWeightPR]}>
-                          {set.actual_weight_kg} kg
+                          {formatWeight(set.actual_weight_kg, unit)}
                         </Text>
                       </View>
                       {set.actual_reps != null && (
@@ -206,152 +175,51 @@ function ExerciseHistoryDetail({
 
 const histStyles = StyleSheet.create({
   container: { gap: 12 },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    marginBottom: 4,
-  },
-  backButton: {
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    backgroundColor: Colors.dark.surfaceSoft,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: Colors.dark.border,
-  },
-  backButtonText: {
-    color: Colors.dark.text,
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  title: {
-    flex: 1,
-    fontSize: 18,
-    fontWeight: '800',
-    color: Colors.dark.text,
-  },
-  loadingBox: {
-    paddingTop: 40,
-    alignItems: 'center',
-  },
+  header: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 4 },
+  backButton: { paddingVertical: 8, paddingHorizontal: 12, backgroundColor: Colors.dark.surfaceSoft, borderRadius: 12, borderWidth: 1, borderColor: Colors.dark.border },
+  backButtonText: { color: Colors.dark.text, fontSize: 14, fontWeight: '600' },
+  title: { flex: 1, fontSize: 18, fontWeight: '800', color: Colors.dark.text },
+  loadingBox: { paddingTop: 40, alignItems: 'center' },
   list: { gap: 12 },
-  sessionCard: {
-    backgroundColor: Colors.dark.surface,
-    borderRadius: 16,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: Colors.dark.border,
-    gap: 12,
-  },
-  sessionHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  sessionDate: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: Colors.dark.text,
-  },
-  sessionName: {
-    fontSize: 13,
-    color: Colors.dark.textMuted,
-  },
+  sessionCard: { backgroundColor: Colors.dark.surface, borderRadius: 16, padding: 16, borderWidth: 1, borderColor: Colors.dark.border, gap: 12 },
+  sessionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  sessionDate: { fontSize: 14, fontWeight: '700', color: Colors.dark.text },
+  sessionName: { fontSize: 13, color: Colors.dark.textMuted },
   setsList: { gap: 8 },
-  setRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  setIndex: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: Colors.dark.textMuted,
-    width: 16,
-    textAlign: 'center',
-  },
-  setBadge: {
-    backgroundColor: '#2a2a35',
-    borderRadius: 8,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-  },
-  setWeight: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: Colors.dark.text,
-  },
-  setWeightPR: {
-    color: PRIMARY,
-  },
-  setReps: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: Colors.dark.textMuted,
-  },
-  warmupBadge: {
-    backgroundColor: 'rgba(245,158,11,0.15)',
-    borderRadius: 6,
-    paddingHorizontal: 7,
-    paddingVertical: 3,
-  },
-  warmupText: {
-    fontSize: 11,
-    fontWeight: '800',
-    color: Colors.dark.warning,
-  },
-  prBadge: {
-    backgroundColor: 'rgba(126,71,255,0.15)',
-    borderRadius: 6,
-    paddingHorizontal: 7,
-    paddingVertical: 3,
-  },
-  prBadgeText: {
-    fontSize: 11,
-    fontWeight: '800',
-    color: PRIMARY,
-  },
+  setRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  setIndex: { fontSize: 13, fontWeight: '700', color: Colors.dark.textMuted, width: 16, textAlign: 'center' },
+  setBadge: { backgroundColor: '#2a2a35', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 4 },
+  setWeight: { fontSize: 14, fontWeight: '700', color: Colors.dark.text },
+  setWeightPR: { color: PRIMARY },
+  setReps: { fontSize: 13, fontWeight: '600', color: Colors.dark.textMuted },
+  warmupBadge: { backgroundColor: 'rgba(245,158,11,0.15)', borderRadius: 6, paddingHorizontal: 7, paddingVertical: 3 },
+  warmupText: { fontSize: 11, fontWeight: '800', color: Colors.dark.warning },
+  prBadge: { backgroundColor: 'rgba(126,71,255,0.15)', borderRadius: 6, paddingHorizontal: 7, paddingVertical: 3 },
+  prBadgeText: { fontSize: 11, fontWeight: '800', color: PRIMARY },
 });
 
 // ─── PR Section ───────────────────────────────────────────────────────────────
 
-function PRSection({
-  records,
-  onSelectExercise,
-}: {
-  records: ExercisePR[];
-  onSelectExercise: (name: string) => void;
-}) {
+function PRSection({ records, unit, onSelectExercise }: { records: ExercisePR[]; unit: 'kg' | 'lbs'; onSelectExercise: (name: string) => void }) {
   if (records.length === 0) {
     return (
       <View style={styles.emptyCard}>
         <Text style={styles.emptyTitle}>Nessun PR ancora</Text>
-        <Text style={styles.emptyText}>
-          Completa degli allenamenti con pesi registrati per vedere i tuoi record personali.
-        </Text>
+        <Text style={styles.emptyText}>Completa degli allenamenti con pesi registrati per vedere i tuoi record personali.</Text>
       </View>
     );
   }
-
   return (
     <View style={styles.list}>
       {records.map((pr) => (
-        <TouchableOpacity
-          key={pr.exercise_name}
-          style={styles.prCard}
-          onPress={() => onSelectExercise(pr.exercise_name)}
-          activeOpacity={0.85}
-        >
+        <TouchableOpacity key={pr.exercise_name} style={styles.prCard} onPress={() => onSelectExercise(pr.exercise_name)} activeOpacity={0.85}>
           <View style={styles.prLeft}>
             <Text style={styles.prExerciseName}>{pr.exercise_name}</Text>
             <Text style={styles.prDate}>{formatDateShort(pr.achieved_at)}</Text>
           </View>
           <View style={styles.prRight}>
-            <Text style={styles.prWeight}>{pr.max_weight_kg} kg</Text>
-            {pr.reps_at_max != null && (
-              <Text style={styles.prReps}>× {pr.reps_at_max} rep</Text>
-            )}
+            <Text style={styles.prWeight}>{formatWeight(pr.max_weight_kg, unit)}</Text>
+            {pr.reps_at_max != null && <Text style={styles.prReps}>× {pr.reps_at_max} rep</Text>}
             <Text style={styles.prChevron}>›</Text>
           </View>
         </TouchableOpacity>
@@ -362,45 +230,29 @@ function PRSection({
 
 // ─── Volume Section ───────────────────────────────────────────────────────────
 
-function VolumeSection({
-  volumes,
-  onSelectExercise,
-}: {
-  volumes: ExerciseVolume[];
-  onSelectExercise: (name: string) => void;
-}) {
+function VolumeSection({ volumes, unit, onSelectExercise }: { volumes: ExerciseVolume[]; unit: 'kg' | 'lbs'; onSelectExercise: (name: string) => void }) {
   if (volumes.length === 0) {
     return (
       <View style={styles.emptyCard}>
         <Text style={styles.emptyTitle}>Nessun dato ancora</Text>
-        <Text style={styles.emptyText}>
-          Completa degli allenamenti per vedere il volume accumulato per esercizio.
-        </Text>
+        <Text style={styles.emptyText}>Completa degli allenamenti per vedere il volume accumulato per esercizio.</Text>
       </View>
     );
   }
-
   const maxVolume = Math.max(...volumes.map((v) => v.total_volume_kg));
-
   return (
     <View style={styles.list}>
       {volumes.map((v) => {
         const pct = maxVolume > 0 ? v.total_volume_kg / maxVolume : 0;
+        const displayVolume = unit === 'lbs'
+          ? `${Math.round(v.total_volume_kg * 2.20462).toLocaleString('it-IT')} lbs`
+          : `${v.total_volume_kg.toLocaleString('it-IT')} kg`;
         return (
-          <TouchableOpacity
-            key={v.exercise_name}
-            style={styles.volumeCard}
-            onPress={() => onSelectExercise(v.exercise_name)}
-            activeOpacity={0.85}
-          >
+          <TouchableOpacity key={v.exercise_name} style={styles.volumeCard} onPress={() => onSelectExercise(v.exercise_name)} activeOpacity={0.85}>
             <View style={styles.volumeHeader}>
               <Text style={styles.volumeExerciseName}>{v.exercise_name}</Text>
               <View style={styles.volumeRightRow}>
-                <Text style={styles.volumeTotal}>
-                  {v.total_volume_kg > 0
-                    ? `${v.total_volume_kg.toLocaleString('it-IT')} kg`
-                    : `${v.total_sets} serie`}
-                </Text>
+                <Text style={styles.volumeTotal}>{v.total_volume_kg > 0 ? displayVolume : `${v.total_sets} serie`}</Text>
                 <Text style={styles.prChevron}>›</Text>
               </View>
             </View>
@@ -420,26 +272,21 @@ function VolumeSection({
 
 // ─── Frequency Section ────────────────────────────────────────────────────────
 
-function FrequencySection({
-  data,
-}: {
-  data: {
-    average_per_week: number;
-    total_sessions: number;
-    weeks_active: number;
-    first_session_at: string | null;
-  };
+function FrequencySection({ data, weeklyGoal }: {
+  data: { average_per_week: number; total_sessions: number; weeks_active: number; first_session_at: string | null };
+  weeklyGoal: number;
 }) {
   if (data.total_sessions === 0) {
     return (
       <View style={styles.emptyCard}>
         <Text style={styles.emptyTitle}>Nessun allenamento ancora</Text>
-        <Text style={styles.emptyText}>
-          Completa il tuo primo allenamento per vedere le statistiche di frequenza.
-        </Text>
+        <Text style={styles.emptyText}>Completa il tuo primo allenamento per vedere le statistiche di frequenza.</Text>
       </View>
     );
   }
+
+  const goalReached = data.average_per_week >= weeklyGoal;
+  const goalPct = Math.min(data.average_per_week / weeklyGoal, 1);
 
   return (
     <View style={styles.list}>
@@ -447,7 +294,25 @@ function FrequencySection({
         <Text style={styles.freqMainLabel}>MEDIA SETTIMANALE</Text>
         <Text style={styles.freqMainValue}>{data.average_per_week}</Text>
         <Text style={styles.freqMainSub}>allenamenti a settimana</Text>
+
+        {/* Obiettivo */}
+        <View style={styles.freqGoalRow}>
+          <Text style={styles.freqGoalLabel}>
+            Obiettivo: {weeklyGoal} {weeklyGoal === 1 ? 'allenamento' : 'allenamenti'} / settimana
+          </Text>
+          <Text style={[styles.freqGoalStatus, { color: goalReached ? Colors.dark.success : Colors.dark.textMuted }]}>
+            {goalReached ? '✓ Raggiunto' : 'In corso'}
+          </Text>
+        </View>
+        <View style={styles.freqGoalTrack}>
+          <View style={[
+            styles.freqGoalFill,
+            { width: `${goalPct * 100}%` as any },
+            goalReached && styles.freqGoalFillDone,
+          ]} />
+        </View>
       </View>
+
       <View style={styles.freqStatsRow}>
         <View style={styles.freqStatBox}>
           <Text style={styles.freqStatLabel}>Totale sessioni</Text>
@@ -459,9 +324,7 @@ function FrequencySection({
         </View>
         <View style={styles.freqStatBox}>
           <Text style={styles.freqStatLabel}>Dal</Text>
-          <Text style={styles.freqStatValue}>
-            {data.first_session_at ? formatDateShort(data.first_session_at) : '—'}
-          </Text>
+          <Text style={styles.freqStatValue}>{data.first_session_at ? formatDateShort(data.first_session_at) : '—'}</Text>
         </View>
       </View>
     </View>
@@ -471,6 +334,7 @@ function FrequencySection({
 // ─── Screen ───────────────────────────────────────────────────────────────────
 
 export default function ProgressScreen() {
+  const { preferences } = useUserPreferences();
   const [activeTab, setActiveTab] = useState<TabKey>('pr');
   const [loading, setLoading] = useState(true);
   const [selectedExercise, setSelectedExercise] = useState<string | null>(null);
@@ -478,10 +342,7 @@ export default function ProgressScreen() {
   const [records, setRecords] = useState<ExercisePR[]>([]);
   const [volumes, setVolumes] = useState<ExerciseVolume[]>([]);
   const [frequency, setFrequency] = useState<{
-    average_per_week: number;
-    total_sessions: number;
-    weeks_active: number;
-    first_session_at: string | null;
+    average_per_week: number; total_sessions: number; weeks_active: number; first_session_at: string | null;
   }>({ average_per_week: 0, total_sessions: 0, weeks_active: 0, first_session_at: null });
 
   const loadData = useCallback(async () => {
@@ -496,7 +357,7 @@ export default function ProgressScreen() {
       setVolumes(vols);
       setFrequency(freq);
     } catch {
-      // silenzioso — le sezioni mostrano empty state
+      // silenzioso
     } finally {
       setLoading(false);
     }
@@ -505,39 +366,23 @@ export default function ProgressScreen() {
   useFocusEffect(
     useCallback(() => {
       loadData();
-      // Reset selezione esercizio quando si torna al tab
       setSelectedExercise(null);
     }, [loadData])
   );
 
-  const handleSelectExercise = useCallback((name: string) => {
-    setSelectedExercise(name);
-  }, []);
-
-  const handleCloseHistory = useCallback(() => {
-    setSelectedExercise(null);
-  }, []);
-
   return (
-    <ScrollView
-      style={styles.container}
-      contentContainerStyle={styles.content}
-      showsVerticalScrollIndicator={false}
-    >
+    <ScrollView style={styles.container} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
       <Text style={styles.pageTitle}>Progressi</Text>
 
-      {/* Se è selezionato un esercizio, mostra il dettaglio storico */}
       {selectedExercise ? (
         <ExerciseHistoryDetail
           exerciseName={selectedExercise}
-          onClose={handleCloseHistory}
+          unit={preferences.unit}
+          onClose={() => setSelectedExercise(null)}
         />
       ) : (
         <>
-          <SegmentedControl active={activeTab} onChange={(tab) => {
-            setActiveTab(tab);
-            setSelectedExercise(null);
-          }} />
+          <SegmentedControl active={activeTab} onChange={(tab) => { setActiveTab(tab); setSelectedExercise(null); }} />
 
           {loading ? (
             <View style={styles.loadingBox}>
@@ -545,13 +390,9 @@ export default function ProgressScreen() {
             </View>
           ) : (
             <>
-              {activeTab === 'pr' && (
-                <PRSection records={records} onSelectExercise={handleSelectExercise} />
-              )}
-              {activeTab === 'volume' && (
-                <VolumeSection volumes={volumes} onSelectExercise={handleSelectExercise} />
-              )}
-              {activeTab === 'frequency' && <FrequencySection data={frequency} />}
+              {activeTab === 'pr' && <PRSection records={records} unit={preferences.unit} onSelectExercise={setSelectedExercise} />}
+              {activeTab === 'volume' && <VolumeSection volumes={volumes} unit={preferences.unit} onSelectExercise={setSelectedExercise} />}
+              {activeTab === 'frequency' && <FrequencySection data={frequency} weeklyGoal={preferences.weeklyGoal} />}
             </>
           )}
         </>
@@ -565,128 +406,41 @@ export default function ProgressScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.dark.background },
   content: { padding: 20, paddingBottom: 48, gap: 16 },
-  pageTitle: {
-    fontSize: 30,
-    fontWeight: '800',
-    color: Colors.dark.text,
-    marginTop: 8,
-    marginBottom: 4,
-  },
-  loadingBox: {
-    paddingTop: 60,
-    alignItems: 'center',
-  },
-  emptyCard: {
-    backgroundColor: Colors.dark.surface,
-    borderRadius: 18,
-    padding: 24,
-    borderWidth: 1,
-    borderColor: Colors.dark.border,
-    alignItems: 'center',
-    gap: 8,
-  },
-  emptyTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: Colors.dark.text,
-  },
-  emptyText: {
-    fontSize: 14,
-    lineHeight: 20,
-    color: Colors.dark.textMuted,
-    textAlign: 'center',
-  },
+  pageTitle: { fontSize: 30, fontWeight: '800', color: Colors.dark.text, marginTop: 8, marginBottom: 4 },
+  loadingBox: { paddingTop: 60, alignItems: 'center' },
+  emptyCard: { backgroundColor: Colors.dark.surface, borderRadius: 18, padding: 24, borderWidth: 1, borderColor: Colors.dark.border, alignItems: 'center', gap: 8 },
+  emptyTitle: { fontSize: 16, fontWeight: '700', color: Colors.dark.text },
+  emptyText: { fontSize: 14, lineHeight: 20, color: Colors.dark.textMuted, textAlign: 'center' },
   list: { gap: 12 },
-
-  // PR
-  prCard: {
-    backgroundColor: Colors.dark.surface,
-    borderRadius: 16,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: Colors.dark.border,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
+  prCard: { backgroundColor: Colors.dark.surface, borderRadius: 16, padding: 16, borderWidth: 1, borderColor: Colors.dark.border, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   prLeft: { flex: 1, gap: 4 },
   prExerciseName: { fontSize: 15, fontWeight: '700', color: Colors.dark.text },
   prDate: { fontSize: 12, color: Colors.dark.textMuted },
-  prRight: { alignItems: 'flex-end', gap: 2, flexDirection: 'row', alignItems: 'center', gap: 8 },
+  prRight: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   prWeight: { fontSize: 20, fontWeight: '800', color: PRIMARY },
   prReps: { fontSize: 13, color: Colors.dark.textMuted },
   prChevron: { fontSize: 20, color: Colors.dark.textMuted, fontWeight: '300' },
-
-  // Volume
-  volumeCard: {
-    backgroundColor: Colors.dark.surface,
-    borderRadius: 16,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: Colors.dark.border,
-    gap: 10,
-  },
-  volumeHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  volumeExerciseName: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: Colors.dark.text,
-    flex: 1,
-  },
-  volumeRightRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
+  volumeCard: { backgroundColor: Colors.dark.surface, borderRadius: 16, padding: 16, borderWidth: 1, borderColor: Colors.dark.border, gap: 10 },
+  volumeHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  volumeExerciseName: { fontSize: 15, fontWeight: '700', color: Colors.dark.text, flex: 1 },
+  volumeRightRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   volumeTotal: { fontSize: 15, fontWeight: '800', color: PRIMARY },
-  volumeBarTrack: {
-    height: 6,
-    backgroundColor: '#2a2a35',
-    borderRadius: 6,
-    overflow: 'hidden',
-  },
+  volumeBarTrack: { height: 6, backgroundColor: '#2a2a35', borderRadius: 6, overflow: 'hidden' },
   volumeBarFill: { height: '100%', backgroundColor: PRIMARY, borderRadius: 6 },
   volumeMeta: { flexDirection: 'row', justifyContent: 'space-between' },
   volumeMetaText: { fontSize: 12, color: Colors.dark.textMuted },
-
-  // Frequenza
-  freqMainCard: {
-    backgroundColor: Colors.dark.surface,
-    borderRadius: 18,
-    padding: 24,
-    borderWidth: 1,
-    borderColor: 'rgba(126,71,255,0.35)',
-    alignItems: 'center',
-    gap: 4,
-  },
-  freqMainLabel: {
-    fontSize: 11,
-    fontWeight: '800',
-    color: PRIMARY,
-    letterSpacing: 1.2,
-    marginBottom: 4,
-  },
-  freqMainValue: {
-    fontSize: 56,
-    fontWeight: '800',
-    color: Colors.dark.text,
-    lineHeight: 64,
-  },
+  freqMainCard: { backgroundColor: Colors.dark.surface, borderRadius: 18, padding: 24, borderWidth: 1, borderColor: 'rgba(126,71,255,0.35)', alignItems: 'center', gap: 4 },
+  freqMainLabel: { fontSize: 11, fontWeight: '800', color: PRIMARY, letterSpacing: 1.2, marginBottom: 4 },
+  freqMainValue: { fontSize: 56, fontWeight: '800', color: Colors.dark.text, lineHeight: 64 },
   freqMainSub: { fontSize: 15, color: Colors.dark.textMuted, fontWeight: '500' },
+  freqGoalRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', width: '100%', marginTop: 16 },
+  freqGoalLabel: { fontSize: 13, color: Colors.dark.textMuted },
+  freqGoalStatus: { fontSize: 13, fontWeight: '700' },
+  freqGoalTrack: { height: 6, backgroundColor: '#2a2a35', borderRadius: 6, overflow: 'hidden', width: '100%', marginTop: 6 },
+  freqGoalFill: { height: '100%', backgroundColor: PRIMARY, borderRadius: 6 },
+  freqGoalFillDone: { backgroundColor: Colors.dark.success },
   freqStatsRow: { flexDirection: 'row', gap: 10 },
-  freqStatBox: {
-    flex: 1,
-    backgroundColor: Colors.dark.surface,
-    borderRadius: 14,
-    padding: 14,
-    borderWidth: 1,
-    borderColor: Colors.dark.border,
-    gap: 6,
-  },
+  freqStatBox: { flex: 1, backgroundColor: Colors.dark.surface, borderRadius: 14, padding: 14, borderWidth: 1, borderColor: Colors.dark.border, gap: 6 },
   freqStatLabel: { fontSize: 11, color: Colors.dark.textMuted, fontWeight: '600' },
   freqStatValue: { fontSize: 16, fontWeight: '800', color: Colors.dark.text },
 });
