@@ -1065,3 +1065,14 @@ export async function resetAll() {
     DELETE FROM exercises;
   `);
 }
+
+export async function isDatabaseEmpty(): Promise<boolean> {
+  const database = await getDb();
+  const exercises = await database.getFirstAsync<{ count: number }>(
+    `SELECT COUNT(*) as count FROM exercises`
+  );
+  const templates = await database.getFirstAsync<{ count: number }>(
+    `SELECT COUNT(*) as count FROM workout_templates`
+  );
+  return (exercises?.count ?? 0) === 0 && (templates?.count ?? 0) === 0;
+}

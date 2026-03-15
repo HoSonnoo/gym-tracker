@@ -2,10 +2,12 @@ import { Colors } from '@/constants/Colors';
 import { useRestTimer } from '@/context/RestTimerContext';
 import { formatWeight, useUserPreferences } from '@/context/UserPreferencesContext';
 import {
+  cancelWorkoutSession,
   getActiveWorkoutSession,
   getWorkoutSessionExercises,
   getWorkoutSessionSets,
   getWorkoutTemplates,
+  isDatabaseEmpty,
   startWorkoutSessionFromTemplate,
   type WorkoutSession,
   type WorkoutSessionExercise,
@@ -32,6 +34,8 @@ type SessionExerciseWithSets = {
   sets: WorkoutSessionSet[];
 };
 
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
 function formatElapsed(startedAt: string): string {
   const start = new Date(startedAt).getTime();
   const now = Date.now();
@@ -41,6 +45,24 @@ function formatElapsed(startedAt: string): string {
   const s = totalSeconds % 60;
   if (h > 0) return `${h}h ${m.toString().padStart(2, '0')}m`;
   return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+}
+
+function formatElapsedStatic(startedAt: string): string {
+  const totalMinutes = Math.floor((Date.now() - new Date(startedAt).getTime()) / (1000 * 60));
+  const h = Math.floor(totalMinutes / 60);
+  const m = totalMinutes % 60;
+  if (h >= 24) return `${Math.floor(h / 24)}g fa`;
+  if (h > 0) return `${h}h ${m}m fa`;
+  return `${m}m fa`;
+}
+
+type SessionStatus = 'recent' | 'stale' | 'orphan';
+
+function classifySession(session: WorkoutSession): SessionStatus {
+  const hoursElapsed = (Date.now() - new Date(session.started_at).getTime()) / (1000 * 60 * 60);
+  if (hoursElapsed > 12) return 'orphan';
+  if (hoursElapsed > 3) return 'stale';
+  return 'recent';
 }
 
 // ─── Rest Timer Banner ────────────────────────────────────────────────────────
@@ -91,6 +113,88 @@ const bannerStyles = StyleSheet.create({
   skipText: { color: Colors.dark.textMuted, fontSize: 12, fontWeight: '700' },
   trackOuter: { height: 4, backgroundColor: '#2a2a35', borderRadius: 4, overflow: 'hidden' },
   trackFill: { height: '100%', borderRadius: 4 },
+});
+
+// ─── Session Recovery Card ────────────────────────────────────────────────────
+
+type SessionRecoveryCardProps = {
+  session: WorkoutSession;
+  status: 'stale' | 'orphan';
+  cancelling: boolean;
+  onResume: () => void;
+  onCancel: () => void;
+};
+
+function SessionRecoveryCard({ session, status, cancelling, onResume, onCancel }: SessionRecoveryCardProps) {
+  const isOrphan = status === 'orphan';
+  return (
+    <View style={recoveryStyles.card}>
+      <View style={recoveryStyles.iconRow}>
+        <View style={recoveryStyles.iconBadge}>
+          <Text style={recoveryStyles.iconText}>{isOrphan ? '⚠️' : '⏸️'}</Text>
+        </View>
+        <View style={recoveryStyles.titleBlock}>
+          <Text style={recoveryStyles.label}>
+            {isOrphan ? 'SESSIONE INTERROTTA' : 'SESSIONE IN PAUSA'}
+          </Text>
+          <Text style={recoveryStyles.sessionName}>{session.name}</Text>
+        </View>
+      </View>
+      <Text style={recoveryStyles.description}>
+        {isOrphan
+          ? `Questa sessione è stata avviata ${formatElapsedStatic(session.started_at)} e non è mai stata completata. Probabilmente l'app si è chiusa durante l'allenamento.`
+          : `Hai una sessione avviata ${formatElapsedStatic(session.started_at)}. Vuoi riprenderla o annullarla?`}
+      </Text>
+      <View style={recoveryStyles.actions}>
+        <TouchableOpacity style={recoveryStyles.resumeButton} onPress={onResume} activeOpacity={0.85}>
+          <Text style={recoveryStyles.resumeButtonText}>
+            {isOrphan ? 'Riprendi comunque' : 'Riprendi →'}
+          </Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[recoveryStyles.cancelButton, cancelling && recoveryStyles.buttonDisabled]}
+          onPress={onCancel}
+          disabled={cancelling}
+          activeOpacity={0.85}
+        >
+          <Text style={recoveryStyles.cancelButtonText}>
+            {cancelling ? 'Annullamento...' : 'Annulla sessione'}
+          </Text>
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
+}
+
+const recoveryStyles = StyleSheet.create({
+  card: {
+    backgroundColor: Colors.dark.surface,
+    borderRadius: 18,
+    padding: 18,
+    borderWidth: 1,
+    borderColor: `${Colors.dark.warning}55`,
+    gap: 14,
+  },
+  iconRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  iconBadge: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    backgroundColor: 'rgba(245,158,11,0.12)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  iconText: { fontSize: 22 },
+  titleBlock: { flex: 1, gap: 3 },
+  label: { fontSize: 10, fontWeight: '800', color: Colors.dark.warning, letterSpacing: 1.2 },
+  sessionName: { fontSize: 18, fontWeight: '800', color: Colors.dark.text },
+  description: { fontSize: 14, lineHeight: 20, color: Colors.dark.textMuted },
+  actions: { gap: 10 },
+  resumeButton: { backgroundColor: PRIMARY, borderRadius: 14, paddingVertical: 14, alignItems: 'center' },
+  resumeButtonText: { color: '#fff', fontSize: 15, fontWeight: '800' },
+  cancelButton: { backgroundColor: 'transparent', borderRadius: 14, borderWidth: 1, borderColor: Colors.dark.danger, paddingVertical: 14, alignItems: 'center' },
+  cancelButtonText: { color: Colors.dark.danger, fontSize: 14, fontWeight: '700' },
+  buttonDisabled: { opacity: 0.5 },
 });
 
 // ─── Exercise Breakdown Card ──────────────────────────────────────────────────
@@ -246,7 +350,9 @@ export default function TodayScreen() {
 
   const [loading, setLoading] = useState(true);
   const [startingSession, setStartingSession] = useState(false);
+  const [cancellingSession, setCancellingSession] = useState(false);
   const [elapsed, setElapsed] = useState('');
+  const [dbEmpty, setDbEmpty] = useState(false);
 
   const [templates, setTemplates] = useState<WorkoutTemplate[]>([]);
   const [activeSession, setActiveSession] = useState<WorkoutSession | null>(null);
@@ -259,6 +365,8 @@ export default function TodayScreen() {
       if (timerRef.current) clearInterval(timerRef.current);
       return;
     }
+    const status = classifySession(activeSession);
+    if (status !== 'recent') return;
     const tick = () => setElapsed(formatElapsed(activeSession.started_at));
     tick();
     timerRef.current = setInterval(tick, 1000);
@@ -268,12 +376,14 @@ export default function TodayScreen() {
   const loadScreenData = useCallback(async () => {
     setLoading(true);
     try {
-      const [templatesData, activeSessionData] = await Promise.all([
+      const [templatesData, activeSessionData, empty] = await Promise.all([
         getWorkoutTemplates(),
         getActiveWorkoutSession(),
+        isDatabaseEmpty(),
       ]);
       setTemplates(templatesData);
       setActiveSession(activeSessionData);
+      setDbEmpty(empty);
       if (!activeSessionData) {
         setSessionData([]);
         return;
@@ -316,10 +426,36 @@ export default function TodayScreen() {
     }
   };
 
-  const handleOpenActiveSession = () => {
+  const handleOpenActiveSession = useCallback(() => {
     if (!activeSession) return;
     router.push(`/workout-session/${activeSession.id}`);
-  };
+  }, [activeSession, router]);
+
+  const handleCancelSession = useCallback(async () => {
+    if (!activeSession) return;
+    Alert.alert(
+      'Annulla sessione',
+      'La sessione verrà marcata come annullata. I dati parzialmente inseriti andranno persi.',
+      [
+        { text: 'Indietro', style: 'cancel' },
+        {
+          text: 'Annulla sessione',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              setCancellingSession(true);
+              await cancelWorkoutSession(activeSession.id);
+              await loadScreenData();
+            } catch {
+              Alert.alert('Errore', 'Impossibile annullare la sessione.');
+            } finally {
+              setCancellingSession(false);
+            }
+          },
+        },
+      ]
+    );
+  }, [activeSession, loadScreenData]);
 
   if (loading) {
     return (
@@ -329,46 +465,78 @@ export default function TodayScreen() {
     );
   }
 
+  const sessionStatus = activeSession ? classifySession(activeSession) : null;
+
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
       <Text style={styles.pageTitle}>Oggi</Text>
 
       {!activeSession ? (
-        <>
+        dbEmpty ? (
+          // ── DB vuoto — empty state guidato ────────────────────────────────
           <View style={styles.card}>
-            <Text style={styles.cardTitle}>Allenamento del giorno</Text>
-            <Text style={styles.cardText}>Seleziona un template per avviare la sessione di oggi.</Text>
+            <Text style={styles.cardTitle}>Inizia qui 👋</Text>
+            <Text style={styles.cardText}>
+              Non hai ancora nessun template di allenamento. Vai nel tab Allenamenti per crearne uno — ci vogliono pochi minuti.
+            </Text>
+            <TouchableOpacity
+              style={styles.onboardingButton}
+              onPress={() => router.push('/(tabs)/workouts')}
+              activeOpacity={0.85}
+            >
+              <Text style={styles.onboardingButtonText}>Vai ad Allenamenti →</Text>
+            </TouchableOpacity>
           </View>
-          <View style={styles.card}>
-            <Text style={styles.cardTitle}>Scegli un template</Text>
-            {templates.length === 0 ? (
-              <Text style={styles.cardText}>Non hai ancora creato template di allenamento.</Text>
-            ) : (
-              <View style={styles.templateList}>
-                {templates.map((template) => (
-                  <TouchableOpacity
-                    key={template.id}
-                    style={styles.templateButton}
-                    onPress={() => handleStartSession(template.id)}
-                    activeOpacity={0.85}
-                    disabled={startingSession}
-                  >
-                    <View style={styles.templateButtonContent}>
-                      <Text style={styles.templateButtonTitle}>{template.name}</Text>
-                      {template.notes
-                        ? <Text style={styles.templateButtonText}>{template.notes}</Text>
-                        : <Text style={styles.templateButtonTextMuted}>Nessuna nota</Text>}
-                    </View>
-                    <Text style={styles.templateButtonAction}>
-                      {startingSession ? 'Avvio...' : 'Inizia →'}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-            )}
-          </View>
-        </>
+        ) : (
+          // ── Nessuna sessione attiva — scegli template ─────────────────────
+          <>
+            <View style={styles.card}>
+              <Text style={styles.cardTitle}>Allenamento del giorno</Text>
+              <Text style={styles.cardText}>
+                Seleziona un template per avviare la sessione di oggi.
+              </Text>
+            </View>
+            <View style={styles.card}>
+              <Text style={styles.cardTitle}>Scegli un template</Text>
+              {templates.length === 0 ? (
+                <Text style={styles.cardText}>Non hai ancora creato template di allenamento.</Text>
+              ) : (
+                <View style={styles.templateList}>
+                  {templates.map((template) => (
+                    <TouchableOpacity
+                      key={template.id}
+                      style={styles.templateButton}
+                      onPress={() => handleStartSession(template.id)}
+                      activeOpacity={0.85}
+                      disabled={startingSession}
+                    >
+                      <View style={styles.templateButtonContent}>
+                        <Text style={styles.templateButtonTitle}>{template.name}</Text>
+                        {template.notes
+                          ? <Text style={styles.templateButtonText}>{template.notes}</Text>
+                          : <Text style={styles.templateButtonTextMuted}>Nessuna nota</Text>}
+                      </View>
+                      <Text style={styles.templateButtonAction}>
+                        {startingSession ? 'Avvio...' : 'Inizia →'}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              )}
+            </View>
+          </>
+        )
+      ) : sessionStatus === 'orphan' || sessionStatus === 'stale' ? (
+        // ── Sessione orfana o in pausa da troppo tempo ─────────────────────
+        <SessionRecoveryCard
+          session={activeSession}
+          status={sessionStatus}
+          cancelling={cancellingSession}
+          onResume={handleOpenActiveSession}
+          onCancel={handleCancelSession}
+        />
       ) : (
+        // ── Sessione attiva recente ────────────────────────────────────────
         <>
           <View style={styles.sessionHeaderCard}>
             <View style={styles.sessionHeaderTop}>
@@ -383,7 +551,9 @@ export default function TodayScreen() {
             <View style={styles.progressBarTrack}>
               <View style={[styles.progressBarFill, { width: `${progressPercent * 100}%` as any }]} />
             </View>
-            <Text style={styles.progressLabel}>{completedSetsCount} / {totalSetsCount} serie completate</Text>
+            <Text style={styles.progressLabel}>
+              {completedSetsCount} / {totalSetsCount} serie completate
+            </Text>
           </View>
 
           <RestTimerBanner />
@@ -399,6 +569,8 @@ export default function TodayScreen() {
   );
 }
 
+// ─── Styles ───────────────────────────────────────────────────────────────────
+
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.dark.background },
   content: { padding: 20, paddingBottom: 40, gap: 16 },
@@ -407,6 +579,18 @@ const styles = StyleSheet.create({
   card: { backgroundColor: Colors.dark.surface, borderRadius: 18, padding: 18, borderWidth: 1, borderColor: Colors.dark.border },
   cardTitle: { fontSize: 18, fontWeight: '700', color: Colors.dark.text, marginBottom: 12 },
   cardText: { fontSize: 15, lineHeight: 22, color: Colors.dark.textMuted },
+  onboardingButton: {
+    marginTop: 16,
+    backgroundColor: PRIMARY,
+    borderRadius: 14,
+    paddingVertical: 14,
+    alignItems: 'center',
+  },
+  onboardingButtonText: {
+    color: '#fff',
+    fontSize: 15,
+    fontWeight: '800',
+  },
   templateList: { gap: 12, marginTop: 4 },
   templateButton: { backgroundColor: '#17171c', borderRadius: 16, borderWidth: 1, borderColor: Colors.dark.border, padding: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 14 },
   templateButtonContent: { flex: 1 },
