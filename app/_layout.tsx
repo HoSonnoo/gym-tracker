@@ -1,4 +1,5 @@
 import { Colors } from '@/constants/Colors';
+import { RestTimerProvider } from '@/context/RestTimerContext';
 import { initDatabase, seedExercises } from '@/database';
 import { Stack } from 'expo-router';
 import { useEffect, useState } from 'react';
@@ -18,7 +19,6 @@ export default function RootLayout() {
         setIsReady(true);
       }
     }
-
     setupApp();
   }, []);
 
@@ -38,15 +38,17 @@ export default function RootLayout() {
   }
 
   return (
-    <Stack screenOptions={{ headerShown: false }}>
-      <Stack.Screen name="(tabs)" />
-      <Stack.Screen name="exercises" />
-      <Stack.Screen name="template/[id]" />
-      <Stack.Screen name="template/exercise/[id]" />
-      <Stack.Screen
-        name="template/exercise/set/[id]"
-        options={{ presentation: 'modal' }}
-      />
-    </Stack>
+    <RestTimerProvider>
+      <Stack screenOptions={{ headerShown: false }}>
+        <Stack.Screen name="(tabs)" />
+        <Stack.Screen name="exercises" />
+        <Stack.Screen name="template/[id]" />
+        <Stack.Screen name="template/exercise/[id]" />
+        <Stack.Screen
+          name="template/exercise/set/[id]"
+          options={{ presentation: 'modal' }}
+        />
+      </Stack>
+    </RestTimerProvider>
   );
 }

@@ -1,4 +1,5 @@
 import { Colors } from '@/constants/Colors';
+import { useRestTimer } from '@/context/RestTimerContext';
 import {
   completeWorkoutSession,
   getWorkoutSessionById,
@@ -53,7 +54,7 @@ type SessionExerciseWithSets = {
   sets: WorkoutSessionSet[];
 };
 
-// ─── Pure helpers (hoisted outside component to avoid re-creation on render) ──
+// ─── Pure helpers ─────────────────────────────────────────────────────────────
 
 function parseNullableNumber(value: string): number | null {
   const normalized = value.replace(',', '.').trim();
@@ -283,12 +284,116 @@ function SetCard({
   );
 }
 
+// ─── Rest Timer Banner ────────────────────────────────────────────────────────
+
+function RestTimerBanner() {
+  const { timer, stopTimer } = useRestTimer();
+
+  if (!timer.isActive && timer.remainingSeconds === 0) return null;
+
+  const progress = timer.durationSeconds > 0
+    ? timer.remainingSeconds / timer.durationSeconds
+    : 0;
+
+  const isExpired = !timer.isActive && timer.remainingSeconds === 0 && timer.durationSeconds > 0;
+  const accentColor = isExpired ? Colors.dark.success : PRIMARY;
+
+  return (
+    <View style={[bannerStyles.container, { borderColor: accentColor + '55' }]}>
+      <View style={bannerStyles.top}>
+        <View>
+          <Text style={[bannerStyles.label, { color: accentColor }]}>
+            {isExpired ? 'RECUPERO COMPLETATO' : 'RECUPERO'}
+          </Text>
+          <Text style={bannerStyles.context}>
+            {timer.exerciseName} · {timer.setLabel}
+          </Text>
+        </View>
+        <View style={bannerStyles.right}>
+          <Text style={[bannerStyles.countdown, { color: accentColor }]}>
+            {isExpired ? '✓' : `${timer.remainingSeconds}s`}
+          </Text>
+          <TouchableOpacity onPress={stopTimer} activeOpacity={0.8} style={bannerStyles.skipButton}>
+            <Text style={bannerStyles.skipText}>Salta</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+      <View style={bannerStyles.trackOuter}>
+        <View
+          style={[
+            bannerStyles.trackFill,
+            { width: `${progress * 100}%` as any, backgroundColor: accentColor },
+          ]}
+        />
+      </View>
+    </View>
+  );
+}
+
+const bannerStyles = StyleSheet.create({
+  container: {
+    backgroundColor: Colors.dark.surface,
+    borderRadius: 16,
+    padding: 14,
+    borderWidth: 1,
+    marginBottom: 14,
+  },
+  top: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  label: {
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 1.2,
+    marginBottom: 3,
+  },
+  context: {
+    fontSize: 13,
+    color: Colors.dark.text,
+    fontWeight: '600',
+  },
+  right: {
+    alignItems: 'flex-end',
+    gap: 4,
+  },
+  countdown: {
+    fontSize: 26,
+    fontWeight: '800',
+    fontVariant: ['tabular-nums'],
+  },
+  skipButton: {
+    backgroundColor: Colors.dark.surfaceSoft,
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+  },
+  skipText: {
+    color: Colors.dark.textMuted,
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  trackOuter: {
+    height: 4,
+    backgroundColor: '#2a2a35',
+    borderRadius: 4,
+    overflow: 'hidden',
+  },
+  trackFill: {
+    height: '100%',
+    borderRadius: 4,
+  },
+});
+
 // ─── Screen ───────────────────────────────────────────────────────────────────
 
 export default function WorkoutSessionScreen() {
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
   const sessionId = Number(id);
+  const { startTimer } = useRestTimer();
 
   const scrollRef = useRef<ScrollView | null>(null);
   const exerciseCardPositionsRef = useRef<Record<number, number>>({});
@@ -301,41 +406,35 @@ export default function WorkoutSessionScreen() {
   const [savingSetId, setSavingSetId] = useState<number | null>(null);
   const [finishingSession, setFinishingSession] = useState(false);
 
-  // ── Data loading ─────────────────────────────────────────────────────────────
+  // ── Data loading ──────────────────────────────────────────────────────────────
 
   const loadSessionData = useCallback(async () => {
     if (!sessionId || Number.isNaN(sessionId)) {
       setLoading(false);
       return;
     }
-
     setLoading(true);
     try {
       const sessionFromDb = await getWorkoutSessionById(sessionId);
       setSession(sessionFromDb);
-
       if (!sessionFromDb) {
         setSessionData([]);
         setSetForms({});
         return;
       }
-
       const exercises = await getWorkoutSessionExercises(sessionFromDb.id);
-
       const exercisesWithSets = await Promise.all(
         exercises.map(async (exercise) => ({
           exercise,
           sets: await getWorkoutSessionSets(exercise.id),
         }))
       );
-
       const initialForms: Record<number, SetFormState> = {};
       for (const { sets } of exercisesWithSets) {
         for (const set of sets) {
           initialForms[set.id] = buildInitialForm(set);
         }
       }
-
       setSessionData(exercisesWithSets);
       setSetForms(initialForms);
     } catch {
@@ -353,25 +452,14 @@ export default function WorkoutSessionScreen() {
 
   // ── Derived state ─────────────────────────────────────────────────────────────
 
-  const allSets = useMemo(
-    () => sessionData.flatMap((item) => item.sets),
-    [sessionData]
-  );
-
-  const completedSetsCount = useMemo(
-    () => allSets.filter((s) => s.is_completed === 1).length,
-    [allSets]
-  );
-
+  const allSets = useMemo(() => sessionData.flatMap((item) => item.sets), [sessionData]);
+  const completedSetsCount = useMemo(() => allSets.filter((s) => s.is_completed === 1).length, [allSets]);
   const totalSetsCount = allSets.length;
   const remainingSetsCount = totalSetsCount - completedSetsCount;
+  const progressPercent = totalSetsCount > 0 ? completedSetsCount / totalSetsCount : 0;
+  const nextIncompleteSet = useMemo(() => allSets.find((s) => s.is_completed === 0) ?? null, [allSets]);
 
-  const nextIncompleteSet = useMemo(
-    () => allSets.find((s) => s.is_completed === 0) ?? null,
-    [allSets]
-  );
-
-  // ── Scroll ────────────────────────────────────────────────────────────────────
+  // ── Scroll ─────────────────────────────────────────────────────────────────────
 
   const registerExerciseCardPosition = useCallback(
     (exerciseId: number) => (event: LayoutChangeEvent) => {
@@ -393,24 +481,20 @@ export default function WorkoutSessionScreen() {
 
   const scrollToNextIncompleteSet = useCallback(() => {
     if (!nextIncompleteSet || !scrollRef.current) return;
-
-    // Find which exercise this set belongs to
     const ownerExercise = sessionData.find((item) =>
       item.sets.some((s) => s.id === nextIncompleteSet.id)
     );
     if (!ownerExercise) return;
-
     const exerciseY = exerciseCardPositionsRef.current[ownerExercise.exercise.id] ?? 0;
     const setRelativeY = setCardRelativePositionsRef.current[nextIncompleteSet.id];
     if (typeof setRelativeY !== 'number') return;
-
     scrollRef.current.scrollTo({
       y: Math.max(exerciseY + setRelativeY - NEXT_SET_SCROLL_OFFSET, 0),
       animated: true,
     });
   }, [nextIncompleteSet, sessionData]);
 
-  // ── Shared payload builder (deduplicates handleSave / handleUncheck) ──────────
+  // ── Payload builder ───────────────────────────────────────────────────────────
 
   const buildSetPayload = useCallback(
     (setId: number, isCompleted: 0 | 1) => {
@@ -446,6 +530,19 @@ export default function WorkoutSessionScreen() {
       try {
         setSavingSetId(set.id);
         await updateWorkoutSessionSet(set.id, buildSetPayload(set.id, 1));
+
+        // Avvia timer recupero se la serie ha un tempo di pausa configurato
+        if (set.target_rest_seconds && set.target_rest_seconds > 0) {
+          // Trova il nome dell'esercizio proprietario di questa serie
+          const ownerItem = sessionData.find((item) =>
+            item.sets.some((s) => s.id === set.id)
+          );
+          const exerciseName = ownerItem?.exercise.exercise_name ?? '';
+          const setIndex = ownerItem?.sets.findIndex((s) => s.id === set.id) ?? 0;
+          const setLabel = `Serie ${setIndex + 1} · ${formatSetType(set)}`;
+          startTimer(set.target_rest_seconds, exerciseName, setLabel);
+        }
+
         await loadSessionData();
         scrollToTop();
       } catch {
@@ -454,7 +551,7 @@ export default function WorkoutSessionScreen() {
         setSavingSetId(null);
       }
     },
-    [setForms, buildSetPayload, loadSessionData, scrollToTop]
+    [setForms, buildSetPayload, loadSessionData, scrollToTop, sessionData, startTimer]
   );
 
   const handleUncheckSet = useCallback(
@@ -475,7 +572,6 @@ export default function WorkoutSessionScreen() {
 
   const handleCompleteSession = useCallback(async () => {
     if (!session) return;
-
     const proceed = async () => {
       try {
         setFinishingSession(true);
@@ -487,7 +583,6 @@ export default function WorkoutSessionScreen() {
         setFinishingSession(false);
       }
     };
-
     if (remainingSetsCount > 0) {
       Alert.alert(
         'Serie non completate',
@@ -499,7 +594,6 @@ export default function WorkoutSessionScreen() {
       );
       return;
     }
-
     await proceed();
   }, [session, remainingSetsCount, router]);
 
@@ -557,9 +651,26 @@ export default function WorkoutSessionScreen() {
           Sessione attiva. Inserisci i dati reali e completa le serie durante l'allenamento.
         </Text>
 
+        {/* Banner recupero — visibile solo quando attivo */}
+        <RestTimerBanner />
+
         {/* Progress card */}
         <View style={styles.progressCard}>
           <Text style={styles.cardTitle}>Stato</Text>
+
+          {/* Barra progresso */}
+          <View style={styles.progressBarTrack}>
+            <View
+              style={[
+                styles.progressBarFill,
+                { width: `${progressPercent * 100}%` as any },
+                progressPercent === 1 && styles.progressBarFillComplete,
+              ]}
+            />
+          </View>
+          <Text style={styles.progressLabel}>
+            {completedSetsCount} / {totalSetsCount} serie completate
+          </Text>
 
           <View style={styles.sessionStatsRow}>
             <StatBadge label="Completate" value={`${completedSetsCount}/${totalSetsCount}`} />
@@ -575,11 +686,11 @@ export default function WorkoutSessionScreen() {
               <Text style={styles.nextSetButtonText}>Prossima serie</Text>
             </TouchableOpacity>
           ) : (
-            <Text style={styles.cardText}>
-              Tutte le serie risultano completate. Puoi chiudere l'allenamento.
+            <Text style={[styles.cardText, { color: Colors.dark.success, marginTop: 14 }]}>
+              ✓ Tutte le serie completate. Puoi chiudere l'allenamento.
             </Text>
           )}
-          {/* Finish button */}
+
           <TouchableOpacity
             style={[styles.finishButton, finishingSession && styles.disabledButton]}
             onPress={handleCompleteSession}
@@ -594,7 +705,11 @@ export default function WorkoutSessionScreen() {
 
         {/* Exercise list */}
         {sessionData.map(({ exercise, sets }) => (
-          <View key={exercise.id} onLayout={registerExerciseCardPosition(exercise.id)} style={styles.exerciseCard}>
+          <View
+            key={exercise.id}
+            onLayout={registerExerciseCardPosition(exercise.id)}
+            style={styles.exerciseCard}
+          >
             <View style={styles.exerciseHeader}>
               <View style={styles.exerciseHeaderText}>
                 <Text style={styles.exerciseTitle}>{exercise.exercise_name}</Text>
@@ -649,345 +764,69 @@ export default function WorkoutSessionScreen() {
 // ─── Styles ───────────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-    backgroundColor: Colors.dark.background,
-  },
-  container: {
-    flex: 1,
-    backgroundColor: Colors.dark.background,
-  },
-  content: {
-    padding: 20,
-    paddingTop: 8,
-    paddingBottom: 40,
-  },
-  loadingContainer: {
-    flex: 1,
-    backgroundColor: Colors.dark.background,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  centered: {
-    flex: 1,
-    backgroundColor: Colors.dark.background,
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 24,
-    gap: 16,
-  },
-  errorText: {
-    color: Colors.dark.danger,
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  topBar: {
-    marginBottom: 12,
-  },
-  topBackButton: {
-    alignSelf: 'flex-start',
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    backgroundColor: Colors.dark.surfaceSoft,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: Colors.dark.border,
-  },
-  topBackButtonText: {
-    color: Colors.dark.text,
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  pageTitle: {
-    fontSize: 30,
-    fontWeight: '800',
-    color: Colors.dark.text,
-  },
-  pageSubtitle: {
-    fontSize: 15,
-    lineHeight: 22,
-    color: Colors.dark.textMuted,
-    marginBottom: 12,
-  },
-  progressCard: {
-    backgroundColor: Colors.dark.surface,
-    borderRadius: 18,
-    padding: 18,
-    borderWidth: 1,
-    borderColor: Colors.dark.border,
-    marginBottom: 14,
-  },
-  cardTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: Colors.dark.text,
-    marginBottom: 8,
-  },
-  cardText: {
-    fontSize: 15,
-    lineHeight: 22,
-    color: Colors.dark.textMuted,
-    marginTop: 14,
-  },
-  sessionStatsRow: {
-    flexDirection: 'row',
-    gap: 10,
-    marginTop: 8,
-  },
-  statBadge: {
-    flex: 1,
-    backgroundColor: '#17171c',
-    borderRadius: 14,
-    padding: 12,
-    borderWidth: 1,
-    borderColor: Colors.dark.border,
-  },
-  statBadgeLabel: {
-    color: Colors.dark.textMuted,
-    fontSize: 12,
-    marginBottom: 6,
-  },
-  statBadgeValue: {
-    color: Colors.dark.text,
-    fontSize: 16,
-    fontWeight: '700',
-  },
-  nextSetButton: {
-    marginTop: 14,
-    backgroundColor: PRIMARY,
-    borderRadius: 14,
-    paddingVertical: 14,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  nextSetButtonText: {
-    color: '#fff',
-    fontSize: 15,
-    fontWeight: '800',
-  },
-  exerciseCard: {
-    backgroundColor: Colors.dark.surface,
-    borderRadius: 18,
-    padding: 18,
-    borderWidth: 1,
-    borderColor: Colors.dark.border,
-    marginTop: 12,
-  },
-  exerciseHeader: {
-    marginBottom: 12,
-  },
-  exerciseHeaderText: {
-    flex: 1,
-  },
-  exerciseTitle: {
-    color: Colors.dark.text,
-    fontSize: 20,
-    fontWeight: '800',
-  },
-  exerciseSubtitle: {
-    color: Colors.dark.textMuted,
-    fontSize: 14,
-    marginTop: 4,
-  },
-  exerciseNoteBox: {
-    backgroundColor: '#1a1a21',
-    borderRadius: 12,
-    padding: 12,
-    borderWidth: 1,
-    borderColor: Colors.dark.border,
-    marginBottom: 14,
-  },
-  exerciseSetsList: {
-    gap: 14,
-  },
-  setCard: {
-    backgroundColor: '#141419',
-    borderRadius: 16,
-    padding: 14,
-    borderWidth: 1,
-    borderColor: Colors.dark.border,
-  },
-  setCardCompleted: {
-    borderColor: PRIMARY,
-  },
-  setCardNext: {
-    borderColor: 'rgba(126, 71, 255, 0.7)',
-    shadowColor: PRIMARY,
-    shadowOpacity: 0.18,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 0 },
-  },
-  setHeaderRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 10,
-    marginBottom: 12,
-  },
-  setTitle: {
-    color: Colors.dark.text,
-    fontSize: 16,
-    fontWeight: '700',
-    flex: 1,
-  },
-  statusPill: {
-    backgroundColor: '#24242b',
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 999,
-  },
-  statusPillActive: {
-    backgroundColor: 'rgba(126, 71, 255, 0.18)',
-  },
-  statusPillText: {
-    color: Colors.dark.textMuted,
-    fontSize: 12,
-    fontWeight: '700',
-  },
-  statusPillTextActive: {
-    color: PRIMARY,
-  },
-  targetGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 10,
-    marginBottom: 12,
-  },
-  targetBox: {
-    width: '48%',
-    backgroundColor: '#1a1a21',
-    borderRadius: 12,
-    padding: 12,
-    borderWidth: 1,
-    borderColor: Colors.dark.border,
-  },
-  targetLabel: {
-    color: Colors.dark.textMuted,
-    fontSize: 12,
-    marginBottom: 6,
-  },
-  targetValue: {
-    color: Colors.dark.text,
-    fontSize: 15,
-    fontWeight: '700',
-  },
-  inlineNoteBox: {
-    backgroundColor: '#1a1a21',
-    borderRadius: 12,
-    padding: 12,
-    borderWidth: 1,
-    borderColor: Colors.dark.border,
-    marginBottom: 12,
-  },
-  noteLabel: {
-    color: Colors.dark.textMuted,
-    fontSize: 12,
-    marginBottom: 6,
-  },
-  noteText: {
-    color: Colors.dark.text,
-    fontSize: 14,
-    lineHeight: 20,
-  },
-  inputsRow: {
-    flexDirection: 'row',
-    gap: 10,
-    marginBottom: 12,
-  },
-  inputGroup: {
-    flex: 1,
-    gap: 6,
-    marginBottom: 12,
-  },
-  inputLabel: {
-    color: Colors.dark.textMuted,
-    fontSize: 13,
-    fontWeight: '600',
-  },
-  input: {
-    backgroundColor: '#101015',
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: Colors.dark.border,
-    color: Colors.dark.text,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    fontSize: 15,
-  },
-  notesInput: {
-    minHeight: 92,
-    textAlignVertical: 'top',
-  },
-  effortRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-  },
-  effortChip: {
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    borderRadius: 12,
-    backgroundColor: '#16161d',
-    borderWidth: 1,
-    borderColor: Colors.dark.border,
-  },
-  effortChipSelected: {
-    backgroundColor: 'rgba(126, 71, 255, 0.18)',
-    borderColor: PRIMARY,
-  },
-  effortChipText: {
-    color: Colors.dark.textMuted,
-    fontSize: 13,
-    fontWeight: '700',
-  },
-  effortChipTextSelected: {
-    color: PRIMARY,
-  },
-  setActions: {
-    gap: 10,
-    marginTop: 2,
-  },
-  primaryButton: {
-    backgroundColor: PRIMARY,
-    borderRadius: 14,
-    paddingVertical: 14,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  primaryButtonText: {
-    color: '#ffffff',
-    fontSize: 15,
-    fontWeight: '800',
-  },
-  secondaryButton: {
-    backgroundColor: 'transparent',
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: Colors.dark.border,
-    paddingVertical: 14,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  secondaryButtonText: {
-    color: Colors.dark.text,
-    fontSize: 14,
-    fontWeight: '700',
-  },
-  finishButton: {
-    backgroundColor: PRIMARY,
-    borderRadius: 16,
-    paddingVertical: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 18,
-    marginBottom: 12,
-  },
-  finishButtonText: {
-    color: '#ffffff',
-    fontSize: 16,
-    fontWeight: '800',
-  },
-  disabledButton: {
-    opacity: 0.6,
-  },
+  safeArea: { flex: 1, backgroundColor: Colors.dark.background },
+  container: { flex: 1, backgroundColor: Colors.dark.background },
+  content: { padding: 20, paddingTop: 8, paddingBottom: 40 },
+  loadingContainer: { flex: 1, backgroundColor: Colors.dark.background, alignItems: 'center', justifyContent: 'center' },
+  centered: { flex: 1, backgroundColor: Colors.dark.background, alignItems: 'center', justifyContent: 'center', padding: 24, gap: 16 },
+  errorText: { color: Colors.dark.danger, fontSize: 16, fontWeight: '600' },
+  topBar: { marginBottom: 12 },
+  topBackButton: { alignSelf: 'flex-start', paddingVertical: 8, paddingHorizontal: 12, backgroundColor: Colors.dark.surfaceSoft, borderRadius: 12, borderWidth: 1, borderColor: Colors.dark.border },
+  topBackButtonText: { color: Colors.dark.text, fontSize: 14, fontWeight: '600' },
+  pageTitle: { fontSize: 30, fontWeight: '800', color: Colors.dark.text },
+  pageSubtitle: { fontSize: 15, lineHeight: 22, color: Colors.dark.textMuted, marginBottom: 12 },
+  progressCard: { backgroundColor: Colors.dark.surface, borderRadius: 18, padding: 18, borderWidth: 1, borderColor: Colors.dark.border, marginBottom: 14 },
+  cardTitle: { fontSize: 18, fontWeight: '700', color: Colors.dark.text, marginBottom: 10 },
+  cardText: { fontSize: 15, lineHeight: 22, color: Colors.dark.textMuted },
+  progressBarTrack: { height: 6, backgroundColor: '#2a2a35', borderRadius: 6, overflow: 'hidden', marginBottom: 6 },
+  progressBarFill: { height: '100%', backgroundColor: PRIMARY, borderRadius: 6 },
+  progressBarFillComplete: { backgroundColor: Colors.dark.success },
+  progressLabel: { fontSize: 13, color: Colors.dark.textMuted, marginBottom: 14 },
+  sessionStatsRow: { flexDirection: 'row', gap: 10, marginBottom: 0 },
+  statBadge: { flex: 1, backgroundColor: '#17171c', borderRadius: 14, padding: 12, borderWidth: 1, borderColor: Colors.dark.border },
+  statBadgeLabel: { color: Colors.dark.textMuted, fontSize: 12, marginBottom: 6 },
+  statBadgeValue: { color: Colors.dark.text, fontSize: 16, fontWeight: '700' },
+  nextSetButton: { marginTop: 14, backgroundColor: PRIMARY, borderRadius: 14, paddingVertical: 14, alignItems: 'center', justifyContent: 'center' },
+  nextSetButtonText: { color: '#fff', fontSize: 15, fontWeight: '800' },
+  exerciseCard: { backgroundColor: Colors.dark.surface, borderRadius: 18, padding: 18, borderWidth: 1, borderColor: Colors.dark.border, marginTop: 12 },
+  exerciseHeader: { marginBottom: 12 },
+  exerciseHeaderText: { flex: 1 },
+  exerciseTitle: { color: Colors.dark.text, fontSize: 20, fontWeight: '800' },
+  exerciseSubtitle: { color: Colors.dark.textMuted, fontSize: 14, marginTop: 4 },
+  exerciseNoteBox: { backgroundColor: '#1a1a21', borderRadius: 12, padding: 12, borderWidth: 1, borderColor: Colors.dark.border, marginBottom: 14 },
+  exerciseSetsList: { gap: 14 },
+  setCard: { backgroundColor: '#141419', borderRadius: 16, padding: 14, borderWidth: 1, borderColor: Colors.dark.border },
+  setCardCompleted: { borderColor: PRIMARY },
+  setCardNext: { borderColor: 'rgba(126, 71, 255, 0.7)', shadowColor: PRIMARY, shadowOpacity: 0.18, shadowRadius: 8, shadowOffset: { width: 0, height: 0 } },
+  setHeaderRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10, marginBottom: 12 },
+  setTitle: { color: Colors.dark.text, fontSize: 16, fontWeight: '700', flex: 1 },
+  statusPill: { backgroundColor: '#24242b', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999 },
+  statusPillActive: { backgroundColor: 'rgba(126, 71, 255, 0.18)' },
+  statusPillText: { color: Colors.dark.textMuted, fontSize: 12, fontWeight: '700' },
+  statusPillTextActive: { color: PRIMARY },
+  targetGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 12 },
+  targetBox: { width: '48%', backgroundColor: '#1a1a21', borderRadius: 12, padding: 12, borderWidth: 1, borderColor: Colors.dark.border },
+  targetLabel: { color: Colors.dark.textMuted, fontSize: 12, marginBottom: 6 },
+  targetValue: { color: Colors.dark.text, fontSize: 15, fontWeight: '700' },
+  inlineNoteBox: { backgroundColor: '#1a1a21', borderRadius: 12, padding: 12, borderWidth: 1, borderColor: Colors.dark.border, marginBottom: 12 },
+  noteLabel: { color: Colors.dark.textMuted, fontSize: 12, marginBottom: 6 },
+  noteText: { color: Colors.dark.text, fontSize: 14, lineHeight: 20 },
+  inputsRow: { flexDirection: 'row', gap: 10, marginBottom: 12 },
+  inputGroup: { flex: 1, gap: 6, marginBottom: 12 },
+  inputLabel: { color: Colors.dark.textMuted, fontSize: 13, fontWeight: '600' },
+  input: { backgroundColor: '#101015', borderRadius: 12, borderWidth: 1, borderColor: Colors.dark.border, color: Colors.dark.text, paddingHorizontal: 14, paddingVertical: 12, fontSize: 15 },
+  notesInput: { minHeight: 92, textAlignVertical: 'top' },
+  effortRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  effortChip: { paddingHorizontal: 12, paddingVertical: 10, borderRadius: 12, backgroundColor: '#16161d', borderWidth: 1, borderColor: Colors.dark.border },
+  effortChipSelected: { backgroundColor: 'rgba(126, 71, 255, 0.18)', borderColor: PRIMARY },
+  effortChipText: { color: Colors.dark.textMuted, fontSize: 13, fontWeight: '700' },
+  effortChipTextSelected: { color: PRIMARY },
+  setActions: { gap: 10, marginTop: 2 },
+  primaryButton: { backgroundColor: PRIMARY, borderRadius: 14, paddingVertical: 14, alignItems: 'center', justifyContent: 'center' },
+  primaryButtonText: { color: '#ffffff', fontSize: 15, fontWeight: '800' },
+  secondaryButton: { backgroundColor: 'transparent', borderRadius: 14, borderWidth: 1, borderColor: Colors.dark.border, paddingVertical: 14, alignItems: 'center', justifyContent: 'center' },
+  secondaryButtonText: { color: Colors.dark.text, fontSize: 14, fontWeight: '700' },
+  finishButton: { backgroundColor: PRIMARY, borderRadius: 16, paddingVertical: 16, alignItems: 'center', justifyContent: 'center', marginTop: 18, marginBottom: 12 },
+  finishButtonText: { color: '#ffffff', fontSize: 16, fontWeight: '800' },
+  disabledButton: { opacity: 0.6 },
 });

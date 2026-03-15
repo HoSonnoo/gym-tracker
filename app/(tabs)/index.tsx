@@ -1,7 +1,6 @@
-// app/(tabs)/index.tsx
 import { Colors } from '@/constants/Colors';
+import { useRestTimer } from '@/context/RestTimerContext';
 import {
-  completeWorkoutSession,
   getActiveWorkoutSession,
   getWorkoutSessionExercises,
   getWorkoutSessionSets,
@@ -43,6 +42,66 @@ function formatElapsed(startedAt: string): string {
   return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
 }
 
+// ─── Rest Timer Banner (inline nel tab Oggi) ──────────────────────────────────
+
+function RestTimerBanner() {
+  const { timer, stopTimer } = useRestTimer();
+
+  if (!timer.isActive && timer.remainingSeconds === 0) return null;
+
+  const progress = timer.durationSeconds > 0
+    ? timer.remainingSeconds / timer.durationSeconds
+    : 0;
+  const isExpired = !timer.isActive && timer.remainingSeconds === 0 && timer.durationSeconds > 0;
+  const accentColor = isExpired ? Colors.dark.success : PRIMARY;
+
+  return (
+    <View style={[bannerStyles.container, { borderColor: accentColor + '55' }]}>
+      <View style={bannerStyles.top}>
+        <View>
+          <Text style={[bannerStyles.label, { color: accentColor }]}>
+            {isExpired ? 'RECUPERO COMPLETATO' : 'RECUPERO IN CORSO'}
+          </Text>
+          <Text style={bannerStyles.context}>
+            {timer.exerciseName} · {timer.setLabel}
+          </Text>
+        </View>
+        <View style={bannerStyles.right}>
+          <Text style={[bannerStyles.countdown, { color: accentColor }]}>
+            {isExpired ? '✓' : `${timer.remainingSeconds}s`}
+          </Text>
+          <TouchableOpacity onPress={stopTimer} activeOpacity={0.8} style={bannerStyles.skipButton}>
+            <Text style={bannerStyles.skipText}>Salta</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+      <View style={bannerStyles.trackOuter}>
+        <View
+          style={[
+            bannerStyles.trackFill,
+            { width: `${progress * 100}%` as any, backgroundColor: accentColor },
+          ]}
+        />
+      </View>
+    </View>
+  );
+}
+
+const bannerStyles = StyleSheet.create({
+  container: { backgroundColor: Colors.dark.surface, borderRadius: 16, padding: 14, borderWidth: 1 },
+  top: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 },
+  label: { fontSize: 10, fontWeight: '800', letterSpacing: 1.2, marginBottom: 3 },
+  context: { fontSize: 13, color: Colors.dark.text, fontWeight: '600' },
+  right: { alignItems: 'flex-end', gap: 4 },
+  countdown: { fontSize: 26, fontWeight: '800', fontVariant: ['tabular-nums'] },
+  skipButton: { backgroundColor: Colors.dark.surfaceSoft, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 4 },
+  skipText: { color: Colors.dark.textMuted, fontSize: 12, fontWeight: '700' },
+  trackOuter: { height: 4, backgroundColor: '#2a2a35', borderRadius: 4, overflow: 'hidden' },
+  trackFill: { height: '100%', borderRadius: 4 },
+});
+
+// ─── Screen ───────────────────────────────────────────────────────────────────
+
 export default function TodayScreen() {
   const router = useRouter();
 
@@ -56,7 +115,6 @@ export default function TodayScreen() {
 
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // Timer live
   useEffect(() => {
     if (!activeSession) {
       if (timerRef.current) clearInterval(timerRef.current);
@@ -65,9 +123,7 @@ export default function TodayScreen() {
     const tick = () => setElapsed(formatElapsed(activeSession.started_at));
     tick();
     timerRef.current = setInterval(tick, 1000);
-    return () => {
-      if (timerRef.current) clearInterval(timerRef.current);
-    };
+    return () => { if (timerRef.current) clearInterval(timerRef.current); };
   }, [activeSession]);
 
   const loadScreenData = useCallback(async () => {
@@ -79,12 +135,10 @@ export default function TodayScreen() {
       ]);
       setTemplates(templatesData);
       setActiveSession(activeSessionData);
-
       if (!activeSessionData) {
         setSessionData([]);
         return;
       }
-
       const exercises = await getWorkoutSessionExercises(activeSessionData.id);
       const exercisesWithSets = await Promise.all(
         exercises.map(async (exercise) => {
@@ -101,9 +155,7 @@ export default function TodayScreen() {
   }, []);
 
   useFocusEffect(
-    useCallback(() => {
-      loadScreenData();
-    }, [loadScreenData])
+    useCallback(() => { loadScreenData(); }, [loadScreenData])
   );
 
   const allSets = useMemo(() => sessionData.flatMap((i) => i.sets), [sessionData]);
@@ -111,13 +163,10 @@ export default function TodayScreen() {
   const totalSetsCount = allSets.length;
   const progressPercent = totalSetsCount > 0 ? completedSetsCount / totalSetsCount : 0;
 
-  // Prossima serie non completata
   const nextSet = useMemo(() => {
     for (const item of sessionData) {
       for (const set of item.sets) {
-        if (set.is_completed !== 1) {
-          return { exerciseName: item.exercise.exercise_name, set };
-        }
+        if (set.is_completed !== 1) return { exerciseName: item.exercise.exercise_name, set };
       }
     }
     return null;
@@ -151,22 +200,15 @@ export default function TodayScreen() {
   }
 
   return (
-    <ScrollView
-      style={styles.container}
-      contentContainerStyle={styles.content}
-      showsVerticalScrollIndicator={false}
-    >
+    <ScrollView style={styles.container} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
       <Text style={styles.pageTitle}>Oggi</Text>
 
       {!activeSession ? (
         <>
           <View style={styles.card}>
             <Text style={styles.cardTitle}>Allenamento del giorno</Text>
-            <Text style={styles.cardText}>
-              Seleziona un template per avviare la sessione di oggi.
-            </Text>
+            <Text style={styles.cardText}>Seleziona un template per avviare la sessione di oggi.</Text>
           </View>
-
           <View style={styles.card}>
             <Text style={styles.cardTitle}>Scegli un template</Text>
             {templates.length === 0 ? (
@@ -183,15 +225,11 @@ export default function TodayScreen() {
                   >
                     <View style={styles.templateButtonContent}>
                       <Text style={styles.templateButtonTitle}>{template.name}</Text>
-                      {template.notes ? (
-                        <Text style={styles.templateButtonText}>{template.notes}</Text>
-                      ) : (
-                        <Text style={styles.templateButtonTextMuted}>Nessuna nota</Text>
-                      )}
+                      {template.notes
+                        ? <Text style={styles.templateButtonText}>{template.notes}</Text>
+                        : <Text style={styles.templateButtonTextMuted}>Nessuna nota</Text>}
                     </View>
-                    <Text style={styles.templateButtonAction}>
-                      {startingSession ? 'Avvio...' : 'Inizia →'}
-                    </Text>
+                    <Text style={styles.templateButtonAction}>{startingSession ? 'Avvio...' : 'Inizia →'}</Text>
                   </TouchableOpacity>
                 ))}
               </View>
@@ -200,7 +238,7 @@ export default function TodayScreen() {
         </>
       ) : (
         <>
-          {/* Header sessione attiva */}
+          {/* Header sessione */}
           <View style={styles.sessionHeaderCard}>
             <View style={styles.sessionHeaderTop}>
               <View>
@@ -211,23 +249,18 @@ export default function TodayScreen() {
                 <Text style={styles.timerText}>{elapsed}</Text>
               </View>
             </View>
-
-            {/* Barra progresso globale */}
             <View style={styles.progressBarTrack}>
               <View style={[styles.progressBarFill, { width: `${progressPercent * 100}%` as any }]} />
             </View>
-            <Text style={styles.progressLabel}>
-              {completedSetsCount} / {totalSetsCount} serie completate
-            </Text>
+            <Text style={styles.progressLabel}>{completedSetsCount} / {totalSetsCount} serie completate</Text>
           </View>
+
+          {/* Banner recupero — appare solo quando attivo */}
+          <RestTimerBanner />
 
           {/* Prossima serie */}
           {nextSet ? (
-            <TouchableOpacity
-              style={styles.nextSetCard}
-              onPress={handleOpenActiveSession}
-              activeOpacity={0.88}
-            >
+            <TouchableOpacity style={styles.nextSetCard} onPress={handleOpenActiveSession} activeOpacity={0.88}>
               <Text style={styles.nextSetLabel}>PROSSIMA SERIE</Text>
               <Text style={styles.nextSetExercise}>{nextSet.exerciseName}</Text>
               <View style={styles.nextSetDetails}>
@@ -256,15 +289,10 @@ export default function TodayScreen() {
               </View>
             </TouchableOpacity>
           ) : (
-            // Tutte le serie completate
-            <View style={[styles.nextSetCard, { borderColor: '#2ecc71' }]}>
-              <Text style={[styles.nextSetLabel, { color: '#2ecc71' }]}>TUTTE LE SERIE COMPLETATE</Text>
+            <View style={[styles.nextSetCard, { borderColor: Colors.dark.success }]}>
+              <Text style={[styles.nextSetLabel, { color: Colors.dark.success }]}>TUTTE LE SERIE COMPLETATE</Text>
               <Text style={styles.nextSetExercise}>Ottimo lavoro! 💪</Text>
-              <TouchableOpacity
-                style={[styles.goButton, { backgroundColor: '#2ecc71' }]}
-                onPress={handleOpenActiveSession}
-                activeOpacity={0.88}
-              >
+              <TouchableOpacity style={[styles.goButton, { backgroundColor: Colors.dark.success }]} onPress={handleOpenActiveSession} activeOpacity={0.88}>
                 <Text style={styles.goButtonText}>Vai al riepilogo →</Text>
               </TouchableOpacity>
             </View>
@@ -282,19 +310,11 @@ export default function TodayScreen() {
                 return (
                   <View key={item.exercise.id} style={styles.exerciseBreakdownRow}>
                     <View style={styles.exerciseBreakdownInfo}>
-                      <Text style={[styles.exerciseBreakdownName, allDone && styles.textDone]}>
-                        {item.exercise.exercise_name}
-                      </Text>
-                      <Text style={styles.exerciseBreakdownSets}>
-                        {done}/{total} serie
-                      </Text>
+                      <Text style={[styles.exerciseBreakdownName, allDone && styles.textDone]}>{item.exercise.exercise_name}</Text>
+                      <Text style={styles.exerciseBreakdownSets}>{done}/{total} serie</Text>
                     </View>
                     <View style={styles.miniProgressTrack}>
-                      <View style={[
-                        styles.miniProgressFill,
-                        { width: `${pct * 100}%` as any },
-                        allDone && styles.miniProgressDone,
-                      ]} />
+                      <View style={[styles.miniProgressFill, { width: `${pct * 100}%` as any }, allDone && styles.miniProgressDone]} />
                     </View>
                   </View>
                 );
@@ -308,205 +328,44 @@ export default function TodayScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: Colors.dark.background,
-  },
-  content: {
-    padding: 20,
-    paddingBottom: 40,
-    gap: 16,
-  },
-  loadingContainer: {
-    flex: 1,
-    backgroundColor: Colors.dark.background,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  pageTitle: {
-    fontSize: 30,
-    fontWeight: '800',
-    color: Colors.dark.text,
-    marginTop: 8,
-    marginBottom: 8,
-  },
-  card: {
-    backgroundColor: Colors.dark.surface,
-    borderRadius: 18,
-    padding: 18,
-    borderWidth: 1,
-    borderColor: Colors.dark.border,
-  },
-  cardTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: Colors.dark.text,
-    marginBottom: 12,
-  },
-  cardText: {
-    fontSize: 15,
-    lineHeight: 22,
-    color: Colors.dark.textMuted,
-  },
-
-  // Template list
+  container: { flex: 1, backgroundColor: Colors.dark.background },
+  content: { padding: 20, paddingBottom: 40, gap: 16 },
+  loadingContainer: { flex: 1, backgroundColor: Colors.dark.background, alignItems: 'center', justifyContent: 'center' },
+  pageTitle: { fontSize: 30, fontWeight: '800', color: Colors.dark.text, marginTop: 8, marginBottom: 8 },
+  card: { backgroundColor: Colors.dark.surface, borderRadius: 18, padding: 18, borderWidth: 1, borderColor: Colors.dark.border },
+  cardTitle: { fontSize: 18, fontWeight: '700', color: Colors.dark.text, marginBottom: 12 },
+  cardText: { fontSize: 15, lineHeight: 22, color: Colors.dark.textMuted },
   templateList: { gap: 12, marginTop: 4 },
-  templateButton: {
-    backgroundColor: '#17171c',
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: Colors.dark.border,
-    padding: 16,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 14,
-  },
+  templateButton: { backgroundColor: '#17171c', borderRadius: 16, borderWidth: 1, borderColor: Colors.dark.border, padding: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 14 },
   templateButtonContent: { flex: 1 },
   templateButtonTitle: { color: Colors.dark.text, fontSize: 16, fontWeight: '700', marginBottom: 4 },
   templateButtonText: { color: Colors.dark.textMuted, fontSize: 14, lineHeight: 20 },
   templateButtonTextMuted: { color: Colors.dark.textMuted, fontSize: 14, fontStyle: 'italic' },
   templateButtonAction: { color: PRIMARY, fontWeight: '700', fontSize: 14 },
-
-  // Session header card
-  sessionHeaderCard: {
-    backgroundColor: Colors.dark.surface,
-    borderRadius: 18,
-    padding: 18,
-    borderWidth: 1,
-    borderColor: 'rgba(126, 71, 255, 0.4)',
-  },
-  sessionHeaderTop: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: 16,
-  },
-  sessionHeaderLabel: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: PRIMARY,
-    letterSpacing: 1.2,
-    marginBottom: 4,
-  },
-  sessionHeaderName: {
-    fontSize: 22,
-    fontWeight: '800',
-    color: Colors.dark.text,
-  },
-  timerBadge: {
-    backgroundColor: 'rgba(126,71,255,0.15)',
-    borderRadius: 12,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderWidth: 1,
-    borderColor: 'rgba(126,71,255,0.3)',
-  },
-  timerText: {
-    color: PRIMARY,
-    fontSize: 18,
-    fontWeight: '800',
-    fontVariant: ['tabular-nums'],
-  },
-  progressBarTrack: {
-    height: 6,
-    backgroundColor: '#2a2a35',
-    borderRadius: 6,
-    overflow: 'hidden',
-  },
-  progressBarFill: {
-    height: '100%',
-    backgroundColor: PRIMARY,
-    borderRadius: 6,
-  },
-  progressLabel: {
-    marginTop: 8,
-    fontSize: 13,
-    color: Colors.dark.textMuted,
-  },
-
-  // Next set card
-  nextSetCard: {
-    backgroundColor: Colors.dark.surface,
-    borderRadius: 18,
-    padding: 18,
-    borderWidth: 1,
-    borderColor: 'rgba(126,71,255,0.25)',
-  },
-  nextSetLabel: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: Colors.dark.textMuted,
-    letterSpacing: 1.2,
-    marginBottom: 6,
-  },
-  nextSetExercise: {
-    fontSize: 20,
-    fontWeight: '800',
-    color: Colors.dark.text,
-    marginBottom: 12,
-  },
-  nextSetDetails: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-    marginBottom: 16,
-  },
-  nextSetBadge: {
-    backgroundColor: '#2a2a35',
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-  },
-  nextSetBadgeText: {
-    color: Colors.dark.text,
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  goButton: {
-    backgroundColor: PRIMARY,
-    borderRadius: 14,
-    paddingVertical: 14,
-    alignItems: 'center',
-  },
-  goButtonText: {
-    color: '#fff',
-    fontSize: 15,
-    fontWeight: '800',
-  },
-
-  // Exercise breakdown
+  sessionHeaderCard: { backgroundColor: Colors.dark.surface, borderRadius: 18, padding: 18, borderWidth: 1, borderColor: 'rgba(126, 71, 255, 0.4)' },
+  sessionHeaderTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 },
+  sessionHeaderLabel: { fontSize: 11, fontWeight: '700', color: PRIMARY, letterSpacing: 1.2, marginBottom: 4 },
+  sessionHeaderName: { fontSize: 22, fontWeight: '800', color: Colors.dark.text },
+  timerBadge: { backgroundColor: 'rgba(126,71,255,0.15)', borderRadius: 12, paddingHorizontal: 14, paddingVertical: 8, borderWidth: 1, borderColor: 'rgba(126,71,255,0.3)' },
+  timerText: { color: PRIMARY, fontSize: 18, fontWeight: '800', fontVariant: ['tabular-nums'] },
+  progressBarTrack: { height: 6, backgroundColor: '#2a2a35', borderRadius: 6, overflow: 'hidden' },
+  progressBarFill: { height: '100%', backgroundColor: PRIMARY, borderRadius: 6 },
+  progressLabel: { marginTop: 8, fontSize: 13, color: Colors.dark.textMuted },
+  nextSetCard: { backgroundColor: Colors.dark.surface, borderRadius: 18, padding: 18, borderWidth: 1, borderColor: 'rgba(126,71,255,0.25)' },
+  nextSetLabel: { fontSize: 11, fontWeight: '700', color: Colors.dark.textMuted, letterSpacing: 1.2, marginBottom: 6 },
+  nextSetExercise: { fontSize: 20, fontWeight: '800', color: Colors.dark.text, marginBottom: 12 },
+  nextSetDetails: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 16 },
+  nextSetBadge: { backgroundColor: '#2a2a35', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 6 },
+  nextSetBadgeText: { color: Colors.dark.text, fontSize: 14, fontWeight: '600' },
+  goButton: { backgroundColor: PRIMARY, borderRadius: 14, paddingVertical: 14, alignItems: 'center' },
+  goButtonText: { color: '#fff', fontSize: 15, fontWeight: '800' },
   exerciseBreakdownList: { gap: 14 },
   exerciseBreakdownRow: { gap: 6 },
-  exerciseBreakdownInfo: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  exerciseBreakdownName: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: Colors.dark.text,
-  },
-  textDone: {
-    color: '#2ecc71',
-  },
-  exerciseBreakdownSets: {
-    fontSize: 13,
-    color: Colors.dark.textMuted,
-  },
-  miniProgressTrack: {
-    height: 4,
-    backgroundColor: '#2a2a35',
-    borderRadius: 4,
-    overflow: 'hidden',
-  },
-  miniProgressFill: {
-    height: '100%',
-    backgroundColor: PRIMARY,
-    borderRadius: 4,
-  },
-  miniProgressDone: {
-    backgroundColor: '#2ecc71',
-  },
+  exerciseBreakdownInfo: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  exerciseBreakdownName: { fontSize: 15, fontWeight: '600', color: Colors.dark.text },
+  textDone: { color: Colors.dark.success },
+  exerciseBreakdownSets: { fontSize: 13, color: Colors.dark.textMuted },
+  miniProgressTrack: { height: 4, backgroundColor: '#2a2a35', borderRadius: 4, overflow: 'hidden' },
+  miniProgressFill: { height: '100%', backgroundColor: PRIMARY, borderRadius: 4 },
+  miniProgressDone: { backgroundColor: Colors.dark.success },
 });
