@@ -12,6 +12,7 @@ export default function RootLayout() {
     async function setupApp() {
       try {
         await initDatabase();
+        // seedExercises rimosso
       } catch (error) {
         console.error('Errore inizializzazione database:', error);
       } finally {
@@ -23,14 +24,12 @@ export default function RootLayout() {
 
   if (!isReady) {
     return (
-      <View
-        style={{
-          flex: 1,
-          backgroundColor: Colors.dark.background,
-          justifyContent: 'center',
-          alignItems: 'center',
-        }}
-      >
+      <View style={{
+        flex: 1,
+        backgroundColor: Colors.dark.background,
+        justifyContent: 'center',
+        alignItems: 'center',
+      }}>
         <ActivityIndicator size="large" color={Colors.dark.primary} />
       </View>
     );

@@ -881,3 +881,31 @@ export async function getCompletedWorkoutSessions(): Promise<WorkoutSession[]> {
      ORDER BY completed_at DESC, started_at DESC`
   );
 }
+
+export type WorkoutSessionDetail = {
+  session: WorkoutSession;
+  exercises: {
+    exercise: WorkoutSessionExercise;
+    sets: WorkoutSessionSet[];
+  }[];
+};
+
+export async function getWorkoutSessionDetail(
+  sessionId: number
+): Promise<WorkoutSessionDetail | null> {
+  const database = await getDb();
+
+  const session = await getWorkoutSessionById(sessionId);
+  if (!session) return null;
+
+  const exercises = await getWorkoutSessionExercises(sessionId);
+
+  const exercisesWithSets = await Promise.all(
+    exercises.map(async (exercise) => ({
+      exercise,
+      sets: await getWorkoutSessionSets(exercise.id),
+    }))
+  );
+
+  return { session, exercises: exercisesWithSets };
+}
