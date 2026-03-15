@@ -15,11 +15,6 @@ export async function initDatabase() {
   await database.execAsync(`
     PRAGMA journal_mode = WAL;
 
-    DROP TABLE IF EXISTS set_entries;
-    DROP TABLE IF EXISTS workout_session_sets;
-    DROP TABLE IF EXISTS workout_session_exercises;
-    DROP TABLE IF EXISTS workout_sessions;
-
     CREATE TABLE IF NOT EXISTS exercises (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       name TEXT NOT NULL UNIQUE,
@@ -215,26 +210,6 @@ export type WorkoutSessionSet = {
   completed_at: string | null;
   created_at: string;
 };
-
-export async function seedExercises() {
-  const database = await getDb();
-
-  const defaultExercises = [
-    { name: 'Panca Piana', category: 'Petto' },
-    { name: 'Squat', category: 'Gambe' },
-    { name: 'Lat Machine', category: 'Schiena' },
-    { name: 'Shoulder Press', category: 'Spalle' },
-    { name: 'Curl Manubri', category: 'Bicipiti' },
-    { name: 'Pushdown Cavo', category: 'Tricipiti' },
-  ];
-
-  for (const exercise of defaultExercises) {
-    await database.runAsync(
-      `INSERT OR IGNORE INTO exercises (name, category) VALUES (?, ?)`,
-      [exercise.name, exercise.category]
-    );
-  }
-}
 
 export async function getExercises(): Promise<Exercise[]> {
   const database = await getDb();

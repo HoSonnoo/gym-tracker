@@ -672,11 +672,6 @@ export default function WorkoutSessionScreen() {
             {completedSetsCount} / {totalSetsCount} serie completate
           </Text>
 
-          <View style={styles.sessionStatsRow}>
-            <StatBadge label="Completate" value={`${completedSetsCount}/${totalSetsCount}`} />
-            <StatBadge label="Rimanenti" value={`${remainingSetsCount}`} />
-          </View>
-
           {nextIncompleteSet ? (
             <TouchableOpacity
               style={styles.nextSetButton}
