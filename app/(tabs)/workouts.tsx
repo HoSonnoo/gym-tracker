@@ -3,7 +3,8 @@ import {
   addWorkoutTemplate,
   deleteWorkoutTemplate,
   getWorkoutTemplates,
-  isDatabaseEmpty,
+  hasExercises,
+  hasTemplates,
   WorkoutTemplate,
 } from '@/database';
 import { useFocusEffect, useRouter } from 'expo-router';
@@ -21,9 +22,26 @@ import {
 
 const PRIMARY = '#7e47ff';
 
+type OnboardingPhase = 'empty' | 'has_exercises' | 'ready';
+
 // ─── Onboarding Empty State ───────────────────────────────────────────────────
 
-function OnboardingEmptyState({ onCreateTemplate, onManageExercises }: {
+function OnboardingEmptyState({
+  phase,
+  name,
+  notes,
+  isSaving,
+  onNameChange,
+  onNotesChange,
+  onCreateTemplate,
+  onManageExercises,
+}: {
+  phase: OnboardingPhase;
+  name: string;
+  notes: string;
+  isSaving: boolean;
+  onNameChange: (v: string) => void;
+  onNotesChange: (v: string) => void;
   onCreateTemplate: () => void;
   onManageExercises: () => void;
 }) {
@@ -45,35 +63,100 @@ function OnboardingEmptyState({ onCreateTemplate, onManageExercises }: {
       </View>
 
       {/* Step 1 */}
-      <View style={onboardStyles.stepCard}>
+      <View style={[
+        onboardStyles.stepCard,
+        phase !== 'empty' && onboardStyles.stepCardCompleted,
+      ]}>
         <View style={onboardStyles.stepHeader}>
-          <View style={onboardStyles.stepBadge}>
-            <Text style={onboardStyles.stepBadgeText}>1</Text>
+          <View style={[
+            onboardStyles.stepBadge,
+            phase !== 'empty' && onboardStyles.stepBadgeDone,
+          ]}>
+            <Text style={onboardStyles.stepBadgeText}>
+              {phase !== 'empty' ? '✓' : '1'}
+            </Text>
           </View>
-          <Text style={onboardStyles.stepTitle}>Aggiungi i tuoi esercizi</Text>
+          <Text style={[
+            onboardStyles.stepTitle,
+            phase !== 'empty' && onboardStyles.stepTitleDone,
+          ]}>
+            Aggiungi i tuoi esercizi
+          </Text>
         </View>
-        <Text style={onboardStyles.stepText}>
-          Gli esercizi sono il catalogo base da cui costruisci i tuoi template. Aggiungine quanti ne vuoi: panca piana, squat, lat machine...
-        </Text>
-        <Pressable style={onboardStyles.stepButton} onPress={onManageExercises}>
-          <Text style={onboardStyles.stepButtonText}>Gestisci esercizi →</Text>
-        </Pressable>
+        {phase === 'empty' && (
+          <>
+            <Text style={onboardStyles.stepText}>
+              Gli esercizi sono il catalogo base da cui costruisci i tuoi template. Aggiungine quanti ne vuoi: panca piana, squat, lat machine...
+            </Text>
+            <Pressable style={onboardStyles.stepButton} onPress={onManageExercises}>
+              <Text style={onboardStyles.stepButtonText}>Gestisci esercizi →</Text>
+            </Pressable>
+          </>
+        )}
       </View>
 
       {/* Step 2 */}
-      <View style={onboardStyles.stepCard}>
+      <View style={[
+        onboardStyles.stepCard,
+        phase === 'empty' && onboardStyles.stepCardMuted,
+      ]}>
         <View style={onboardStyles.stepHeader}>
-          <View style={[onboardStyles.stepBadge, onboardStyles.stepBadgeMuted]}>
-            <Text style={[onboardStyles.stepBadgeText, onboardStyles.stepBadgeTextMuted]}>2</Text>
+          <View style={[
+            onboardStyles.stepBadge,
+            phase === 'empty' && onboardStyles.stepBadgeMuted,
+          ]}>
+            <Text style={[
+              onboardStyles.stepBadgeText,
+              phase === 'empty' && onboardStyles.stepBadgeTextMuted,
+            ]}>
+              2
+            </Text>
           </View>
-          <Text style={onboardStyles.stepTitle}>Crea un template</Text>
+          <Text style={[
+            onboardStyles.stepTitle,
+            phase === 'empty' && { color: Colors.dark.textMuted },
+          ]}>
+            Crea un template
+          </Text>
         </View>
-        <Text style={onboardStyles.stepText}>
-          Un template è la struttura di un allenamento: quali esercizi fare, quante serie, con che peso e recupero. Puoi crearne quanti ne vuoi (Push, Pull, Legs...).
-        </Text>
-        <Pressable style={[onboardStyles.stepButton, onboardStyles.stepButtonMuted]} onPress={onCreateTemplate}>
-          <Text style={onboardStyles.stepButtonText}>Crea il primo template →</Text>
-        </Pressable>
+
+        {phase === 'has_exercises' && (
+          <>
+            <Text style={onboardStyles.stepText}>
+              Dai un nome al tuo primo template — ad esempio "Push A", "Full Body" o il giorno della settimana.
+            </Text>
+            <TextInput
+              value={name}
+              onChangeText={onNameChange}
+              placeholder="Nome template (es. Push A)"
+              placeholderTextColor={Colors.dark.textMuted}
+              style={onboardStyles.input}
+            />
+            <TextInput
+              value={notes}
+              onChangeText={onNotesChange}
+              placeholder="Note opzionali"
+              placeholderTextColor={Colors.dark.textMuted}
+              style={[onboardStyles.input, onboardStyles.notesInput]}
+              multiline
+            />
+            <Pressable
+              style={[onboardStyles.stepButton, isSaving && onboardStyles.stepButtonDisabled]}
+              onPress={onCreateTemplate}
+              disabled={isSaving}
+            >
+              <Text style={onboardStyles.stepButtonText}>
+                {isSaving ? 'Creazione...' : 'Crea template →'}
+              </Text>
+            </Pressable>
+          </>
+        )}
+
+        {phase === 'empty' && (
+          <Text style={onboardStyles.stepTextMuted}>
+            Disponibile dopo aver aggiunto almeno un esercizio.
+          </Text>
+        )}
       </View>
 
       {/* Step 3 */}
@@ -86,8 +169,8 @@ function OnboardingEmptyState({ onCreateTemplate, onManageExercises }: {
             Avvia la sessione dal tab Oggi
           </Text>
         </View>
-        <Text style={onboardStyles.stepText}>
-          Una volta creato il template, vai nel tab Oggi e selezionalo per avviare la sessione reale. L'app traccerà peso, reps e tempi di recupero per ogni serie.
+        <Text style={onboardStyles.stepTextMuted}>
+          Una volta creato il template, vai nel tab Oggi e selezionalo per avviare la sessione reale.
         </Text>
       </View>
     </ScrollView>
@@ -97,13 +180,7 @@ function OnboardingEmptyState({ onCreateTemplate, onManageExercises }: {
 const onboardStyles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.dark.background },
   content: { padding: 20, paddingBottom: 48, gap: 16 },
-  pageTitle: {
-    fontSize: 30,
-    fontWeight: '800',
-    color: Colors.dark.text,
-    marginTop: 8,
-    marginBottom: 4,
-  },
+  pageTitle: { fontSize: 30, fontWeight: '800', color: Colors.dark.text, marginTop: 8, marginBottom: 4 },
   welcomeCard: {
     backgroundColor: Colors.dark.surface,
     borderRadius: 18,
@@ -114,18 +191,8 @@ const onboardStyles = StyleSheet.create({
     gap: 10,
   },
   welcomeEmoji: { fontSize: 40 },
-  welcomeTitle: {
-    fontSize: 20,
-    fontWeight: '800',
-    color: Colors.dark.text,
-    textAlign: 'center',
-  },
-  welcomeText: {
-    fontSize: 15,
-    lineHeight: 22,
-    color: Colors.dark.textMuted,
-    textAlign: 'center',
-  },
+  welcomeTitle: { fontSize: 20, fontWeight: '800', color: Colors.dark.text, textAlign: 'center' },
+  welcomeText: { fontSize: 15, lineHeight: 22, color: Colors.dark.textMuted, textAlign: 'center' },
   stepCard: {
     backgroundColor: Colors.dark.surface,
     borderRadius: 18,
@@ -134,14 +201,9 @@ const onboardStyles = StyleSheet.create({
     borderColor: Colors.dark.border,
     gap: 12,
   },
-  stepCardMuted: {
-    opacity: 0.6,
-  },
-  stepHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
+  stepCardMuted: { opacity: 0.5 },
+  stepCardCompleted: { borderColor: Colors.dark.success + '55' },
+  stepHeader: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   stepBadge: {
     width: 28,
     height: 28,
@@ -155,41 +217,32 @@ const onboardStyles = StyleSheet.create({
     borderWidth: 1,
     borderColor: Colors.dark.border,
   },
-  stepBadgeText: {
-    fontSize: 13,
-    fontWeight: '800',
-    color: '#fff',
-  },
-  stepBadgeTextMuted: {
-    color: Colors.dark.textMuted,
-  },
-  stepTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: Colors.dark.text,
-    flex: 1,
-  },
-  stepText: {
-    fontSize: 14,
-    lineHeight: 20,
-    color: Colors.dark.textMuted,
-  },
+  stepBadgeDone: { backgroundColor: Colors.dark.success },
+  stepBadgeText: { fontSize: 13, fontWeight: '800', color: '#fff' },
+  stepBadgeTextMuted: { color: Colors.dark.textMuted },
+  stepTitle: { fontSize: 16, fontWeight: '700', color: Colors.dark.text, flex: 1 },
+  stepTitleDone: { color: Colors.dark.success },
+  stepText: { fontSize: 14, lineHeight: 20, color: Colors.dark.textMuted },
+  stepTextMuted: { fontSize: 14, lineHeight: 20, color: Colors.dark.textMuted },
   stepButton: {
     backgroundColor: PRIMARY,
     borderRadius: 12,
     paddingVertical: 12,
     alignItems: 'center',
   },
-  stepButtonMuted: {
-    backgroundColor: Colors.dark.surfaceSoft,
+  stepButtonDisabled: { opacity: 0.6 },
+  stepButtonText: { color: '#fff', fontSize: 14, fontWeight: '700' },
+  input: {
+    backgroundColor: Colors.dark.background,
     borderWidth: 1,
     borderColor: Colors.dark.border,
-  },
-  stepButtonText: {
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 14,
     color: Colors.dark.text,
-    fontSize: 14,
-    fontWeight: '700',
+    fontSize: 15,
   },
+  notesInput: { minHeight: 80, textAlignVertical: 'top', marginTop: 8 },
 });
 
 // ─── Screen ───────────────────────────────────────────────────────────────────
@@ -201,19 +254,26 @@ export default function WorkoutsScreen() {
   const [name, setName] = useState('');
   const [notes, setNotes] = useState('');
   const [isSaving, setIsSaving] = useState(false);
-  const [isEmpty, setIsEmpty] = useState<boolean | null>(null); // null = loading
+  const [phase, setPhase] = useState<OnboardingPhase | null>(null);
 
   const loadTemplates = useCallback(async () => {
     try {
-      const [data, empty] = await Promise.all([
+      const [data, exs, tmps] = await Promise.all([
         getWorkoutTemplates(),
-        isDatabaseEmpty(),
+        hasExercises(),
+        hasTemplates(),
       ]);
       setTemplates(data);
-      setIsEmpty(empty);
+      if (tmps) {
+        setPhase('ready');
+      } else if (exs) {
+        setPhase('has_exercises');
+      } else {
+        setPhase('empty');
+      }
     } catch (error) {
       console.error('Errore caricamento template:', error);
-      setIsEmpty(false);
+      setPhase('ready');
     }
   }, []);
 
@@ -221,22 +281,25 @@ export default function WorkoutsScreen() {
     useCallback(() => { loadTemplates(); }, [loadTemplates])
   );
 
-  const handleAddTemplate = useCallback(async () => {
-    try {
-      setIsSaving(true);
-      await addWorkoutTemplate(name, notes);
-      setName('');
-      setNotes('');
-      await loadTemplates();
-    } catch (error) {
-      const message = error instanceof Error
-        ? error.message
-        : 'Errore durante il salvataggio del template.';
-      Alert.alert('Impossibile creare il template', message);
-    } finally {
-      setIsSaving(false);
-    }
-  }, [name, notes, loadTemplates]);
+const handleAddTemplate = useCallback(async () => {
+  try {
+    setIsSaving(true);
+    const newTemplateId = await addWorkoutTemplate(name, notes);
+    setName('');
+    setNotes('');
+    // Naviga direttamente dentro il template appena creato
+    router.push(`/template/${newTemplateId}`);
+    // Ricarica in background per aggiornare la lista al ritorno
+    await loadTemplates();
+  } catch (error) {
+    const message = error instanceof Error
+      ? error.message
+      : 'Errore durante il salvataggio del template.';
+    Alert.alert('Impossibile creare il template', message);
+  } finally {
+    setIsSaving(false);
+  }
+}, [name, notes, loadTemplates, router]);
 
   const handleDeleteTemplate = useCallback(
     (template: WorkoutTemplate) => {
@@ -253,7 +316,7 @@ export default function WorkoutsScreen() {
                 await deleteWorkoutTemplate(template.id);
                 await loadTemplates();
               } catch {
-                Alert.alert('Impossibile rimuovere il template', 'Si è verificato un errore durante l\'eliminazione.');
+                Alert.alert('Impossibile rimuovere il template', 'Si è verificato un errore.');
               }
             },
           },
@@ -263,17 +326,19 @@ export default function WorkoutsScreen() {
     [loadTemplates]
   );
 
-  // Ancora in caricamento
-  if (isEmpty === null) return null;
+  if (phase === null) return null;
 
-  // Primo avvio — DB vuoto
-  if (isEmpty) {
+  // Onboarding — DB non ancora pronto
+  if (phase === 'empty' || phase === 'has_exercises') {
     return (
       <OnboardingEmptyState
-        onCreateTemplate={() => {
-          // Scrolla alla form di creazione mostrando la schermata normale
-          setIsEmpty(false);
-        }}
+        phase={phase}
+        name={name}
+        notes={notes}
+        isSaving={isSaving}
+        onNameChange={setName}
+        onNotesChange={setNotes}
+        onCreateTemplate={handleAddTemplate}
         onManageExercises={() => router.push('/exercises')}
       />
     );

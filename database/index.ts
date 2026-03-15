@@ -255,7 +255,7 @@ export async function deleteExercise(id: number) {
   await database.runAsync(`DELETE FROM exercises WHERE id = ?`, [id]);
 }
 
-export async function addWorkoutTemplate(name: string, notes: string | null) {
+export async function addWorkoutTemplate(name: string, notes: string | null): Promise<number> {
   const database = await getDb();
 
   const normalizedName = name.trim();
@@ -266,10 +266,11 @@ export async function addWorkoutTemplate(name: string, notes: string | null) {
   }
 
   try {
-    await database.runAsync(
+    const result = await database.runAsync(
       `INSERT INTO workout_templates (name, notes) VALUES (?, ?)`,
       [normalizedName, normalizedNotes]
     );
+    return Number(result.lastInsertRowId);
   } catch {
     throw new Error('Impossibile creare il template.');
   }
@@ -1066,13 +1067,23 @@ export async function resetAll() {
   `);
 }
 
-export async function isDatabaseEmpty(): Promise<boolean> {
+export async function hasExercises(): Promise<boolean> {
   const database = await getDb();
-  const exercises = await database.getFirstAsync<{ count: number }>(
+  const row = await database.getFirstAsync<{ count: number }>(
     `SELECT COUNT(*) as count FROM exercises`
   );
-  const templates = await database.getFirstAsync<{ count: number }>(
+  return (row?.count ?? 0) > 0;
+}
+
+export async function hasTemplates(): Promise<boolean> {
+  const database = await getDb();
+  const row = await database.getFirstAsync<{ count: number }>(
     `SELECT COUNT(*) as count FROM workout_templates`
   );
-  return (exercises?.count ?? 0) === 0 && (templates?.count ?? 0) === 0;
+  return (row?.count ?? 0) > 0;
+}
+
+export async function isDatabaseEmpty(): Promise<boolean> {
+  const [exercises, templates] = await Promise.all([hasExercises(), hasTemplates()]);
+  return !exercises && !templates;
 }
