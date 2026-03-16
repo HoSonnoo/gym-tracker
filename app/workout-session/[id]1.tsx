@@ -10,7 +10,6 @@ import {
   getWorkoutSessionExercises,
   getWorkoutSessionSets,
   removeExerciseFromSession,
-  removeSetFromSessionExercise,
   updateWorkoutSessionSet,
   type Exercise,
   type WorkoutSession,
@@ -266,7 +265,6 @@ type SetCardProps = {
   onFieldChange: (field: keyof SetFormState, value: string) => void;
   onSave: () => void;
   onUncheck: () => void;
-  onRemove: () => void;
 };
 
 function SetCard({
@@ -281,7 +279,6 @@ function SetCard({
   onFieldChange,
   onSave,
   onUncheck,
-  onRemove,
 }: SetCardProps) {
   const isHighlighted = isCompleted || isNextIncomplete;
   const statusLabel = isCompleted ? 'Completata' : isNextIncomplete ? 'Prossima' : 'Da fare';
@@ -299,20 +296,10 @@ function SetCard({
         <Text style={styles.setTitle}>
           Serie {index + 1} · {formatSetType(set)}
         </Text>
-        <View style={styles.setHeaderRight}>
-          <View style={[styles.statusPill, isHighlighted && styles.statusPillActive]}>
-            <Text style={[styles.statusPillText, isHighlighted && styles.statusPillTextActive]}>
-              {statusLabel}
-            </Text>
-          </View>
-          <TouchableOpacity
-            style={styles.removeSetButton}
-            onPress={onRemove}
-            disabled={isSaving}
-            activeOpacity={0.8}
-          >
-            <Text style={styles.removeSetButtonText}>✕</Text>
-          </TouchableOpacity>
+        <View style={[styles.statusPill, isHighlighted && styles.statusPillActive]}>
+          <Text style={[styles.statusPillText, isHighlighted && styles.statusPillTextActive]}>
+            {statusLabel}
+          </Text>
         </View>
       </View>
 
@@ -740,31 +727,6 @@ export default function WorkoutSessionScreen() {
     [loadSessionData]
   );
 
-  const handleRemoveSet = useCallback(
-    (set: WorkoutSessionSet, exerciseName: string) => {
-      const message = set.is_completed === 1
-        ? `La serie è già stata completata. Rimuovendola perderai i dati registrati. Continuare?`
-        : `Vuoi rimuovere questa serie da "${exerciseName}"?`;
-
-      Alert.alert('Rimuovi serie', message, [
-        { text: 'Annulla', style: 'cancel' },
-        {
-          text: 'Rimuovi',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              await removeSetFromSessionExercise(set.id);
-              await loadSessionData();
-            } catch {
-              Alert.alert('Errore', 'Impossibile rimuovere la serie.');
-            }
-          },
-        },
-      ]);
-    },
-    [loadSessionData]
-  );
-
   // ── Guards ────────────────────────────────────────────────────────────────────
 
   if (!sessionId || Number.isNaN(sessionId)) {
@@ -919,7 +881,6 @@ export default function WorkoutSessionScreen() {
                     onFieldChange={(field, value) => updateSetField(set.id, field, value)}
                     onSave={() => handleSaveSet(set)}
                     onUncheck={() => handleUncheckSet(set)}
-                    onRemove={() => handleRemoveSet(set, exercise.exercise_name)}
                   />
                 );
               })}
@@ -996,10 +957,7 @@ const styles = StyleSheet.create({
   setCardCompleted: { borderColor: PRIMARY },
   setCardNext: { borderColor: 'rgba(126,71,255,0.7)', shadowColor: PRIMARY, shadowOpacity: 0.18, shadowRadius: 8, shadowOffset: { width: 0, height: 0 } },
   setHeaderRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10, marginBottom: 12 },
-  setHeaderRight: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   setTitle: { color: Colors.dark.text, fontSize: 16, fontWeight: '700', flex: 1 },
-  removeSetButton: { backgroundColor: 'rgba(239,68,68,0.12)', borderRadius: 8, borderWidth: 1, borderColor: Colors.dark.danger, width: 28, height: 28, alignItems: 'center', justifyContent: 'center' },
-  removeSetButtonText: { color: Colors.dark.danger, fontSize: 13, fontWeight: '800', lineHeight: 16 },
   statusPill: { backgroundColor: '#24242b', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999 },
   statusPillActive: { backgroundColor: 'rgba(126,71,255,0.18)' },
   statusPillText: { color: Colors.dark.textMuted, fontSize: 12, fontWeight: '700' },
