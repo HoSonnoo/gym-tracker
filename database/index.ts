@@ -1084,8 +1084,13 @@ export async function hasTemplates(): Promise<boolean> {
 }
 
 export async function isDatabaseEmpty(): Promise<boolean> {
-  const [exercises, templates] = await Promise.all([hasExercises(), hasTemplates()]);
-  return !exercises && !templates;
+  const database = await getDb();
+  const row = await database.getFirstAsync<{ ex: number; tmpl: number }>(
+    `SELECT
+      (SELECT COUNT(*) FROM exercises) as ex,
+      (SELECT COUNT(*) FROM workout_templates) as tmpl`
+  );
+  return (row?.ex ?? 0) === 0 && (row?.tmpl ?? 0) === 0;
 }
 
 export async function updateWorkoutTemplate(

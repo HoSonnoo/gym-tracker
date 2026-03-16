@@ -8,7 +8,7 @@ import {
   TemplateExerciseSet,
 } from '@/database';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useState } from 'react';
 import {
   Alert,
   FlatList,
@@ -128,8 +128,6 @@ export default function TemplateExerciseConfigScreen() {
     return parts.join(' · ');
   };
 
-  const orderedSets = useMemo(() => sets, [sets]);
-
   if (!templateExerciseId || Number.isNaN(templateExerciseId)) {
     return (
       <SafeAreaView style={styles.safeArea} edges={['top']}>
@@ -144,7 +142,7 @@ export default function TemplateExerciseConfigScreen() {
     <SafeAreaView style={styles.safeArea} edges={['top']}>
       <FlatList
         style={styles.container}
-        data={orderedSets}
+        data={sets}
         keyExtractor={(item) => item.id.toString()}
         contentContainerStyle={styles.listContent}
         scrollIndicatorInsets={{ right: 1 }}
