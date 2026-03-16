@@ -5,23 +5,30 @@ import {
   addMealPlanDay,
   addMealPlanEntry,
   addNutritionLog,
+  addWaterLog,
+  deleteBodyWeightLog,
   deleteMealPlan,
   deleteMealPlanDay,
   deleteMealPlanEntry,
   deleteNutritionLog,
+  getBodyWeightLogs,
   getFoodItems,
   getMealPlanDays,
   getMealPlanEntries,
   getMealPlans,
   getNutritionLogsByDate,
+  getWaterLogByDate,
+  resetWaterLog,
+  upsertBodyWeightLog,
+  type BodyWeightLog,
   type FoodItem,
   type MealPlan,
   type MealPlanDay,
   type MealPlanEntry,
-  type NutritionLog
+  type NutritionLog,
 } from '@/database';
 import { useFocusEffect } from '@react-navigation/native';
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -34,6 +41,16 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import Animated, {
+  Easing,
+  interpolateColor,
+  useAnimatedStyle,
+  useSharedValue,
+  withRepeat,
+  withSequence,
+  withSpring,
+  withTiming,
+} from 'react-native-reanimated';
 
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -48,32 +65,34 @@ const MEAL_TYPES = [
 ] as const;
 
 type MealType = typeof MEAL_TYPES[number]['key'];
-type SectionKey = 'diario' | 'catalogo' | 'piano';
+type SectionKey = 'diario' | 'catalogo' | 'piano' | 'corpo';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-function todayISO(): string {
-  const d = new Date();
+function localISO(d: Date): string {
   const yyyy = d.getFullYear();
   const mm = String(d.getMonth() + 1).padStart(2, '0');
   const dd = String(d.getDate()).padStart(2, '0');
   return `${yyyy}-${mm}-${dd}`;
 }
 
+function todayISO(): string {
+  return localISO(new Date());
+}
+
 function formatDateDisplay(iso: string): string {
   const MESI = ['Gen','Feb','Mar','Apr','Mag','Giu','Lug','Ago','Set','Ott','Nov','Dic'];
   const d = new Date(iso + 'T00:00:00');
-  const oggi = new Date();
   const ieri = new Date(); ieri.setDate(ieri.getDate() - 1);
   if (iso === todayISO()) return 'Oggi';
-  if (iso === ieri.toISOString().split('T')[0]) return 'Ieri';
+  if (iso === localISO(ieri)) return 'Ieri';
   return `${d.getDate()} ${MESI[d.getMonth()]} ${d.getFullYear()}`;
 }
 
 function shiftDate(iso: string, delta: number): string {
   const d = new Date(iso + 'T00:00:00');
   d.setDate(d.getDate() + delta);
-  return d.toISOString().split('T')[0];
+  return localISO(d);
 }
 
 function roundMacro(value: number | null): string {
@@ -98,6 +117,7 @@ function SegmentedControl({
   const tabs: { key: SectionKey; label: string }[] = [
     { key: 'diario',   label: 'Diario' },
     { key: 'piano',    label: 'Piano' },
+    { key: 'corpo',    label: 'Corpo' },
     { key: 'catalogo', label: 'Catalogo' },
   ];
   return (
@@ -138,7 +158,7 @@ const segStyles = StyleSheet.create({
     backgroundColor: PRIMARY,
   },
   label: {
-    fontSize: 14,
+    fontSize: 12,
     fontWeight: '700',
     color: Colors.dark.textMuted,
   },
@@ -948,6 +968,561 @@ const catStyles = StyleSheet.create({
   sourceTag: { marginTop: 10, alignSelf: 'flex-start', fontSize: 11, color: Colors.dark.textMuted, backgroundColor: Colors.dark.surfaceSoft, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 },
 });
 
+// ─── Water Bottle Component ───────────────────────────────────────────────────
+
+const BOTTLE_CAPACITY = 2000;
+const BOTTLE_BODY_H = 160;
+const BOTTLE_WIDTH = 80;
+
+function WaterBottle({ totalMl }: { totalMl: number }) {
+  const fullBottles = Math.floor(totalMl / BOTTLE_CAPACITY);
+  const remainder = totalMl % BOTTLE_CAPACITY;
+  const bottleCount = fullBottles + 1;
+  const currentFill = totalMl === 0
+    ? 0
+    : remainder === 0 && fullBottles > 0
+      ? 1
+      : remainder / BOTTLE_CAPACITY;
+
+  return (
+    <View style={bottleStyles.row}>
+      {Array.from({ length: bottleCount }).map((_, i) => {
+        const isComplete = i < fullBottles;
+        const isCurrent = i === bottleCount - 1;
+        return (
+          <AnimatedBottle
+            key={i}
+            targetFill={isComplete ? 1 : isCurrent ? currentFill : 0}
+            isComplete={isComplete}
+            label={String(i + 1)}
+          />
+        );
+      })}
+    </View>
+  );
+}
+
+function AnimatedBottle({ targetFill, isComplete, label }: {
+  targetFill: number;
+  isComplete: boolean;
+  label: string;
+}) {
+  // Fill level — spring fluida che non riparte da 0
+  const fillProgress = useSharedValue(targetFill);
+
+  // Wave offset — loop perpetuo sul thread UI nativo
+  const waveOffset = useSharedValue(0);
+
+  useEffect(() => {
+    fillProgress.value = withSpring(targetFill, {
+      damping: 18,
+      stiffness: 80,
+      mass: 1,
+    });
+  }, [targetFill]);
+
+  useEffect(() => {
+    waveOffset.value = withRepeat(
+      withSequence(
+        withTiming(1, { duration: 2000, easing: Easing.inOut(Easing.sin) }),
+        withTiming(0, { duration: 2000, easing: Easing.inOut(Easing.sin) }),
+      ),
+      -1, // infinito
+      false
+    );
+  }, []);
+
+  // Stile del fill — altezza animata
+  const fillStyle = useAnimatedStyle(() => ({
+    height: fillProgress.value * BOTTLE_BODY_H,
+    backgroundColor: interpolateColor(
+      fillProgress.value,
+      [0, 0.5, 1],
+      ['#3b82f6', '#38bdf8', '#22c55e']
+    ),
+  }));
+
+  // Stile del contenitore onda — si sposta verticalmente con il livello
+  const waveContainerStyle = useAnimatedStyle(() => ({
+    bottom: fillProgress.value * BOTTLE_BODY_H - 10,
+  }));
+
+  // Onda 1 — si muove da sinistra a destra
+  const wave1Style = useAnimatedStyle(() => ({
+    transform: [{ translateX: (waveOffset.value - 0.5) * 28 }],
+  }));
+
+  // Onda 2 — direzione opposta, leggermente sfasata
+  const wave2Style = useAnimatedStyle(() => ({
+    transform: [{ translateX: (0.5 - waveOffset.value) * 22 }],
+  }));
+
+  const WAVE_W = BOTTLE_WIDTH * 1.7;
+  const WAVE_LEFT = -(WAVE_W - BOTTLE_WIDTH) / 2;
+  const showWave = targetFill > 0.03 && targetFill < 0.97;
+
+  return (
+    <View style={bottleStyles.bottleWrapper}>
+      {/* Tappo */}
+      <View style={bottleStyles.neck}>
+        <View style={bottleStyles.neckInner} />
+      </View>
+
+      {/* Corpo */}
+      <View style={[bottleStyles.body, { height: BOTTLE_BODY_H }]}>
+
+        {/* Acqua */}
+        <Animated.View
+          style={[bottleStyles.fill, fillStyle]}
+        />
+
+        {/* Onde sulla superficie */}
+        {showWave && (
+          <Animated.View
+            style={[bottleStyles.waveContainer, waveContainerStyle]}
+            pointerEvents="none"
+          >
+            <Animated.View
+              style={[{
+                position: 'absolute',
+                bottom: 0,
+                left: WAVE_LEFT,
+                width: WAVE_W,
+                height: 10,
+                borderTopLeftRadius: 20,
+                borderTopRightRadius: 20,
+                backgroundColor: 'rgba(255,255,255,0.22)',
+              }, wave1Style]}
+            />
+            <Animated.View
+              style={[{
+                position: 'absolute',
+                bottom: 2,
+                left: WAVE_LEFT,
+                width: WAVE_W,
+                height: 7,
+                borderTopLeftRadius: 20,
+                borderTopRightRadius: 20,
+                backgroundColor: 'rgba(255,255,255,0.11)',
+              }, wave2Style]}
+            />
+          </Animated.View>
+        )}
+
+        {/* Label */}
+        <View style={bottleStyles.labelOverlay} pointerEvents="none">
+          <Text style={bottleStyles.percentText}>
+            {isComplete ? '✓' : `${Math.round(targetFill * 100)}%`}
+          </Text>
+          <Text style={bottleStyles.mlText}>
+            {isComplete
+              ? `${BOTTLE_CAPACITY / 1000}L`
+              : `${Math.round(targetFill * BOTTLE_CAPACITY)}ml`}
+          </Text>
+        </View>
+      </View>
+
+      <Text style={bottleStyles.bottleLabel}>#{label}</Text>
+    </View>
+  );
+}
+
+const bottleStyles = StyleSheet.create({
+  row: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'flex-end',
+    gap: 16,
+    paddingVertical: 10,
+  },
+  bottleWrapper: {
+    alignItems: 'center',
+    gap: 6,
+  },
+  neck: {
+    width: BOTTLE_WIDTH * 0.38,
+    height: 20,
+    backgroundColor: Colors.dark.border,
+    borderTopLeftRadius: 5,
+    borderTopRightRadius: 5,
+    overflow: 'hidden',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  neckInner: {
+    width: '55%',
+    height: 3,
+    backgroundColor: Colors.dark.surfaceSoft,
+    borderRadius: 2,
+  },
+  body: {
+    width: BOTTLE_WIDTH,
+    backgroundColor: Colors.dark.surfaceSoft,
+    borderRadius: 18,
+    overflow: 'hidden',
+    borderWidth: 1.5,
+    borderColor: Colors.dark.border,
+  },
+  fill: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+  },
+  waveContainer: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    height: 14,
+    overflow: 'visible',
+  },
+  labelOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 2,
+  },
+  percentText: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: '#fff',
+    textShadowColor: 'rgba(0,0,0,0.5)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 4,
+  },
+  mlText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: 'rgba(255,255,255,0.9)',
+    textShadowColor: 'rgba(0,0,0,0.4)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 3,
+  },
+  bottleLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: Colors.dark.textMuted,
+  },
+});
+// ─── Corpo Section ────────────────────────────────────────────────────────────
+
+const WATER_QUICK_OPTIONS = [150, 250, 330, 500];
+
+function CorpoSection() {
+  const today = todayISO();
+
+  // Peso
+  const [weightLogs, setWeightLogs] = useState<BodyWeightLog[]>([]);
+  const [showWeightInput, setShowWeightInput] = useState(false);
+  const [weightValue, setWeightValue] = useState('');
+  const [weightNotes, setWeightNotes] = useState('');
+  const [savingWeight, setSavingWeight] = useState(false);
+
+  // Acqua
+  const [waterTotal, setWaterTotal] = useState(0);
+  const [waterCustom, setWaterCustom] = useState('');
+  const [savingWater, setSavingWater] = useState(false);
+
+  const [loading, setLoading] = useState(true);
+
+  const loadData = useCallback(async () => {
+    setLoading(true);
+    try {
+      const [logs, water] = await Promise.all([
+        getBodyWeightLogs(),
+        getWaterLogByDate(today),
+      ]);
+      setWeightLogs(logs);
+      setWaterTotal(water);
+    } catch {
+      Alert.alert('Errore', 'Impossibile caricare i dati.');
+    } finally {
+      setLoading(false);
+    }
+  }, [today]);
+
+  useFocusEffect(useCallback(() => { loadData(); }, [loadData]));
+
+  const todayWeight = weightLogs.find((l) => l.date === today) ?? null;
+
+  const handleSaveWeight = async () => {
+    const val = parseFloat(weightValue.replace(',', '.'));
+    if (!val || val <= 0 || val > 500) {
+      Alert.alert('Valore non valido', 'Inserisci un peso valido in kg.');
+      return;
+    }
+    try {
+      setSavingWeight(true);
+      await upsertBodyWeightLog(today, val, weightNotes.trim() || null);
+      setWeightValue('');
+      setWeightNotes('');
+      setShowWeightInput(false);
+      await loadData();
+    } catch {
+      Alert.alert('Errore', 'Impossibile salvare il peso.');
+    } finally {
+      setSavingWeight(false);
+    }
+  };
+
+  const handleDeleteWeight = (log: BodyWeightLog) => {
+    Alert.alert('Rimuovi peso', `Vuoi rimuovere la registrazione del ${formatDateDisplay(log.date)}?`, [
+      { text: 'Annulla', style: 'cancel' },
+      { text: 'Rimuovi', style: 'destructive', onPress: async () => {
+        await deleteBodyWeightLog(log.id);
+        await loadData();
+      }},
+    ]);
+  };
+
+  const handleAddWater = async (ml: number) => {
+    if (!ml || ml <= 0) return;
+    try {
+      setSavingWater(true);
+      await addWaterLog(today, ml);
+      setWaterCustom('');
+      await loadData();
+    } catch {
+      Alert.alert('Errore', 'Impossibile salvare il log acqua.');
+    } finally {
+      setSavingWater(false);
+    }
+  };
+
+  const handleResetWater = () => {
+    if (waterTotal === 0) return;
+    Alert.alert('Reset acqua', 'Vuoi azzerare il contatore acqua di oggi?', [
+      { text: 'Annulla', style: 'cancel' },
+      { text: 'Azzera', style: 'destructive', onPress: async () => {
+        await resetWaterLog(today);
+        await loadData();
+      }},
+    ]);
+  };
+
+  if (loading) {
+    return <View style={corpoStyles.loadingBox}><ActivityIndicator color={PRIMARY} /></View>;
+  }
+
+  return (
+    <>
+      {/* ── Peso corporeo ── */}
+      <View style={corpoStyles.sectionCard}>
+        <View style={corpoStyles.sectionHeader}>
+          <Text style={corpoStyles.sectionTitle}>⚖️ Peso corporeo</Text>
+          {!showWeightInput && (
+            <TouchableOpacity
+              style={corpoStyles.addBtn}
+              onPress={() => {
+                setWeightValue(todayWeight ? String(todayWeight.weight_kg) : '');
+                setWeightNotes(todayWeight?.notes ?? '');
+                setShowWeightInput(true);
+              }}
+              activeOpacity={0.8}
+            >
+              <Text style={corpoStyles.addBtnText}>
+                {todayWeight ? 'Modifica' : '+ Registra'}
+              </Text>
+            </TouchableOpacity>
+          )}
+        </View>
+
+        {/* Oggi */}
+        {todayWeight ? (
+          <View style={corpoStyles.todayWeightRow}>
+            <Text style={corpoStyles.todayWeightValue}>{todayWeight.weight_kg}</Text>
+            <Text style={corpoStyles.todayWeightUnit}>kg</Text>
+            <Text style={corpoStyles.todayWeightLabel}>oggi</Text>
+          </View>
+        ) : (
+          !showWeightInput && (
+            <Text style={corpoStyles.emptyText}>Nessuna registrazione per oggi.</Text>
+          )
+        )}
+
+        {/* Input */}
+        {showWeightInput && (
+          <View style={corpoStyles.weightInputBox}>
+            <Text style={corpoStyles.inputLabel}>Peso (kg)</Text>
+            <TextInput
+              value={weightValue}
+              onChangeText={setWeightValue}
+              keyboardType="decimal-pad"
+              placeholder="Es. 75.5"
+              placeholderTextColor={Colors.dark.textMuted}
+              style={corpoStyles.weightInput}
+              autoFocus
+              selectTextOnFocus
+            />
+            <Text style={[corpoStyles.inputLabel, { marginTop: 10 }]}>Note (opzionale)</Text>
+            <TextInput
+              value={weightNotes}
+              onChangeText={setWeightNotes}
+              placeholder="Es. mattino a digiuno"
+              placeholderTextColor={Colors.dark.textMuted}
+              style={corpoStyles.notesInput}
+            />
+            <View style={corpoStyles.weightInputActions}>
+              <TouchableOpacity
+                style={[corpoStyles.saveWeightBtn, savingWeight && corpoStyles.disabledBtn]}
+                onPress={handleSaveWeight}
+                disabled={savingWeight}
+                activeOpacity={0.85}
+              >
+                <Text style={corpoStyles.saveWeightBtnText}>
+                  {savingWeight ? 'Salvataggio...' : 'Salva'}
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={corpoStyles.cancelBtn}
+                onPress={() => setShowWeightInput(false)}
+                activeOpacity={0.8}
+              >
+                <Text style={corpoStyles.cancelBtnText}>Annulla</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        )}
+
+        {/* Storico */}
+        {weightLogs.length > 0 && (
+          <View style={corpoStyles.historyBox}>
+            <Text style={corpoStyles.historyTitle}>Storico</Text>
+            <View style={corpoStyles.historyList}>
+              {weightLogs.map((log) => (
+                <View key={log.id} style={corpoStyles.historyRow}>
+                  <View style={corpoStyles.historyLeft}>
+                    <Text style={corpoStyles.historyDate}>{formatDateDisplay(log.date)}</Text>
+                    {log.notes ? <Text style={corpoStyles.historyNotes}>{log.notes}</Text> : null}
+                  </View>
+                  <Text style={corpoStyles.historyWeight}>{log.weight_kg} kg</Text>
+                  <TouchableOpacity
+                    style={corpoStyles.deleteBtn}
+                    onPress={() => handleDeleteWeight(log)}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={corpoStyles.deleteBtnText}>✕</Text>
+                  </TouchableOpacity>
+                </View>
+              ))}
+            </View>
+          </View>
+        )}
+      </View>
+
+      {/* ── Acqua ── */}
+      <View style={corpoStyles.sectionCard}>
+        <View style={corpoStyles.sectionHeader}>
+          <Text style={corpoStyles.sectionTitle}>💧 Acqua</Text>
+          {waterTotal > 0 && (
+            <TouchableOpacity
+              style={corpoStyles.resetWaterBtn}
+              onPress={handleResetWater}
+              activeOpacity={0.8}
+            >
+              <Text style={corpoStyles.resetWaterBtnText}>Azzera</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+
+        {/* Bottle visual */}
+        <WaterBottle totalMl={waterTotal} />
+
+        {/* Total label */}
+        <Text style={corpoStyles.waterTotalLabel}>
+          {waterTotal >= 1000
+            ? `${(waterTotal / 1000).toFixed(1).replace('.0', '')}L`
+            : `${waterTotal}ml`}
+          {' '}bevuti oggi
+        </Text>
+
+        {/* Quick buttons */}
+        <View style={corpoStyles.waterQuickRow}>
+          {WATER_QUICK_OPTIONS.map((ml) => (
+            <TouchableOpacity
+              key={ml}
+              style={[corpoStyles.waterQuickBtn, savingWater && corpoStyles.disabledBtn]}
+              onPress={() => handleAddWater(ml)}
+              disabled={savingWater}
+              activeOpacity={0.85}
+            >
+              <Text style={corpoStyles.waterQuickBtnText}>+{ml}ml</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+
+        {/* Custom input */}
+        <View style={corpoStyles.waterCustomRow}>
+          <TextInput
+            value={waterCustom}
+            onChangeText={setWaterCustom}
+            keyboardType="number-pad"
+            placeholder="Quantità personalizzata (ml)"
+            placeholderTextColor={Colors.dark.textMuted}
+            style={corpoStyles.waterCustomInput}
+          />
+          <TouchableOpacity
+            style={[corpoStyles.waterCustomBtn, (!waterCustom || savingWater) && corpoStyles.disabledBtn]}
+            onPress={() => handleAddWater(parseInt(waterCustom, 10))}
+            disabled={!waterCustom || savingWater}
+            activeOpacity={0.85}
+          >
+            <Text style={corpoStyles.waterCustomBtnText}>+</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    </>
+  );
+}
+
+const corpoStyles = StyleSheet.create({
+  loadingBox: { paddingTop: 60, alignItems: 'center' },
+  sectionCard: { backgroundColor: Colors.dark.surface, borderRadius: 18, padding: 18, borderWidth: 1, borderColor: Colors.dark.border, marginBottom: 14 },
+  sectionHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 },
+  sectionTitle: { fontSize: 17, fontWeight: '800', color: Colors.dark.text },
+  addBtn: { backgroundColor: 'rgba(126,71,255,0.14)', borderRadius: 10, borderWidth: 1, borderColor: PRIMARY, paddingHorizontal: 12, paddingVertical: 6 },
+  addBtnText: { color: PRIMARY, fontSize: 13, fontWeight: '700' },
+  todayWeightRow: { flexDirection: 'row', alignItems: 'baseline', gap: 6, marginBottom: 16 },
+  todayWeightValue: { fontSize: 42, fontWeight: '800', color: Colors.dark.text, fontVariant: ['tabular-nums'] },
+  todayWeightUnit: { fontSize: 18, fontWeight: '600', color: Colors.dark.textMuted },
+  todayWeightLabel: { fontSize: 14, color: Colors.dark.textMuted, fontWeight: '600', marginLeft: 4 },
+  emptyText: { fontSize: 13, color: Colors.dark.textMuted, fontStyle: 'italic', marginBottom: 4 },
+  weightInputBox: { backgroundColor: '#101015', borderRadius: 14, padding: 14, borderWidth: 1, borderColor: Colors.dark.border, marginBottom: 14 },
+  inputLabel: { fontSize: 12, fontWeight: '600', color: Colors.dark.textMuted, marginBottom: 6 },
+  weightInput: { backgroundColor: Colors.dark.surface, borderWidth: 1, borderColor: Colors.dark.border, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, color: Colors.dark.text, fontSize: 22, fontWeight: '800' },
+  notesInput: { backgroundColor: Colors.dark.surface, borderWidth: 1, borderColor: Colors.dark.border, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10, color: Colors.dark.text, fontSize: 14 },
+  weightInputActions: { flexDirection: 'row', gap: 10, marginTop: 12 },
+  saveWeightBtn: { flex: 1, backgroundColor: PRIMARY, borderRadius: 12, paddingVertical: 12, alignItems: 'center' },
+  saveWeightBtnText: { color: '#fff', fontSize: 14, fontWeight: '800' },
+  cancelBtn: { flex: 1, backgroundColor: Colors.dark.surfaceSoft, borderRadius: 12, paddingVertical: 12, alignItems: 'center', borderWidth: 1, borderColor: Colors.dark.border },
+  cancelBtnText: { color: Colors.dark.textMuted, fontSize: 14, fontWeight: '700' },
+  historyBox: { borderTopWidth: 1, borderTopColor: Colors.dark.border, paddingTop: 14 },
+  historyTitle: { fontSize: 12, fontWeight: '700', color: Colors.dark.textMuted, marginBottom: 10, letterSpacing: 0.5 },
+  historyList: { gap: 8 },
+  historyRow: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: '#101015', borderRadius: 12, padding: 12, borderWidth: 1, borderColor: Colors.dark.border },
+  historyLeft: { flex: 1 },
+  historyDate: { fontSize: 14, fontWeight: '700', color: Colors.dark.text },
+  historyNotes: { fontSize: 12, color: Colors.dark.textMuted, marginTop: 2 },
+  historyWeight: { fontSize: 16, fontWeight: '800', color: Colors.dark.text, fontVariant: ['tabular-nums'] },
+  deleteBtn: { width: 28, height: 28, backgroundColor: 'rgba(239,68,68,0.12)', borderRadius: 8, borderWidth: 1, borderColor: Colors.dark.danger, alignItems: 'center', justifyContent: 'center' },
+  deleteBtnText: { color: Colors.dark.danger, fontSize: 13, fontWeight: '800' },
+  waterTotalLabel: { fontSize: 14, fontWeight: '700', color: Colors.dark.textMuted, textAlign: 'center', marginBottom: 14, marginTop: -4 },
+  resetWaterBtn: { backgroundColor: 'rgba(239,68,68,0.12)', borderRadius: 8, borderWidth: 1, borderColor: Colors.dark.danger, paddingHorizontal: 10, paddingVertical: 4 },
+  resetWaterBtnText: { color: Colors.dark.danger, fontSize: 12, fontWeight: '700' },
+  waterQuickRow: { flexDirection: 'row', gap: 8, marginBottom: 12 },
+  waterQuickBtn: { flex: 1, backgroundColor: 'rgba(126,71,255,0.1)', borderRadius: 12, borderWidth: 1, borderColor: 'rgba(126,71,255,0.35)', paddingVertical: 12, alignItems: 'center' },
+  waterQuickBtnText: { color: PRIMARY, fontSize: 13, fontWeight: '800' },
+  waterCustomRow: { flexDirection: 'row', gap: 10 },
+  waterCustomInput: { flex: 1, backgroundColor: '#101015', borderWidth: 1, borderColor: Colors.dark.border, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 11, color: Colors.dark.text, fontSize: 15 },
+  waterCustomBtn: { width: 46, backgroundColor: PRIMARY, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+  waterCustomBtnText: { color: '#fff', fontSize: 22, fontWeight: '800' },
+  disabledBtn: { opacity: 0.5 },
+});
+
 // ─── Piano Section ────────────────────────────────────────────────────────────
 
 type PlanType = 'weekly' | 'cycle';
@@ -1113,11 +1688,8 @@ function PianoSection() {
             </View>
           </View>
           <View style={pianoStyles.planHeaderActions}>
-            <TouchableOpacity style={pianoStyles.newPlanBtn} onPress={() => setShowNewPlanModal(true)} activeOpacity={0.8}>
-              <Text style={pianoStyles.newPlanBtnText}>+ Nuovo</Text>
-            </TouchableOpacity>
             <TouchableOpacity style={pianoStyles.deletePlanBtn} onPress={() => handleDeletePlan(activePlan)} activeOpacity={0.8}>
-              <Text style={pianoStyles.deletePlanBtnText}>Elimina</Text>
+              <Text style={pianoStyles.deletePlanBtnText}>Elimina piano</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -1223,6 +1795,12 @@ function PianoSection() {
           </Text>
         </TouchableOpacity>
       )}
+
+      {/* Nuovo piano — separato dal piano attivo */}
+      <View style={pianoStyles.newPlanSeparator} />
+      <TouchableOpacity style={pianoStyles.newPlanBottomBtn} onPress={() => setShowNewPlanModal(true)} activeOpacity={0.85}>
+        <Text style={pianoStyles.newPlanBottomBtnText}>+ Crea nuovo piano</Text>
+      </TouchableOpacity>
 
       <NewPlanModal visible={showNewPlanModal} onClose={() => setShowNewPlanModal(false)} onSaved={() => { loadPlans(); setShowNewPlanModal(false); }} />
 
@@ -1507,6 +2085,9 @@ const pianoStyles = StyleSheet.create({
   deleteEntryBtnText: { color: Colors.dark.danger, fontSize: 12, fontWeight: '800' },
   addDayBtn: { marginTop: 12, backgroundColor: Colors.dark.surface, borderRadius: 14, borderWidth: 1, borderColor: 'rgba(126,71,255,0.35)', borderStyle: 'dashed', paddingVertical: 14, alignItems: 'center' },
   addDayBtnText: { color: PRIMARY, fontSize: 14, fontWeight: '700' },
+  newPlanSeparator: { marginTop: 24, marginBottom: 12, height: 1, backgroundColor: Colors.dark.border },
+  newPlanBottomBtn: { backgroundColor: Colors.dark.surface, borderRadius: 14, borderWidth: 1, borderColor: Colors.dark.border, paddingVertical: 14, alignItems: 'center' },
+  newPlanBottomBtnText: { color: PRIMARY, fontSize: 14, fontWeight: '700' },
 });
 
 // ─── Screen ───────────────────────────────────────────────────────────────────
@@ -1533,6 +2114,9 @@ export default function NutritionScreen() {
           )}
           {section === 'piano' && (
             <PianoSection />
+          )}
+          {section === 'corpo' && (
+            <CorpoSection />
           )}
           {section === 'catalogo' && (
             <CatalogoSection />

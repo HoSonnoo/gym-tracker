@@ -1415,6 +1415,14 @@ export async function addWaterLog(date: string, ml: number): Promise<void> {
   );
 }
 
+export async function resetWaterLog(date: string): Promise<void> {
+  const database = await getDb();
+  await database.runAsync(
+    `DELETE FROM water_logs WHERE date = ?`,
+    [date]
+  );
+}
+
 // ─── Alimentazione — Body Weight ──────────────────────────────────────────────
 
 export async function getBodyWeightLogs(): Promise<BodyWeightLog[]> {
