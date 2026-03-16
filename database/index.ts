@@ -86,6 +86,48 @@ export async function initDatabase() {
       FOREIGN KEY (exercise_id) REFERENCES exercises(id) ON DELETE SET NULL
     );
 
+    CREATE TABLE IF NOT EXISTS food_items (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL UNIQUE,
+      kcal_per_100g REAL,
+      protein_g REAL,
+      carbs_g REAL,
+      fat_g REAL,
+      source TEXT NOT NULL DEFAULT 'manual',
+      external_id TEXT,
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS nutrition_logs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      date TEXT NOT NULL,
+      meal_type TEXT NOT NULL,
+      food_item_id INTEGER,
+      food_name TEXT NOT NULL,
+      grams REAL NOT NULL,
+      kcal REAL,
+      protein REAL,
+      carbs REAL,
+      fat REAL,
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (food_item_id) REFERENCES food_items(id) ON DELETE SET NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS water_logs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      date TEXT NOT NULL,
+      ml INTEGER NOT NULL,
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS body_weight_logs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      date TEXT NOT NULL UNIQUE,
+      weight_kg REAL NOT NULL,
+      notes TEXT,
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+
     CREATE TABLE IF NOT EXISTS workout_session_sets (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       session_exercise_id INTEGER NOT NULL,
@@ -1202,4 +1244,165 @@ export async function removeExerciseFromSession(sessionExerciseId: number): Prom
     `DELETE FROM workout_session_exercises WHERE id = ?`,
     [sessionExerciseId]
   );
+}
+
+// ─── Alimentazione — Tipi ─────────────────────────────────────────────────────
+
+export type FoodItem = {
+  id: number;
+  name: string;
+  kcal_per_100g: number | null;
+  protein_g: number | null;
+  carbs_g: number | null;
+  fat_g: number | null;
+  source: 'manual' | 'openfoodfacts';
+  external_id: string | null;
+  created_at: string;
+};
+
+export type NutritionLog = {
+  id: number;
+  date: string;
+  meal_type: string;
+  food_item_id: number | null;
+  food_name: string;
+  grams: number;
+  kcal: number | null;
+  protein: number | null;
+  carbs: number | null;
+  fat: number | null;
+  created_at: string;
+};
+
+export type WaterLog = {
+  id: number;
+  date: string;
+  ml: number;
+  created_at: string;
+};
+
+export type BodyWeightLog = {
+  id: number;
+  date: string;
+  weight_kg: number;
+  notes: string | null;
+  created_at: string;
+};
+
+// ─── Alimentazione — Food Items ───────────────────────────────────────────────
+
+export async function getFoodItems(): Promise<FoodItem[]> {
+  const database = await getDb();
+  return database.getAllAsync<FoodItem>(
+    `SELECT * FROM food_items ORDER BY name ASC`
+  );
+}
+
+export async function addFoodItem(item: {
+  name: string;
+  kcal_per_100g: number | null;
+  protein_g: number | null;
+  carbs_g: number | null;
+  fat_g: number | null;
+  source: 'manual' | 'openfoodfacts';
+  external_id?: string | null;
+}): Promise<number> {
+  const database = await getDb();
+  const name = item.name.trim();
+  if (!name) throw new Error('Inserisci il nome dell\'alimento.');
+  try {
+    const result = await database.runAsync(
+      `INSERT INTO food_items (name, kcal_per_100g, protein_g, carbs_g, fat_g, source, external_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [name, item.kcal_per_100g, item.protein_g, item.carbs_g, item.fat_g, item.source, item.external_id ?? null]
+    );
+    return Number(result.lastInsertRowId);
+  } catch (error) {
+    if (error instanceof Error && error.message.includes('UNIQUE constraint failed')) {
+      throw new Error('Questo alimento è già presente nel catalogo.');
+    }
+    throw new Error('Impossibile salvare l\'alimento.');
+  }
+}
+
+export async function deleteFoodItem(id: number): Promise<void> {
+  const database = await getDb();
+  await database.runAsync(`DELETE FROM food_items WHERE id = ?`, [id]);
+}
+
+// ─── Alimentazione — Nutrition Logs ──────────────────────────────────────────
+
+export async function getNutritionLogsByDate(date: string): Promise<NutritionLog[]> {
+  const database = await getDb();
+  return database.getAllAsync<NutritionLog>(
+    `SELECT * FROM nutrition_logs WHERE date = ? ORDER BY created_at ASC`,
+    [date]
+  );
+}
+
+export async function addNutritionLog(log: {
+  date: string;
+  meal_type: string;
+  food_item_id: number | null;
+  food_name: string;
+  grams: number;
+  kcal: number | null;
+  protein: number | null;
+  carbs: number | null;
+  fat: number | null;
+}): Promise<void> {
+  const database = await getDb();
+  await database.runAsync(
+    `INSERT INTO nutrition_logs (date, meal_type, food_item_id, food_name, grams, kcal, protein, carbs, fat)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [log.date, log.meal_type, log.food_item_id, log.food_name, log.grams, log.kcal, log.protein, log.carbs, log.fat]
+  );
+}
+
+export async function deleteNutritionLog(id: number): Promise<void> {
+  const database = await getDb();
+  await database.runAsync(`DELETE FROM nutrition_logs WHERE id = ?`, [id]);
+}
+
+// ─── Alimentazione — Water Logs ───────────────────────────────────────────────
+
+export async function getWaterLogByDate(date: string): Promise<number> {
+  const database = await getDb();
+  const row = await database.getFirstAsync<{ total: number }>(
+    `SELECT COALESCE(SUM(ml), 0) as total FROM water_logs WHERE date = ?`,
+    [date]
+  );
+  return row?.total ?? 0;
+}
+
+export async function addWaterLog(date: string, ml: number): Promise<void> {
+  const database = await getDb();
+  await database.runAsync(
+    `INSERT INTO water_logs (date, ml) VALUES (?, ?)`,
+    [date, ml]
+  );
+}
+
+// ─── Alimentazione — Body Weight ──────────────────────────────────────────────
+
+export async function getBodyWeightLogs(): Promise<BodyWeightLog[]> {
+  const database = await getDb();
+  return database.getAllAsync<BodyWeightLog>(
+    `SELECT * FROM body_weight_logs ORDER BY date DESC`
+  );
+}
+
+export async function upsertBodyWeightLog(date: string, weight_kg: number, notes: string | null): Promise<void> {
+  const database = await getDb();
+  await database.runAsync(
+    `INSERT INTO body_weight_logs (date, weight_kg, notes)
+     VALUES (?, ?, ?)
+     ON CONFLICT(date) DO UPDATE SET weight_kg = excluded.weight_kg, notes = excluded.notes`,
+    [date, weight_kg, notes]
+  );
+}
+
+export async function deleteBodyWeightLog(id: number): Promise<void> {
+  const database = await getDb();
+  await database.runAsync(`DELETE FROM body_weight_logs WHERE id = ?`, [id]);
 }
