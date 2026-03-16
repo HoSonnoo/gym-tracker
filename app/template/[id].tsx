@@ -123,7 +123,7 @@ function DraggableItem({
       <Animated.View style={[dragStyles.item, animatedStyle]}
         onLayout={onLayout}>
         {/* Handle drag */}
-        <View style={[dragStyles.handleCol, { position: 'relative' }]}>
+        <View style={dragStyles.handleCol}>
           <View style={dragStyles.handleIcon}>
             <Text style={dragStyles.handleDots}>⠿</Text>
           </View>
@@ -172,9 +172,10 @@ const dragStyles = StyleSheet.create({
     elevation: 0,
   },
   handleCol: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    width: 32,
+  width: 36,
+  alignItems: 'center',
+  justifyContent: 'center',
+  gap: 4,
   },
   handleIcon: {
     width: 30,
@@ -187,14 +188,12 @@ const dragStyles = StyleSheet.create({
     justifyContent: 'center',
   },
   handleDots: {
-    fontSize: 20,
+    fontSize: 16,
     color: Colors.dark.textMuted,
-    lineHeight: 35,
+    lineHeight: 18,
   },
   orderBadge: {
-    position: 'absolute',
-    bottom: -4,
-    left: 0,
+    // rimuovi position: 'absolute', bottom, left
     width: 22,
     height: 22,
     borderRadius: 11,
