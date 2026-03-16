@@ -1087,3 +1087,37 @@ export async function isDatabaseEmpty(): Promise<boolean> {
   const [exercises, templates] = await Promise.all([hasExercises(), hasTemplates()]);
   return !exercises && !templates;
 }
+
+export async function updateWorkoutTemplate(
+  id: number,
+  name: string,
+  notes: string | null
+): Promise<void> {
+  const database = await getDb();
+
+  const normalizedName = name.trim();
+  const normalizedNotes = notes?.trim() || null;
+
+  if (!normalizedName) {
+    throw new Error('Inserisci il nome del template.');
+  }
+
+  await database.runAsync(
+    `UPDATE workout_templates SET name = ?, notes = ? WHERE id = ?`,
+    [normalizedName, normalizedNotes, id]
+  );
+}
+
+export async function reorderTemplateExercises(
+  exercises: { id: number; exercise_order: number }[]
+): Promise<void> {
+  const database = await getDb();
+  await database.withTransactionAsync(async () => {
+    for (const ex of exercises) {
+      await database.runAsync(
+        `UPDATE workout_template_exercises SET exercise_order = ? WHERE id = ?`,
+        [ex.exercise_order, ex.id]
+      );
+    }
+  });
+}
