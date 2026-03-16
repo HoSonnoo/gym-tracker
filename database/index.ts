@@ -86,6 +86,38 @@ export async function initDatabase() {
       FOREIGN KEY (exercise_id) REFERENCES exercises(id) ON DELETE SET NULL
     );
 
+    CREATE TABLE IF NOT EXISTS meal_plans (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      plan_type TEXT NOT NULL DEFAULT 'weekly',
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS meal_plan_days (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      meal_plan_id INTEGER NOT NULL,
+      day_order INTEGER NOT NULL,
+      label TEXT NOT NULL,
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (meal_plan_id) REFERENCES meal_plans(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS meal_plan_entries (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      meal_plan_day_id INTEGER NOT NULL,
+      meal_type TEXT NOT NULL,
+      food_item_id INTEGER,
+      food_name TEXT NOT NULL,
+      grams REAL NOT NULL,
+      kcal REAL,
+      protein REAL,
+      carbs REAL,
+      fat REAL,
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (meal_plan_day_id) REFERENCES meal_plan_days(id) ON DELETE CASCADE,
+      FOREIGN KEY (food_item_id) REFERENCES food_items(id) ON DELETE SET NULL
+    );
+
     CREATE TABLE IF NOT EXISTS food_items (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       name TEXT NOT NULL UNIQUE,
@@ -1405,4 +1437,120 @@ export async function upsertBodyWeightLog(date: string, weight_kg: number, notes
 export async function deleteBodyWeightLog(id: number): Promise<void> {
   const database = await getDb();
   await database.runAsync(`DELETE FROM body_weight_logs WHERE id = ?`, [id]);
+}
+
+// ─── Piano Alimentare — Tipi ──────────────────────────────────────────────────
+
+export type MealPlan = {
+  id: number;
+  name: string;
+  plan_type: 'weekly' | 'cycle';
+  created_at: string;
+};
+
+export type MealPlanDay = {
+  id: number;
+  meal_plan_id: number;
+  day_order: number;
+  label: string;
+  created_at: string;
+};
+
+export type MealPlanEntry = {
+  id: number;
+  meal_plan_day_id: number;
+  meal_type: string;
+  food_item_id: number | null;
+  food_name: string;
+  grams: number;
+  kcal: number | null;
+  protein: number | null;
+  carbs: number | null;
+  fat: number | null;
+  created_at: string;
+};
+
+// ─── Piano Alimentare — CRUD ──────────────────────────────────────────────────
+
+export async function getMealPlans(): Promise<MealPlan[]> {
+  const database = await getDb();
+  return database.getAllAsync<MealPlan>(`SELECT * FROM meal_plans ORDER BY created_at DESC`);
+}
+
+export async function addMealPlan(name: string, plan_type: 'weekly' | 'cycle'): Promise<number> {
+  const database = await getDb();
+  const trimmed = name.trim();
+  if (!trimmed) throw new Error('Inserisci il nome del piano.');
+  const result = await database.runAsync(
+    `INSERT INTO meal_plans (name, plan_type) VALUES (?, ?)`,
+    [trimmed, plan_type]
+  );
+  return Number(result.lastInsertRowId);
+}
+
+export async function deleteMealPlan(id: number): Promise<void> {
+  const database = await getDb();
+  await database.runAsync(`DELETE FROM meal_plans WHERE id = ?`, [id]);
+}
+
+export async function getMealPlanDays(mealPlanId: number): Promise<MealPlanDay[]> {
+  const database = await getDb();
+  return database.getAllAsync<MealPlanDay>(
+    `SELECT * FROM meal_plan_days WHERE meal_plan_id = ? ORDER BY day_order ASC`,
+    [mealPlanId]
+  );
+}
+
+export async function addMealPlanDay(mealPlanId: number, dayOrder: number, label: string): Promise<number> {
+  const database = await getDb();
+  const result = await database.runAsync(
+    `INSERT INTO meal_plan_days (meal_plan_id, day_order, label) VALUES (?, ?, ?)`,
+    [mealPlanId, dayOrder, label]
+  );
+  return Number(result.lastInsertRowId);
+}
+
+export async function deleteMealPlanDay(id: number): Promise<void> {
+  const database = await getDb();
+  await database.runAsync(`DELETE FROM meal_plan_days WHERE id = ?`, [id]);
+}
+
+export async function getMealPlanEntries(mealPlanDayId: number): Promise<MealPlanEntry[]> {
+  const database = await getDb();
+  return database.getAllAsync<MealPlanEntry>(
+    `SELECT * FROM meal_plan_entries WHERE meal_plan_day_id = ? ORDER BY meal_type ASC, created_at ASC`,
+    [mealPlanDayId]
+  );
+}
+
+export async function addMealPlanEntry(entry: {
+  meal_plan_day_id: number;
+  meal_type: string;
+  food_item_id: number | null;
+  food_name: string;
+  grams: number;
+  kcal: number | null;
+  protein: number | null;
+  carbs: number | null;
+  fat: number | null;
+}): Promise<void> {
+  const database = await getDb();
+  await database.runAsync(
+    `INSERT INTO meal_plan_entries (meal_plan_day_id, meal_type, food_item_id, food_name, grams, kcal, protein, carbs, fat)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [entry.meal_plan_day_id, entry.meal_type, entry.food_item_id, entry.food_name, entry.grams, entry.kcal, entry.protein, entry.carbs, entry.fat]
+  );
+}
+
+export async function updateMealPlanEntry(id: number, grams: number, kcal: number | null, protein: number | null, carbs: number | null, fat: number | null): Promise<void> {
+  const database = await getDb();
+  await database.runAsync(
+    `UPDATE meal_plan_entries SET grams = ?, kcal = ?, protein = ?, carbs = ?, fat = ? WHERE id = ?`,
+    [grams, kcal, protein, carbs, fat, id]
+  );
+}
+
+export async function deleteMealPlanEntry(id: number): Promise<void> {
+  const database = await getDb();
+  await database.runAsync(`DELETE FROM meal_plan_entries WHERE id = ?`, [id]);
 }
