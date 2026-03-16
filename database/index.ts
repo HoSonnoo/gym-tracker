@@ -1121,3 +1121,72 @@ export async function reorderTemplateExercises(
     }
   });
 }
+
+export async function addExerciseToSession(
+  sessionId: number,
+  exerciseId: number,
+  exerciseName: string,
+  category: string | null
+): Promise<number> {
+  const database = await getDb();
+
+  const maxOrderRow = await database.getFirstAsync<{ maxOrder: number | null }>(
+    `SELECT MAX(exercise_order) as maxOrder
+     FROM workout_session_exercises
+     WHERE session_id = ?`,
+    [sessionId]
+  );
+
+  const nextOrder = (maxOrderRow?.maxOrder ?? 0) + 1;
+
+  const result = await database.runAsync(
+    `INSERT INTO workout_session_exercises (
+      session_id,
+      template_exercise_id,
+      exercise_id,
+      exercise_name,
+      category,
+      exercise_order,
+      notes
+    ) VALUES (?, NULL, ?, ?, ?, ?, NULL)`,
+    [sessionId, exerciseId, exerciseName, category, nextOrder]
+  );
+
+  return Number(result.lastInsertRowId);
+}
+
+export async function addEmptySetToSessionExercise(
+  sessionExerciseId: number
+): Promise<void> {
+  const database = await getDb();
+
+  const maxOrderRow = await database.getFirstAsync<{ maxOrder: number | null }>(
+    `SELECT MAX(set_order) as maxOrder
+     FROM workout_session_sets
+     WHERE session_exercise_id = ?`,
+    [sessionExerciseId]
+  );
+
+  const nextOrder = (maxOrderRow?.maxOrder ?? 0) + 1;
+
+  await database.runAsync(
+    `INSERT INTO workout_session_sets (
+      session_exercise_id,
+      template_set_id,
+      set_order,
+      target_set_type,
+      target_effort_type,
+      is_completed
+    ) VALUES (?, NULL, ?, 'target', 'none', 0)`,
+    [sessionExerciseId, nextOrder]
+  );
+}
+
+export async function removeExerciseFromSession(sessionExerciseId: number): Promise<void> {
+  const database = await getDb();
+  // CASCADE elimina anche tutte le serie associate
+  await database.runAsync(
+    `DELETE FROM workout_session_exercises WHERE id = ?`,
+    [sessionExerciseId]
+  );
+}

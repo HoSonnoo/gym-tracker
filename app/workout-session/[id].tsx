@@ -2,11 +2,16 @@ import { Colors } from '@/constants/Colors';
 import { useRestTimer } from '@/context/RestTimerContext';
 import { formatWeight, useUserPreferences } from '@/context/UserPreferencesContext';
 import {
+  addEmptySetToSessionExercise,
+  addExerciseToSession,
   completeWorkoutSession,
+  getExercises,
   getWorkoutSessionById,
   getWorkoutSessionExercises,
   getWorkoutSessionSets,
+  removeExerciseFromSession,
   updateWorkoutSessionSet,
+  type Exercise,
   type WorkoutSession,
   type WorkoutSessionExercise,
   type WorkoutSessionSet,
@@ -17,7 +22,9 @@ import React, { useCallback, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  FlatList,
   LayoutChangeEvent,
+  Modal,
   ScrollView,
   StyleSheet,
   Text,
@@ -99,6 +106,134 @@ function formatEffortType(value: string | null): string {
   }
 }
 
+// ─── Add Exercise Modal ───────────────────────────────────────────────────────
+
+type AddExerciseModalProps = {
+  visible: boolean;
+  onClose: () => void;
+  onSelect: (exercise: Exercise) => void;
+};
+
+function AddExerciseModal({ visible, onClose, onSelect }: AddExerciseModalProps) {
+  const [exercises, setExercises] = useState<Exercise[]>([]);
+  const [search, setSearch] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  React.useEffect(() => {
+    if (!visible) return;
+    setLoading(true);
+    getExercises()
+      .then(setExercises)
+      .catch(() => setExercises([]))
+      .finally(() => setLoading(false));
+  }, [visible]);
+
+  const filtered = useMemo(() => {
+    if (!search.trim()) return exercises;
+    const q = search.trim().toLowerCase();
+    return exercises.filter(
+      (e) =>
+        e.name.toLowerCase().includes(q) ||
+        (e.category?.toLowerCase().includes(q) ?? false)
+    );
+  }, [exercises, search]);
+
+  return (
+    <Modal
+      visible={visible}
+      animationType="slide"
+      presentationStyle="pageSheet"
+      onRequestClose={onClose}
+    >
+      <View style={modalStyles.container}>
+        <View style={modalStyles.handle} />
+
+        <View style={modalStyles.header}>
+          <Text style={modalStyles.title}>Aggiungi esercizio</Text>
+          <TouchableOpacity onPress={onClose} style={modalStyles.closeButton} activeOpacity={0.8}>
+            <Text style={modalStyles.closeButtonText}>Chiudi</Text>
+          </TouchableOpacity>
+        </View>
+
+        <View style={modalStyles.searchRow}>
+          <TextInput
+            value={search}
+            onChangeText={setSearch}
+            placeholder="Cerca esercizio..."
+            placeholderTextColor={Colors.dark.textMuted}
+            style={modalStyles.searchInput}
+            autoFocus
+            clearButtonMode="while-editing"
+          />
+        </View>
+
+        {loading ? (
+          <View style={modalStyles.centered}>
+            <ActivityIndicator size="large" color={PRIMARY} />
+          </View>
+        ) : (
+          <FlatList
+            data={filtered}
+            keyExtractor={(item) => item.id.toString()}
+            contentContainerStyle={modalStyles.listContent}
+            keyboardShouldPersistTaps="handled"
+            ListEmptyComponent={
+              <View style={modalStyles.emptyBox}>
+                <Text style={modalStyles.emptyText}>
+                  {search.trim()
+                    ? `Nessun esercizio trovato per "${search}"`
+                    : 'Nessun esercizio nel catalogo.'}
+                </Text>
+              </View>
+            }
+            renderItem={({ item }) => (
+              <TouchableOpacity
+                style={modalStyles.exerciseRow}
+                onPress={() => {
+                  onSelect(item);
+                  onClose();
+                }}
+                activeOpacity={0.85}
+              >
+                <View style={modalStyles.exerciseInfo}>
+                  <Text style={modalStyles.exerciseName}>{item.name}</Text>
+                  <Text style={modalStyles.exerciseCategory}>
+                    {item.category ?? 'Nessuna categoria'}
+                  </Text>
+                </View>
+                <View style={modalStyles.addBadge}>
+                  <Text style={modalStyles.addBadgeText}>+ Aggiungi</Text>
+                </View>
+              </TouchableOpacity>
+            )}
+          />
+        )}
+      </View>
+    </Modal>
+  );
+}
+
+const modalStyles = StyleSheet.create({
+  container: { flex: 1, backgroundColor: Colors.dark.background, paddingTop: 12 },
+  handle: { width: 40, height: 4, backgroundColor: Colors.dark.border, borderRadius: 2, alignSelf: 'center', marginBottom: 16 },
+  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, marginBottom: 16 },
+  title: { fontSize: 20, fontWeight: '800', color: Colors.dark.text },
+  closeButton: { paddingVertical: 8, paddingHorizontal: 14, backgroundColor: Colors.dark.surfaceSoft, borderRadius: 12, borderWidth: 1, borderColor: Colors.dark.border },
+  closeButtonText: { color: Colors.dark.text, fontSize: 14, fontWeight: '600' },
+  searchRow: { paddingHorizontal: 20, marginBottom: 12 },
+  searchInput: { backgroundColor: Colors.dark.surface, borderWidth: 1, borderColor: Colors.dark.border, borderRadius: 14, paddingHorizontal: 16, paddingVertical: 12, color: Colors.dark.text, fontSize: 15 },
+  centered: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  listContent: { paddingHorizontal: 20, paddingBottom: 40 },
+  emptyBox: { paddingTop: 40, alignItems: 'center' },
+  emptyText: { color: Colors.dark.textMuted, fontSize: 15, textAlign: 'center' },
+  exerciseRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: Colors.dark.surface, borderRadius: 16, padding: 16, borderWidth: 1, borderColor: Colors.dark.border, marginBottom: 10, gap: 12 },
+  exerciseInfo: { flex: 1 },
+  exerciseName: { fontSize: 16, fontWeight: '700', color: Colors.dark.text, marginBottom: 4 },
+  exerciseCategory: { fontSize: 13, color: Colors.dark.textMuted },
+  addBadge: { backgroundColor: 'rgba(126,71,255,0.14)', borderRadius: 10, borderWidth: 1, borderColor: Colors.dark.primary, paddingHorizontal: 12, paddingVertical: 6 },
+  addBadgeText: { color: Colors.dark.primarySoft, fontSize: 13, fontWeight: '700' },
+});
+
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
 function BackButton({ onPress, label = 'Indietro' }: { onPress: () => void; label?: string }) {
@@ -157,7 +292,6 @@ function SetCard({
         isNextIncomplete && styles.setCardNext,
       ]}
     >
-      {/* Header */}
       <View style={styles.setHeaderRow}>
         <Text style={styles.setTitle}>
           Serie {index + 1} · {formatSetType(set)}
@@ -169,7 +303,6 @@ function SetCard({
         </View>
       </View>
 
-      {/* Target grid */}
       <View style={styles.targetGrid}>
         <TargetBox label="Target peso" value={formatWeight(set.target_weight_kg, unit)} />
         <TargetBox label="Target reps" value={formatTargetReps(set)} />
@@ -177,7 +310,6 @@ function SetCard({
         <TargetBox label="Sforzo" value={formatEffortType(set.target_effort_type)} />
       </View>
 
-      {/* Target notes */}
       {set.target_notes ? (
         <View style={styles.inlineNoteBox}>
           <Text style={styles.noteLabel}>Note target</Text>
@@ -185,7 +317,6 @@ function SetCard({
         </View>
       ) : null}
 
-      {/* Peso + Reps */}
       <View style={styles.inputsRow}>
         <View style={styles.inputGroup}>
           <Text style={styles.inputLabel}>Peso reale ({unit})</Text>
@@ -211,7 +342,6 @@ function SetCard({
         </View>
       </View>
 
-      {/* Effort chips */}
       <View style={styles.inputGroup}>
         <Text style={styles.inputLabel}>Sforzo reale</Text>
         <View style={styles.effortRow}>
@@ -233,7 +363,6 @@ function SetCard({
         </View>
       </View>
 
-      {/* Notes */}
       <View style={styles.inputGroup}>
         <Text style={styles.inputLabel}>Note serie</Text>
         <TextInput
@@ -246,7 +375,6 @@ function SetCard({
         />
       </View>
 
-      {/* Actions */}
       <View style={styles.setActions}>
         <TouchableOpacity
           style={[styles.primaryButton, isSaving && styles.disabledButton]}
@@ -345,6 +473,8 @@ export default function WorkoutSessionScreen() {
   const [setForms, setSetForms] = useState<Record<number, SetFormState>>({});
   const [savingSetId, setSavingSetId] = useState<number | null>(null);
   const [finishingSession, setFinishingSession] = useState(false);
+  const [showAddExerciseModal, setShowAddExerciseModal] = useState(false);
+  const [addingExercise, setAddingExercise] = useState(false);
 
   // ── Data loading ──────────────────────────────────────────────────────────────
 
@@ -397,7 +527,7 @@ export default function WorkoutSessionScreen() {
   const progressPercent = totalSetsCount > 0 ? completedSetsCount / totalSetsCount : 0;
   const nextIncompleteSet = useMemo(() => allSets.find((s) => s.is_completed === 0) ?? null, [allSets]);
 
-  // ── Scroll ─────────────────────────────────────────────────────────────────────
+  // ── Scroll ────────────────────────────────────────────────────────────────────
 
   const registerExerciseCardPosition = useCallback(
     (exerciseId: number) => (event: LayoutChangeEvent) => {
@@ -527,6 +657,60 @@ export default function WorkoutSessionScreen() {
     await proceed();
   }, [session, remainingSetsCount, router]);
 
+  const handleAddFreeExercise = useCallback(
+    async (exercise: Exercise) => {
+      if (!session) return;
+      try {
+        setAddingExercise(true);
+        const sessionExerciseId = await addExerciseToSession(
+          session.id,
+          exercise.id,
+          exercise.name,
+          exercise.category
+        );
+        await addEmptySetToSessionExercise(sessionExerciseId);
+        await loadSessionData();
+        setTimeout(() => {
+          scrollRef.current?.scrollToEnd({ animated: true });
+        }, 300);
+      } catch {
+        Alert.alert('Errore', 'Impossibile aggiungere l\'esercizio alla sessione.');
+      } finally {
+        setAddingExercise(false);
+      }
+    },
+    [session, loadSessionData]
+  );
+
+  const handleRemoveExercise = useCallback(
+    (exercise: WorkoutSessionExercise) => {
+      const completedCount = sessionData
+        .find((item) => item.exercise.id === exercise.id)
+        ?.sets.filter((s) => s.is_completed === 1).length ?? 0;
+
+      const message = completedCount > 0
+        ? `Hai già completato ${completedCount} serie di "${exercise.exercise_name}". Rimuovendolo perderai i dati registrati. Continuare?`
+        : `Vuoi rimuovere "${exercise.exercise_name}" da questa sessione?`;
+
+      Alert.alert('Rimuovi esercizio', message, [
+        { text: 'Annulla', style: 'cancel' },
+        {
+          text: 'Rimuovi',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await removeExerciseFromSession(exercise.id);
+              await loadSessionData();
+            } catch {
+              Alert.alert('Errore', 'Impossibile rimuovere l\'esercizio.');
+            }
+          },
+        },
+      ]);
+    },
+    [sessionData, loadSessionData]
+  );
+
   // ── Guards ────────────────────────────────────────────────────────────────────
 
   if (!sessionId || Number.isNaN(sessionId)) {
@@ -598,7 +782,11 @@ export default function WorkoutSessionScreen() {
           </Text>
 
           {nextIncompleteSet ? (
-            <TouchableOpacity style={styles.nextSetButton} activeOpacity={0.9} onPress={scrollToNextIncompleteSet}>
+            <TouchableOpacity
+              style={styles.nextSetButton}
+              activeOpacity={0.9}
+              onPress={scrollToNextIncompleteSet}
+            >
               <Text style={styles.nextSetButtonText}>Prossima serie</Text>
             </TouchableOpacity>
           ) : (
@@ -627,10 +815,22 @@ export default function WorkoutSessionScreen() {
             style={styles.exerciseCard}
           >
             <View style={styles.exerciseHeader}>
-              <Text style={styles.exerciseTitle}>{exercise.exercise_name}</Text>
-              <Text style={styles.exerciseSubtitle}>
-                {exercise.category ?? 'Nessuna categoria'}
-              </Text>
+              <View style={styles.exerciseHeaderText}>
+                <Text style={styles.exerciseTitle}>{exercise.exercise_name}</Text>
+                <Text style={styles.exerciseSubtitle}>
+                  {exercise.category ?? 'Nessuna categoria'}
+                  {exercise.template_exercise_id === null && (
+                    <Text style={styles.freeExerciseBadge}> · Libero</Text>
+                  )}
+                </Text>
+              </View>
+              <TouchableOpacity
+                style={styles.removeExerciseButton}
+                onPress={() => handleRemoveExercise(exercise)}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.removeExerciseButtonText}>Rimuovi</Text>
+              </TouchableOpacity>
             </View>
 
             {exercise.notes ? (
@@ -671,7 +871,25 @@ export default function WorkoutSessionScreen() {
             </View>
           </View>
         ))}
+
+        {/* Bottone aggiungi esercizio libero */}
+        <TouchableOpacity
+          style={[styles.addExerciseButton, addingExercise && styles.disabledButton]}
+          onPress={() => setShowAddExerciseModal(true)}
+          disabled={addingExercise}
+          activeOpacity={0.85}
+        >
+          <Text style={styles.addExerciseButtonText}>
+            {addingExercise ? 'Aggiunta...' : '+ Aggiungi esercizio'}
+          </Text>
+        </TouchableOpacity>
       </ScrollView>
+
+      <AddExerciseModal
+        visible={showAddExerciseModal}
+        onClose={() => setShowAddExerciseModal(false)}
+        onSelect={handleAddFreeExercise}
+      />
     </SafeAreaView>
   );
 }
@@ -700,9 +918,13 @@ const styles = StyleSheet.create({
   nextSetButton: { backgroundColor: PRIMARY, borderRadius: 14, paddingVertical: 14, alignItems: 'center', justifyContent: 'center' },
   nextSetButtonText: { color: '#fff', fontSize: 15, fontWeight: '800' },
   exerciseCard: { backgroundColor: Colors.dark.surface, borderRadius: 18, padding: 18, borderWidth: 1, borderColor: Colors.dark.border, marginTop: 12 },
-  exerciseHeader: { marginBottom: 12 },
+  exerciseHeader: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, marginBottom: 12 },
+  exerciseHeaderText: { flex: 1 },
   exerciseTitle: { color: Colors.dark.text, fontSize: 20, fontWeight: '800' },
   exerciseSubtitle: { color: Colors.dark.textMuted, fontSize: 14, marginTop: 4 },
+  freeExerciseBadge: { color: PRIMARY, fontWeight: '700' },
+  removeExerciseButton: { backgroundColor: 'rgba(239,68,68,0.12)', borderRadius: 10, borderWidth: 1, borderColor: Colors.dark.danger, paddingHorizontal: 10, paddingVertical: 6 },
+  removeExerciseButtonText: { color: Colors.dark.danger, fontSize: 12, fontWeight: '700' },
   exerciseNoteBox: { backgroundColor: '#1a1a21', borderRadius: 12, padding: 12, borderWidth: 1, borderColor: Colors.dark.border, marginBottom: 14 },
   exerciseSetsList: { gap: 14 },
   setCard: { backgroundColor: '#141419', borderRadius: 16, padding: 14, borderWidth: 1, borderColor: Colors.dark.border },
@@ -739,4 +961,6 @@ const styles = StyleSheet.create({
   finishButton: { backgroundColor: PRIMARY, borderRadius: 16, paddingVertical: 16, alignItems: 'center', justifyContent: 'center', marginTop: 18, marginBottom: 12 },
   finishButtonText: { color: '#ffffff', fontSize: 16, fontWeight: '800' },
   disabledButton: { opacity: 0.6 },
+  addExerciseButton: { marginTop: 16, backgroundColor: Colors.dark.surface, borderRadius: 16, borderWidth: 1, borderColor: 'rgba(126,71,255,0.35)', borderStyle: 'dashed', paddingVertical: 16, alignItems: 'center', justifyContent: 'center' },
+  addExerciseButtonText: { color: PRIMARY, fontSize: 15, fontWeight: '700' },
 });

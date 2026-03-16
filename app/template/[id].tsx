@@ -125,7 +125,7 @@ function DraggableItem({
         {/* Handle drag */}
         <View style={dragStyles.handleCol}>
           <View style={dragStyles.handleIcon}>
-            <Text style={dragStyles.handleDots}>⠿</Text>
+            <Text style={dragStyles.handleDots}> ⠿</Text>
           </View>
           <View style={dragStyles.orderBadge}>
             <Text style={dragStyles.orderText}>{index + 1}</Text>
@@ -172,10 +172,10 @@ const dragStyles = StyleSheet.create({
     elevation: 0,
   },
   handleCol: {
-  width: 36,
+  width: 30,
   alignItems: 'center',
   justifyContent: 'center',
-  gap: 4,
+  gap: 5,
   },
   handleIcon: {
     width: 30,
@@ -188,21 +188,21 @@ const dragStyles = StyleSheet.create({
     justifyContent: 'center',
   },
   handleDots: {
-    fontSize: 16,
+    fontSize: 26,
     color: Colors.dark.textMuted,
-    lineHeight: 18,
+    lineHeight: 30,
   },
   orderBadge: {
     // rimuovi position: 'absolute', bottom, left
-    width: 22,
-    height: 22,
-    borderRadius: 11,
+    width: 20,
+    height: 20,
+    borderRadius: 10,
     backgroundColor: 'rgba(126,71,255,0.15)',
     alignItems: 'center',
     justifyContent: 'center',
   },
   orderText: {
-    fontSize: 11,
+    fontSize: 13,
     fontWeight: '800',
     color: PRIMARY,
   },
