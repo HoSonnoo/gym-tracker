@@ -11,148 +11,150 @@ import {
   updateWorkoutTemplate,
   WorkoutTemplate,
 } from '@/database';
+import * as Haptics from 'expo-haptics';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Alert,
   FlatList,
-  LayoutAnimation,
-  Platform,
   Pressable,
   StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
-  UIManager,
   View,
 } from 'react-native';
+import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
+import Animated, {
+  runOnJS,
+  useAnimatedStyle,
+  useSharedValue,
+  withSpring,
+  withTiming,
+} from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 const PRIMARY = '#7e47ff';
 
-// Abilita LayoutAnimation su Android
-if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
-  UIManager.setLayoutAnimationEnabledExperimental(true);
-}
+// ─── Draggable Item ───────────────────────────────────────────────────────────
 
-// ─── Draggable Exercise List ──────────────────────────────────────────────────
-
-type DraggableExerciseListProps = {
-  exercises: TemplateExercise[];
-  onReorder: (reordered: TemplateExercise[]) => void;
-  onConfigure: (item: TemplateExercise) => void;
-  onRemove: (item: TemplateExercise) => void;
+type DraggableItemProps = {
+  item: TemplateExercise;
+  index: number;
+  total: number;
+  itemHeightRef: React.MutableRefObject<number>;
+  onDragStart: (index: number) => void;
+  onDragEnd: (fromIndex: number, toIndex: number) => void;
+  onConfigure: () => void;
+  onRemove: () => void;
+  onLayout?: (e: any) => void;
 };
 
-function DraggableExerciseList({
-  exercises,
-  onReorder,
+function DraggableItem({
+  item,
+  index,
+  total,
+  itemHeightRef,
+  onDragStart,
+  onDragEnd,
   onConfigure,
   onRemove,
-}: DraggableExerciseListProps) {
-  const [items, setItems] = useState(exercises);
-  const [draggingId, setDraggingId] = useState<number | null>(null);
-  const [dragOverId, setDragOverId] = useState<number | null>(null);
+  onLayout,
+}: DraggableItemProps) {
+  const translateY = useSharedValue(0);
+  const scale = useSharedValue(1);
+  const zIndex = useSharedValue(0);
+  const opacity = useSharedValue(1);
+  const isActive = useSharedValue(false);
 
-  // Sincronizza quando cambiano gli esercizi dall'esterno
-  useEffect(() => {
-    setItems(exercises);
-  }, [exercises]);
+  // Tiene traccia dell'index di destinazione sul JS thread
+  const toIndexRef = useRef(index);
 
-  const handleMoveUp = useCallback((index: number) => {
-    if (index === 0) return;
-    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-    const newItems = [...items];
-    [newItems[index - 1], newItems[index]] = [newItems[index], newItems[index - 1]];
-    setItems(newItems);
-    onReorder(newItems);
-  }, [items, onReorder]);
+  const pan = Gesture.Pan()
+    .activateAfterLongPress(250)
+    .onStart(() => {
+      isActive.value = true;
+      scale.value = withSpring(1.03, { damping: 20, stiffness: 300 });
+      opacity.value = withTiming(0.9, { duration: 150 });
+      zIndex.value = 999;
+      runOnJS(onDragStart)(index);
+      runOnJS(Haptics.impactAsync)(Haptics.ImpactFeedbackStyle.Medium);
+    })
+    .onUpdate((e) => {
+      // Muove solo questo item visivamente — nessun re-render React
+      translateY.value = e.translationY;
 
-  const handleMoveDown = useCallback((index: number) => {
-    if (index === items.length - 1) return;
-    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-    const newItems = [...items];
-    [newItems[index], newItems[index + 1]] = [newItems[index + 1], newItems[index]];
-    setItems(newItems);
-    onReorder(newItems);
-  }, [items, onReorder]);
+      // Calcola il target index ma non aggiorna lo stato
+      const rawOffset = Math.round(e.translationY / itemHeightRef.current);
+      const clamped = Math.max(-index, Math.min(total - 1 - index, rawOffset));
+      toIndexRef.current = index + clamped;
+    })
+    .onEnd(() => {
+      // Anima il ritorno alla posizione (la lista si riordinerà dopo)
+      translateY.value = withSpring(0, { damping: 25, stiffness: 300 });
+      scale.value = withSpring(1, { damping: 20 });
+      opacity.value = withTiming(1, { duration: 150 });
+      zIndex.value = 0;
+      isActive.value = false;
+      runOnJS(onDragEnd)(index, toIndexRef.current);
+      runOnJS(Haptics.impactAsync)(Haptics.ImpactFeedbackStyle.Light);
+    })
+    .onFinalize(() => {
+      // Safety: resetta sempre in caso di cancellazione gesture
+      translateY.value = withSpring(0, { damping: 25, stiffness: 300 });
+      scale.value = withSpring(1);
+      opacity.value = withTiming(1);
+      zIndex.value = 0;
+      isActive.value = false;
+    });
+
+  const animatedStyle = useAnimatedStyle(() => ({
+    transform: [
+      { translateY: translateY.value },
+      { scale: scale.value },
+    ],
+    zIndex: zIndex.value,
+    opacity: opacity.value,
+    shadowOpacity: isActive.value ? 0.3 : 0,
+  }));
 
   return (
-    <View style={dragStyles.container}>
-      {items.map((item, index) => {
-        const isFirst = index === 0;
-        const isLast = index === items.length - 1;
-        const isDragging = draggingId === item.id;
-
-        return (
-          <View
-            key={item.id}
-            style={[
-              dragStyles.item,
-              isDragging && dragStyles.itemDragging,
-            ]}
-          >
-            {/* Drag handle + ordine */}
-            <View style={dragStyles.handleCol}>
-              <TouchableOpacity
-                style={[dragStyles.arrowButton, isFirst && dragStyles.arrowButtonDisabled]}
-                onPress={() => handleMoveUp(index)}
-                disabled={isFirst}
-                activeOpacity={0.7}
-              >
-                <Text style={[dragStyles.arrowText, isFirst && dragStyles.arrowTextDisabled]}>
-                  ↑
-                </Text>
-              </TouchableOpacity>
-
-              <View style={dragStyles.orderBadge}>
-                <Text style={dragStyles.orderText}>{index + 1}</Text>
-              </View>
-
-              <TouchableOpacity
-                style={[dragStyles.arrowButton, isLast && dragStyles.arrowButtonDisabled]}
-                onPress={() => handleMoveDown(index)}
-                disabled={isLast}
-                activeOpacity={0.7}
-              >
-                <Text style={[dragStyles.arrowText, isLast && dragStyles.arrowTextDisabled]}>
-                  ↓
-                </Text>
-              </TouchableOpacity>
-            </View>
-
-            {/* Info esercizio */}
-            <View style={dragStyles.infoCol}>
-              <Text style={dragStyles.exerciseName}>{item.exercise_name}</Text>
-              <Text style={dragStyles.exerciseCategory}>
-                {item.exercise_category ?? 'Nessuna categoria'}
-              </Text>
-            </View>
-
-            {/* Azioni */}
-            <View style={dragStyles.actionsCol}>
-              <Pressable
-                style={dragStyles.configureButton}
-                onPress={() => onConfigure(item)}
-              >
-                <Text style={dragStyles.configureButtonText}>Configura</Text>
-              </Pressable>
-              <Pressable
-                style={dragStyles.removeButton}
-                onPress={() => onRemove(item)}
-              >
-                <Text style={dragStyles.removeButtonText}>Rimuovi</Text>
-              </Pressable>
-            </View>
+    <GestureDetector gesture={pan}>
+      <Animated.View style={[dragStyles.item, animatedStyle]}
+        onLayout={onLayout}>
+        {/* Handle drag */}
+        <View style={[dragStyles.handleCol, { position: 'relative' }]}>
+          <View style={dragStyles.handleIcon}>
+            <Text style={dragStyles.handleDots}>⠿</Text>
           </View>
-        );
-      })}
-    </View>
+          <View style={dragStyles.orderBadge}>
+            <Text style={dragStyles.orderText}>{index + 1}</Text>
+          </View>
+        </View>
+
+        {/* Info esercizio */}
+        <View style={dragStyles.infoCol}>
+          <Text style={dragStyles.exerciseName}>{item.exercise_name}</Text>
+          <Text style={dragStyles.exerciseCategory}>
+            {item.exercise_category ?? 'Nessuna categoria'}
+          </Text>
+        </View>
+
+        {/* Azioni */}
+        <View style={dragStyles.actionsCol}>
+          <Pressable style={dragStyles.configureButton} onPress={onConfigure}>
+            <Text style={dragStyles.configureButtonText}>Configura</Text>
+          </Pressable>
+          <Pressable style={dragStyles.removeButton} onPress={onRemove}>
+            <Text style={dragStyles.removeButtonText}>Rimuovi</Text>
+          </Pressable>
+        </View>
+      </Animated.View>
+    </GestureDetector>
   );
 }
 
 const dragStyles = StyleSheet.create({
-  container: { gap: 10, marginBottom: 12 },
   item: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -162,24 +164,21 @@ const dragStyles = StyleSheet.create({
     borderWidth: 1,
     borderColor: Colors.dark.border,
     gap: 10,
-  },
-  itemDragging: {
-    borderColor: PRIMARY,
-    backgroundColor: 'rgba(126,71,255,0.08)',
+    marginBottom: 10,
+    minHeight: 72,
     shadowColor: PRIMARY,
-    shadowOpacity: 0.2,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 4,
+    shadowOffset: { width: 0, height: 4 },
+    shadowRadius: 12,
+    elevation: 0,
   },
   handleCol: {
     alignItems: 'center',
-    gap: 2,
+    justifyContent: 'center',
     width: 32,
   },
-  arrowButton: {
-    width: 28,
-    height: 28,
+  handleIcon: {
+    width: 30,
+    height: 30,
     borderRadius: 8,
     backgroundColor: Colors.dark.surfaceSoft,
     borderWidth: 1,
@@ -187,19 +186,15 @@ const dragStyles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  arrowButtonDisabled: {
-    opacity: 0.25,
-  },
-  arrowText: {
-    fontSize: 14,
-    color: Colors.dark.text,
-    fontWeight: '700',
-    lineHeight: 18,
-  },
-  arrowTextDisabled: {
+  handleDots: {
+    fontSize: 20,
     color: Colors.dark.textMuted,
+    lineHeight: 35,
   },
   orderBadge: {
+    position: 'absolute',
+    bottom: -4,
+    left: 0,
     width: 22,
     height: 22,
     borderRadius: 11,
@@ -257,6 +252,66 @@ const dragStyles = StyleSheet.create({
   },
 });
 
+// ─── Draggable List ───────────────────────────────────────────────────────────
+
+type DraggableExerciseListProps = {
+  exercises: TemplateExercise[];
+  onReorder: (reordered: TemplateExercise[]) => void;
+  onConfigure: (item: TemplateExercise) => void;
+  onRemove: (item: TemplateExercise) => void;
+};
+
+function DraggableExerciseList({
+  exercises,
+  onReorder,
+  onConfigure,
+  onRemove,
+}: DraggableExerciseListProps) {
+  const [items, setItems] = useState(exercises);
+  const itemHeightRef = useRef(82); // fallback iniziale
+
+  useEffect(() => {
+    setItems(exercises);
+  }, [exercises]);
+
+  const handleDragStart = useCallback((_index: number) => {
+    // noop — lo stato non cambia durante il drag
+  }, []);
+
+  const handleDragEnd = useCallback(
+    (fromIndex: number, toIndex: number) => {
+      if (fromIndex === toIndex) return;
+      const newItems = [...items];
+      const [moved] = newItems.splice(fromIndex, 1);
+      newItems.splice(toIndex, 0, moved);
+      setItems(newItems);
+      onReorder(newItems);
+    },
+    [items, onReorder]
+  );
+
+  return (
+    <View>
+      {items.map((item, index) => (
+        <DraggableItem
+          key={item.id}
+          item={item}
+          index={index}
+          total={items.length}
+          itemHeightRef={itemHeightRef}
+          onDragStart={handleDragStart}
+          onDragEnd={handleDragEnd}
+          onConfigure={() => onConfigure(item)}
+          onRemove={() => onRemove(item)}
+          onLayout={index === 0
+            ? (e) => { itemHeightRef.current = e.nativeEvent.layout.height; }
+            : undefined}
+        />
+      ))}
+    </View>
+  );
+}
+
 // ─── Screen ───────────────────────────────────────────────────────────────────
 
 export default function TemplateDetailScreen() {
@@ -288,7 +343,7 @@ export default function TemplateDetailScreen() {
       setTemplateExercises(templateExercisesData);
       setAllExercises(exercisesData);
     } catch (error) {
-      console.error('Errore caricamento dettaglio template:', error);
+      console.error('Errore caricamento:', error);
     }
   }, [templateId]);
 
@@ -307,7 +362,7 @@ export default function TemplateDetailScreen() {
       await loadData();
       setIsEditing(false);
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Impossibile salvare le modifiche.';
+      const message = error instanceof Error ? error.message : 'Impossibile salvare.';
       Alert.alert('Errore', message);
     } finally {
       setIsSaving(false);
@@ -322,17 +377,13 @@ export default function TemplateDetailScreen() {
     setIsEditing(false);
   }, [template]);
 
-  // Gestisce il riordinamento: aggiorna lo stato locale immediatamente,
-  // poi persiste nel DB con un debounce di 600ms per evitare troppe scritture
   const handleReorder = useCallback((reordered: TemplateExercise[]) => {
-    // Aggiorna lo stato locale con i nuovi ordini
     const withUpdatedOrder = reordered.map((ex, idx) => ({
       ...ex,
       exercise_order: idx + 1,
     }));
     setTemplateExercises(withUpdatedOrder);
 
-    // Debounce la scrittura su DB
     if (reorderTimeoutRef.current) clearTimeout(reorderTimeoutRef.current);
     reorderTimeoutRef.current = setTimeout(async () => {
       try {
@@ -341,7 +392,7 @@ export default function TemplateDetailScreen() {
           withUpdatedOrder.map((ex) => ({ id: ex.id, exercise_order: ex.exercise_order }))
         );
       } catch {
-        // Silenzioso — il DB verrà risincronizzato al prossimo focus
+        // silenzioso
       } finally {
         setIsReordering(false);
       }
@@ -356,7 +407,7 @@ export default function TemplateDetailScreen() {
       } catch (error) {
         const message = error instanceof Error
           ? error.message
-          : 'Errore durante l\'aggiunta dell\'esercizio al template.';
+          : 'Errore durante l\'aggiunta.';
         Alert.alert('Impossibile aggiungere l\'esercizio', message);
       }
     },
@@ -378,7 +429,7 @@ export default function TemplateDetailScreen() {
                 await removeExerciseFromTemplate(item.id);
                 await loadData();
               } catch {
-                Alert.alert('Impossibile rimuovere l\'esercizio', 'Si è verificato un errore.');
+                Alert.alert('Errore', 'Impossibile rimuovere l\'esercizio.');
               }
             },
           },
@@ -392,7 +443,6 @@ export default function TemplateDetailScreen() {
     useCallback(() => {
       loadData();
       return () => {
-        // Cleanup del timeout al blur
         if (reorderTimeoutRef.current) clearTimeout(reorderTimeoutRef.current);
       };
     }, [loadData])
@@ -411,179 +461,176 @@ export default function TemplateDetailScreen() {
   const showOnboardingBanner = templateExercises.length === 0;
 
   return (
-    <SafeAreaView style={styles.safeArea} edges={['top']}>
-      <FlatList
-        style={styles.container}
-        data={allExercises}
-        keyExtractor={(item) => item.id.toString()}
-        contentContainerStyle={styles.listContent}
-        scrollIndicatorInsets={{ right: 1 }}
-        ListHeaderComponent={
-          <>
-            <View style={styles.topBar}>
-              <Pressable style={styles.backButton} onPress={() => router.back()}>
-                <Text style={styles.backButtonText}>Indietro</Text>
-              </Pressable>
-            </View>
-
-            {/* Header */}
-            {isEditing ? (
-              <View style={styles.editBlock}>
-                <TextInput
-                  value={editName}
-                  onChangeText={setEditName}
-                  style={styles.editNameInput}
-                  placeholder="Nome template"
-                  placeholderTextColor={Colors.dark.textMuted}
-                  autoFocus
-                />
-                <TextInput
-                  value={editNotes}
-                  onChangeText={setEditNotes}
-                  style={styles.editNotesInput}
-                  placeholder="Note opzionali"
-                  placeholderTextColor={Colors.dark.textMuted}
-                  multiline
-                />
-                <View style={styles.editActions}>
-                  <TouchableOpacity
-                    style={[styles.saveButton, isSaving && styles.buttonDisabled]}
-                    onPress={handleSaveEdit}
-                    disabled={isSaving}
-                    activeOpacity={0.85}
-                  >
-                    <Text style={styles.saveButtonText}>
-                      {isSaving ? 'Salvataggio...' : 'Salva'}
-                    </Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={styles.cancelButton}
-                    onPress={handleCancelEdit}
-                    disabled={isSaving}
-                    activeOpacity={0.85}
-                  >
-                    <Text style={styles.cancelButtonText}>Annulla</Text>
-                  </TouchableOpacity>
-                </View>
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <SafeAreaView style={styles.safeArea} edges={['top']}>
+        <FlatList
+          style={styles.container}
+          data={allExercises}
+          keyExtractor={(item) => item.id.toString()}
+          contentContainerStyle={styles.listContent}
+          scrollIndicatorInsets={{ right: 1 }}
+          ListHeaderComponent={
+            <>
+              <View style={styles.topBar}>
+                <Pressable style={styles.backButton} onPress={() => router.back()}>
+                  <Text style={styles.backButtonText}>Indietro</Text>
+                </Pressable>
               </View>
-            ) : (
-              <View style={styles.headerBlock}>
-                <View style={styles.headerRow}>
-                  <Text style={styles.pageTitle}>{template?.name ?? 'Template'}</Text>
-                  <TouchableOpacity
-                    style={styles.editButton}
-                    onPress={() => setIsEditing(true)}
-                    activeOpacity={0.8}
-                  >
-                    <Text style={styles.editButtonText}>Modifica</Text>
-                  </TouchableOpacity>
-                </View>
-                <Text style={styles.pageSubtitle}>
-                  {template?.notes?.trim() || 'Nessuna nota per questo template.'}
-                </Text>
-              </View>
-            )}
 
-            {/* Banner onboarding */}
-            {showOnboardingBanner && !isEditing && (
-              <View style={styles.onboardingBanner}>
-                <View style={styles.onboardingBannerHeader}>
-                  <View style={styles.onboardingStep}>
-                    <Text style={styles.onboardingStepText}>3</Text>
+              {isEditing ? (
+                <View style={styles.editBlock}>
+                  <TextInput
+                    value={editName}
+                    onChangeText={setEditName}
+                    style={styles.editNameInput}
+                    placeholder="Nome template"
+                    placeholderTextColor={Colors.dark.textMuted}
+                    autoFocus
+                  />
+                  <TextInput
+                    value={editNotes}
+                    onChangeText={setEditNotes}
+                    style={styles.editNotesInput}
+                    placeholder="Note opzionali"
+                    placeholderTextColor={Colors.dark.textMuted}
+                    multiline
+                  />
+                  <View style={styles.editActions}>
+                    <TouchableOpacity
+                      style={[styles.saveButton, isSaving && styles.buttonDisabled]}
+                      onPress={handleSaveEdit}
+                      disabled={isSaving}
+                      activeOpacity={0.85}
+                    >
+                      <Text style={styles.saveButtonText}>
+                        {isSaving ? 'Salvataggio...' : 'Salva'}
+                      </Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={styles.cancelButton}
+                      onPress={handleCancelEdit}
+                      disabled={isSaving}
+                      activeOpacity={0.85}
+                    >
+                      <Text style={styles.cancelButtonText}>Annulla</Text>
+                    </TouchableOpacity>
                   </View>
-                  <Text style={styles.onboardingBannerTitle}>
-                    Aggiungi esercizi al template
+                </View>
+              ) : (
+                <View style={styles.headerBlock}>
+                  <View style={styles.headerRow}>
+                    <Text style={styles.pageTitle}>{template?.name ?? 'Template'}</Text>
+                    <TouchableOpacity
+                      style={styles.editButton}
+                      onPress={() => setIsEditing(true)}
+                      activeOpacity={0.8}
+                    >
+                      <Text style={styles.editButtonText}>Modifica</Text>
+                    </TouchableOpacity>
+                  </View>
+                  <Text style={styles.pageSubtitle}>
+                    {template?.notes?.trim() || 'Nessuna nota per questo template.'}
                   </Text>
                 </View>
-                <Text style={styles.onboardingBannerText}>
-                  Qui sotto trovi tutti gli esercizi del tuo catalogo. Tocca{' '}
-                  <Text style={styles.onboardingBannerHighlight}>Aggiungi</Text>{' '}
-                  su quelli che vuoi inserire in questo template. Potrai configurare serie, peso e recupero per ognuno dopo averli aggiunti.
-                </Text>
-                <View style={styles.onboardingArrow}>
-                  <Text style={styles.onboardingArrowText}>↓ Gli esercizi disponibili sono qui sotto</Text>
+              )}
+
+              {showOnboardingBanner && !isEditing && (
+                <View style={styles.onboardingBanner}>
+                  <View style={styles.onboardingBannerHeader}>
+                    <View style={styles.onboardingStep}>
+                      <Text style={styles.onboardingStepText}>3</Text>
+                    </View>
+                    <Text style={styles.onboardingBannerTitle}>
+                      Aggiungi esercizi al template
+                    </Text>
+                  </View>
+                  <Text style={styles.onboardingBannerText}>
+                    Qui sotto trovi tutti gli esercizi del tuo catalogo. Tocca{' '}
+                    <Text style={styles.onboardingBannerHighlight}>Aggiungi</Text>{' '}
+                    su quelli che vuoi inserire in questo template.
+                  </Text>
+                  <View style={styles.onboardingArrow}>
+                    <Text style={styles.onboardingArrowText}>↓ Gli esercizi disponibili sono qui sotto</Text>
+                  </View>
                 </View>
-              </View>
-            )}
+              )}
 
-            <View style={styles.sectionHeader}>
-              <View style={styles.sectionHeaderRow}>
-                <Text style={styles.sectionTitle}>Esercizi del template</Text>
-                {isReordering && (
-                  <Text style={styles.savingOrderText}>Salvataggio ordine...</Text>
-                )}
-              </View>
-              <Text style={styles.sectionDescription}>
-                {templateExercises.length > 1
-                  ? 'Usa ↑ ↓ per cambiare l\'ordine degli esercizi.'
-                  : 'Qui trovi gli esercizi già presenti in questa scheda.'}
-              </Text>
-            </View>
-
-            {templateExercises.length === 0 ? (
-              <View style={styles.emptyCard}>
-                <Text style={styles.cardTitle}>Nessun esercizio nel template</Text>
-                <Text style={styles.cardText}>
-                  Aggiungi uno o più esercizi dalla sezione qui sotto.
+              <View style={styles.sectionHeader}>
+                <View style={styles.sectionHeaderRow}>
+                  <Text style={styles.sectionTitle}>Esercizi del template</Text>
+                  {isReordering && (
+                    <Text style={styles.savingOrderText}>Salvataggio...</Text>
+                  )}
+                </View>
+                <Text style={styles.sectionDescription}>
+                  {templateExercises.length > 1
+                    ? 'Tieni premuto ⠿ e trascina per riordinare.'
+                    : 'Qui trovi gli esercizi già presenti in questa scheda.'}
                 </Text>
               </View>
-            ) : (
-              <>
-                <DraggableExerciseList
-                  exercises={templateExercises}
-                  onReorder={handleReorder}
-                  onConfigure={(item) => router.push(`/template/exercise/${item.id}`)}
-                  onRemove={handleRemoveExerciseFromTemplate}
-                />
 
-                {templateExercises.length > 0 && (
+              {templateExercises.length === 0 ? (
+                <View style={styles.emptyCard}>
+                  <Text style={styles.cardTitle}>Nessun esercizio nel template</Text>
+                  <Text style={styles.cardText}>
+                    Aggiungi uno o più esercizi dalla sezione qui sotto.
+                  </Text>
+                </View>
+              ) : (
+                <>
+                  <DraggableExerciseList
+                    exercises={templateExercises}
+                    onReorder={handleReorder}
+                    onConfigure={(item) => router.push(`/template/exercise/${item.id}`)}
+                    onRemove={handleRemoveExerciseFromTemplate}
+                  />
                   <View style={styles.configureTip}>
                     <Text style={styles.configureTipText}>
                       💡 Tocca{' '}
                       <Text style={styles.configureTipHighlight}>Configura</Text>
-                      {' '}su un esercizio per impostare serie, peso target e tempi di recupero.
+                      {' '}per impostare serie, peso target e tempi di recupero.
                     </Text>
                   </View>
-                )}
-              </>
-            )}
+                </>
+              )}
 
-            <View style={[styles.sectionHeader, { marginTop: 20 }]}>
-              <Text style={styles.sectionTitle}>Aggiungi dal catalogo</Text>
-              <Text style={styles.sectionDescription}>
-                Tocca "Aggiungi" per inserire un esercizio nel template.
-              </Text>
-            </View>
-          </>
-        }
-        renderItem={({ item }) => (
-          <View style={styles.exerciseItem}>
-            <View style={styles.exerciseHeader}>
-              <View style={styles.exerciseTextContainer}>
-                <Text style={styles.exerciseName}>{item.name}</Text>
-                <Text style={styles.exerciseCategory}>
-                  {item.category ?? 'Nessuna categoria'}
+              <View style={[styles.sectionHeader, { marginTop: 20 }]}>
+                <Text style={styles.sectionTitle}>Aggiungi dal catalogo</Text>
+                <Text style={styles.sectionDescription}>
+                  Tocca "Aggiungi" per inserire un esercizio nel template.
                 </Text>
               </View>
-              <Pressable
-                style={styles.addButton}
-                onPress={() => handleAddExerciseToTemplate(item)}
-              >
-                <Text style={styles.addButtonText}>Aggiungi</Text>
-              </Pressable>
+            </>
+          }
+          renderItem={({ item }) => (
+            <View style={styles.exerciseItem}>
+              <View style={styles.exerciseHeader}>
+                <View style={styles.exerciseTextContainer}>
+                  <Text style={styles.exerciseName}>{item.name}</Text>
+                  <Text style={styles.exerciseCategory}>
+                    {item.category ?? 'Nessuna categoria'}
+                  </Text>
+                </View>
+                <Pressable
+                  style={styles.addButton}
+                  onPress={() => handleAddExerciseToTemplate(item)}
+                >
+                  <Text style={styles.addButtonText}>Aggiungi</Text>
+                </Pressable>
+              </View>
             </View>
-          </View>
-        )}
-        ListEmptyComponent={
-          <View style={styles.emptyCard}>
-            <Text style={styles.cardTitle}>Nessun esercizio disponibile</Text>
-            <Text style={styles.cardText}>
-              Vai in "Gestisci esercizi" e crea qualche esercizio da usare nei template.
-            </Text>
-          </View>
-        }
-      />
-    </SafeAreaView>
+          )}
+          ListEmptyComponent={
+            <View style={styles.emptyCard}>
+              <Text style={styles.cardTitle}>Nessun esercizio disponibile</Text>
+              <Text style={styles.cardText}>
+                Vai in "Gestisci esercizi" e crea qualche esercizio.
+              </Text>
+            </View>
+          }
+        />
+      </SafeAreaView>
+    </GestureHandlerRootView>
   );
 }
 
