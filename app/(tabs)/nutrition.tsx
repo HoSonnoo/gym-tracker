@@ -22,7 +22,7 @@ import {
     TouchableOpacity,
     View,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -938,7 +938,7 @@ export default function NutritionScreen() {
   const [currentDate, setCurrentDate] = useState(todayISO());
 
   return (
-    <SafeAreaView style={styles.safeArea} edges={['bottom']}>
+    <View style={styles.safeArea}>
       <ScrollView
         style={styles.container}
         contentContainerStyle={styles.content}
@@ -958,7 +958,7 @@ export default function NutritionScreen() {
           )}
         </View>
       </ScrollView>
-    </SafeAreaView>
+    </View>
   );
 }
 

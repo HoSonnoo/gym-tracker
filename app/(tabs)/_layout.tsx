@@ -49,7 +49,7 @@ export default function TabsLayout() {
       <Tabs.Screen
         name="index"
         options={{
-          title: 'Oggi',
+          title: '',
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="today-outline" size={size} color={color} />
           ),
@@ -58,7 +58,7 @@ export default function TabsLayout() {
       <Tabs.Screen
         name="workouts"
         options={{
-          title: 'Allenamenti',
+          title: '',
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="barbell-outline" size={size} color={color} />
           ),
@@ -67,7 +67,7 @@ export default function TabsLayout() {
       <Tabs.Screen
         name="nutrition"
         options={{
-          title: 'Alimentazione',
+          title: '',
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="nutrition-outline" size={size} color={color} />
           ),
@@ -76,7 +76,7 @@ export default function TabsLayout() {
       <Tabs.Screen
         name="calendar"
         options={{
-          title: 'Calendario',
+          title: '',
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="calendar-outline" size={size} color={color} />
           ),
@@ -85,7 +85,7 @@ export default function TabsLayout() {
       <Tabs.Screen
         name="progress"
         options={{
-          title: 'Progressi',
+          title: '',
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="stats-chart-outline" size={size} color={color} />
           ),
