@@ -47,9 +47,8 @@ import Animated, {
   useAnimatedStyle,
   useSharedValue,
   withRepeat,
-  withSequence,
   withSpring,
-  withTiming,
+  withTiming
 } from 'react-native-reanimated';
 
 
@@ -1007,11 +1006,9 @@ function AnimatedBottle({ targetFill, isComplete, label }: {
   isComplete: boolean;
   label: string;
 }) {
-  // Fill level — spring fluida che non riparte da 0
   const fillProgress = useSharedValue(targetFill);
-
-  // Wave offset — loop perpetuo sul thread UI nativo
-  const waveOffset = useSharedValue(0);
+  // waveRipple oscilla tra -4 e +4 px — modifica l'altezza del fill
+  const waveRipple = useSharedValue(0);
 
   useEffect(() => {
     fillProgress.value = withSpring(targetFill, {
@@ -1021,45 +1018,28 @@ function AnimatedBottle({ targetFill, isComplete, label }: {
     });
   }, [targetFill]);
 
+  // Loop perpetuo: la superficie sale e scende di 4px
   useEffect(() => {
-    waveOffset.value = withRepeat(
-      withSequence(
-        withTiming(1, { duration: 2000, easing: Easing.inOut(Easing.sin) }),
-        withTiming(0, { duration: 2000, easing: Easing.inOut(Easing.sin) }),
-      ),
-      -1, // infinito
-      false
+    waveRipple.value = withRepeat(
+      withTiming(4, { duration: 1200, easing: Easing.inOut(Easing.sin) }),
+      -1,
+      true  // reverse: 0 → 4 → 0 → -4 → 0, continuo senza scatti
     );
   }, []);
 
-  // Stile del fill — altezza animata
   const fillStyle = useAnimatedStyle(() => ({
-    height: fillProgress.value * BOTTLE_BODY_H,
+    height: fillProgress.value * BOTTLE_BODY_H +
+      (fillProgress.value > 0.03 && fillProgress.value < 0.97 ? waveRipple.value : 0),
     backgroundColor: interpolateColor(
       fillProgress.value,
       [0, 0.5, 1],
       ['#3b82f6', '#38bdf8', '#22c55e']
     ),
+    borderBottomLeftRadius: 18 - fillProgress.value * 4,
+    borderBottomRightRadius: 18 - fillProgress.value * 4,
+    borderTopLeftRadius: fillProgress.value > 0.88 ? 16 : 0,
+    borderTopRightRadius: fillProgress.value > 0.88 ? 16 : 0,
   }));
-
-  // Stile del contenitore onda — si sposta verticalmente con il livello
-  const waveContainerStyle = useAnimatedStyle(() => ({
-    bottom: fillProgress.value * BOTTLE_BODY_H - 10,
-  }));
-
-  // Onda 1 — si muove da sinistra a destra
-  const wave1Style = useAnimatedStyle(() => ({
-    transform: [{ translateX: (waveOffset.value - 0.5) * 28 }],
-  }));
-
-  // Onda 2 — direzione opposta, leggermente sfasata
-  const wave2Style = useAnimatedStyle(() => ({
-    transform: [{ translateX: (0.5 - waveOffset.value) * 22 }],
-  }));
-
-  const WAVE_W = BOTTLE_WIDTH * 1.7;
-  const WAVE_LEFT = -(WAVE_W - BOTTLE_WIDTH) / 2;
-  const showWave = targetFill > 0.03 && targetFill < 0.97;
 
   return (
     <View style={bottleStyles.bottleWrapper}>
@@ -1071,43 +1051,10 @@ function AnimatedBottle({ targetFill, isComplete, label }: {
       {/* Corpo */}
       <View style={[bottleStyles.body, { height: BOTTLE_BODY_H }]}>
 
-        {/* Acqua */}
+        {/* Acqua con superficie che ondeggia */}
         <Animated.View
           style={[bottleStyles.fill, fillStyle]}
         />
-
-        {/* Onde sulla superficie */}
-        {showWave && (
-          <Animated.View
-            style={[bottleStyles.waveContainer, waveContainerStyle]}
-            pointerEvents="none"
-          >
-            <Animated.View
-              style={[{
-                position: 'absolute',
-                bottom: 0,
-                left: WAVE_LEFT,
-                width: WAVE_W,
-                height: 10,
-                borderTopLeftRadius: 20,
-                borderTopRightRadius: 20,
-                backgroundColor: 'rgba(255,255,255,0.22)',
-              }, wave1Style]}
-            />
-            <Animated.View
-              style={[{
-                position: 'absolute',
-                bottom: 2,
-                left: WAVE_LEFT,
-                width: WAVE_W,
-                height: 7,
-                borderTopLeftRadius: 20,
-                borderTopRightRadius: 20,
-                backgroundColor: 'rgba(255,255,255,0.11)',
-              }, wave2Style]}
-            />
-          </Animated.View>
-        )}
 
         {/* Label */}
         <View style={bottleStyles.labelOverlay} pointerEvents="none">
@@ -1159,7 +1106,7 @@ const bottleStyles = StyleSheet.create({
     width: BOTTLE_WIDTH,
     backgroundColor: Colors.dark.surfaceSoft,
     borderRadius: 18,
-    overflow: 'hidden',
+    overflow: 'visible',
     borderWidth: 1.5,
     borderColor: Colors.dark.border,
   },
@@ -1169,13 +1116,7 @@ const bottleStyles = StyleSheet.create({
     left: 0,
     right: 0,
   },
-  waveContainer: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    height: 14,
-    overflow: 'visible',
-  },
+
   labelOverlay: {
     position: 'absolute',
     top: 0,
