@@ -1187,6 +1187,14 @@ export async function addEmptySetToSessionExercise(
   );
 }
 
+export async function removeSetFromSessionExercise(setId: number): Promise<void> {
+  const database = await getDb();
+  await database.runAsync(
+    `DELETE FROM workout_session_sets WHERE id = ?`,
+    [setId]
+  );
+}
+
 export async function removeExerciseFromSession(sessionExerciseId: number): Promise<void> {
   const database = await getDb();
   // CASCADE elimina anche tutte le serie associate
