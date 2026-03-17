@@ -46,9 +46,7 @@
           }
         }
       ],
-      "expo-sqlite",
-      "expo-document-picker",
-      "react-native-svg"
+      "expo-sqlite"
     ],
     "experiments": {
       "typedRoutes": true,

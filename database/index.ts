@@ -287,14 +287,9 @@ export type WorkoutSessionSet = {
 
 export async function getExercises(): Promise<Exercise[]> {
   const database = await getDb();
-
-  const rows = await database.getAllAsync<Exercise>(
-    `SELECT id, name, category, created_at
-     FROM exercises
-     ORDER BY name ASC`
+  return database.getAllAsync<Exercise>(
+    `SELECT id, name, category, created_at FROM exercises ORDER BY name ASC`
   );
-
-  return rows;
 }
 
 export async function addExercise(name: string, category: string | null) {
@@ -325,7 +320,6 @@ export async function addExercise(name: string, category: string | null) {
 
 export async function deleteExercise(id: number) {
   const database = await getDb();
-
   await database.runAsync(`DELETE FROM exercises WHERE id = ?`, [id]);
 }
 
@@ -352,34 +346,21 @@ export async function addWorkoutTemplate(name: string, notes: string | null): Pr
 
 export async function getWorkoutTemplates(): Promise<WorkoutTemplate[]> {
   const database = await getDb();
-
-  const rows = await database.getAllAsync<WorkoutTemplate>(
-    `SELECT id, name, notes, created_at
-     FROM workout_templates
-     ORDER BY created_at DESC`
+  return database.getAllAsync<WorkoutTemplate>(
+    `SELECT id, name, notes, created_at FROM workout_templates ORDER BY created_at DESC`
   );
-
-  return rows;
 }
 
 export async function deleteWorkoutTemplate(id: number) {
   const database = await getDb();
-
   await database.runAsync(`DELETE FROM workout_templates WHERE id = ?`, [id]);
 }
 
-export async function getWorkoutTemplateById(
-  id: number
-): Promise<WorkoutTemplate | null> {
+export async function getWorkoutTemplateById(id: number): Promise<WorkoutTemplate | null> {
   const database = await getDb();
-
   const row = await database.getFirstAsync<WorkoutTemplate>(
-    `SELECT id, name, notes, created_at
-     FROM workout_templates
-     WHERE id = ?`,
-    [id]
+    `SELECT id, name, notes, created_at FROM workout_templates WHERE id = ?`, [id]
   );
-
   return row ?? null;
 }
 
@@ -449,12 +430,7 @@ export async function addExerciseToTemplate(
 
 export async function removeExerciseFromTemplate(templateExerciseId: number) {
   const database = await getDb();
-
-  await database.runAsync(
-    `DELETE FROM workout_template_exercises
-     WHERE id = ?`,
-    [templateExerciseId]
-  );
+  await database.runAsync(`DELETE FROM workout_template_exercises WHERE id = ?`, [templateExerciseId]);
 }
 
 export async function getTemplateExerciseById(
@@ -581,11 +557,7 @@ export async function updateTemplateExerciseSet(
 
 export async function deleteTemplateExerciseSet(id: number) {
   const database = await getDb();
-
-  await database.runAsync(
-    `DELETE FROM template_exercise_sets WHERE id = ?`,
-    [id]
-  );
+  await database.runAsync(`DELETE FROM template_exercise_sets WHERE id = ?`, [id]);
 }
 
 export async function getTemplateExerciseSetById(
@@ -914,26 +886,16 @@ export async function updateWorkoutSessionSet(
 
 export async function completeWorkoutSession(sessionId: number) {
   const database = await getDb();
-
   await database.runAsync(
-    `UPDATE workout_sessions
-     SET
-      status = 'completed',
-      completed_at = CURRENT_TIMESTAMP
-     WHERE id = ?`,
+    `UPDATE workout_sessions SET status = 'completed', completed_at = CURRENT_TIMESTAMP WHERE id = ?`,
     [sessionId]
   );
 }
 
 export async function cancelWorkoutSession(sessionId: number) {
   const database = await getDb();
-
   await database.runAsync(
-    `UPDATE workout_sessions
-     SET
-      status = 'cancelled',
-      completed_at = CURRENT_TIMESTAMP
-     WHERE id = ?`,
+    `UPDATE workout_sessions SET status = 'cancelled', completed_at = CURRENT_TIMESTAMP WHERE id = ?`,
     [sessionId]
   );
 }
@@ -1271,11 +1233,7 @@ export async function removeSetFromSessionExercise(setId: number): Promise<void>
 
 export async function removeExerciseFromSession(sessionExerciseId: number): Promise<void> {
   const database = await getDb();
-  // CASCADE elimina anche tutte le serie associate
-  await database.runAsync(
-    `DELETE FROM workout_session_exercises WHERE id = ?`,
-    [sessionExerciseId]
-  );
+  await database.runAsync(`DELETE FROM workout_session_exercises WHERE id = ?`, [sessionExerciseId]);
 }
 
 // ─── Alimentazione — Tipi ─────────────────────────────────────────────────────
@@ -1303,13 +1261,6 @@ export type NutritionLog = {
   protein: number | null;
   carbs: number | null;
   fat: number | null;
-  created_at: string;
-};
-
-export type WaterLog = {
-  id: number;
-  date: string;
-  ml: number;
   created_at: string;
 };
 
@@ -1550,11 +1501,11 @@ export async function addMealPlanEntry(entry: {
   );
 }
 
-export async function updateMealPlanEntry(id: number, grams: number, kcal: number | null, protein: number | null, carbs: number | null, fat: number | null): Promise<void> {
+export async function updateMealPlanEntry(id: number, food_name: string, grams: number, kcal: number | null, protein: number | null, carbs: number | null, fat: number | null): Promise<void> {
   const database = await getDb();
   await database.runAsync(
-    `UPDATE meal_plan_entries SET grams = ?, kcal = ?, protein = ?, carbs = ?, fat = ? WHERE id = ?`,
-    [grams, kcal, protein, carbs, fat, id]
+    `UPDATE meal_plan_entries SET food_name = ?, grams = ?, kcal = ?, protein = ?, carbs = ?, fat = ? WHERE id = ?`,
+    [food_name, grams, kcal, protein, carbs, fat, id]
   );
 }
 

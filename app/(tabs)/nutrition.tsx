@@ -19,6 +19,7 @@ import {
   getNutritionLogsByDate,
   getWaterLogByDate,
   resetWaterLog,
+  updateMealPlanEntry,
   upsertBodyWeightLog,
   type BodyWeightLog,
   type FoodItem,
@@ -28,7 +29,9 @@ import {
   type NutritionLog,
 } from '@/database';
 import { useFocusEffect } from '@react-navigation/native';
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import * as DocumentPicker from 'expo-document-picker';
+import * as FileSystem from 'expo-file-system/legacy';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -48,13 +51,14 @@ import Animated, {
   useSharedValue,
   withRepeat,
   withSpring,
-  withTiming
+  withTiming,
 } from 'react-native-reanimated';
 
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const PRIMARY = '#7e47ff';
+const ANTHROPIC_API_KEY = 'INSERISCI_QUI_LA_TUA_API_KEY';
 
 const MEAL_TYPES = [
   { key: 'colazione', label: 'Colazione', emoji: '☀️' },
@@ -649,6 +653,11 @@ const foodModalStyles = StyleSheet.create({
   saveBtn: { backgroundColor: PRIMARY, borderRadius: 16, paddingVertical: 16, alignItems: 'center', marginTop: 8 },
   saveBtnDisabled: { opacity: 0.6 },
   saveBtnText: { color: '#fff', fontSize: 16, fontWeight: '800' },
+
+  divider: { height: 1, backgroundColor: Colors.dark.border, marginVertical: 24 },
+  importBtn: { backgroundColor: 'rgba(126,71,255,0.12)', borderRadius: 14, paddingVertical: 16, alignItems: 'center', borderWidth: 1.5, borderColor: PRIMARY, borderStyle: 'dashed' },
+  importBtnText: { color: PRIMARY, fontSize: 15, fontWeight: '800' },
+  importHint: { fontSize: 12, color: Colors.dark.textMuted, textAlign: 'center', marginTop: 10, lineHeight: 17, paddingBottom: 20 },
 });
 
 // ─── Diario Section ───────────────────────────────────────────────────────────
@@ -848,11 +857,144 @@ const diarioStyles = StyleSheet.create({
 
 // ─── Catalogo Section ─────────────────────────────────────────────────────────
 
+// ─── Open Food Facts helpers ──────────────────────────────────────────────────
+
+type OFFProduct = {
+  id: string;
+  name: string;
+  kcal: number | null;
+  protein: number | null;
+  carbs: number | null;
+  fat: number | null;
+};
+
+async function searchOpenFoodFacts(query: string): Promise<OFFProduct[]> {
+  const url = `https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(query)}&search_simple=1&action=process&json=1&page_size=10&fields=id,product_name,nutriments`;
+  const res = await fetch(url);
+  const data = await res.json();
+  return (data.products ?? [])
+    .filter((p: any) => p.product_name)
+    .map((p: any) => ({
+      id: p.id ?? p._id ?? '',
+      name: p.product_name,
+      kcal: p.nutriments?.['energy-kcal_100g'] ?? null,
+      protein: p.nutriments?.proteins_100g ?? null,
+      carbs: p.nutriments?.carbohydrates_100g ?? null,
+      fat: p.nutriments?.fat_100g ?? null,
+    }));
+}
+
+// ─── OFFProductModal — scegli cosa fare con un risultato online ───────────────
+
+function OFFProductModal({ product, onClose, onSavedToCatalog, onAddedToDiary }: {
+  product: OFFProduct;
+  onClose: () => void;
+  onSavedToCatalog: () => void;
+  onAddedToDiary: () => void;
+}) {
+  const [saving, setSaving] = useState(false);
+
+  const handleSaveToCatalog = async () => {
+    try {
+      setSaving(true);
+      await addFoodItem({
+        name: product.name,
+        kcal_per_100g: product.kcal,
+        protein_g: product.protein,
+        carbs_g: product.carbs,
+        fat_g: product.fat,
+        source: 'openfoodfacts',
+        external_id: product.id,
+      });
+      onSavedToCatalog();
+      onClose();
+    } catch (e: any) {
+      Alert.alert('Errore', e?.message ?? `Impossibile salvare l'alimento.`);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Modal visible animationType="slide" presentationStyle="formSheet" onRequestClose={onClose}>
+      <View style={offStyles.container}>
+        <View style={offStyles.handle} />
+        <View style={offStyles.header}>
+          <Text style={offStyles.title} numberOfLines={2}>{product.name}</Text>
+          <TouchableOpacity onPress={onClose} style={offStyles.closeBtn} activeOpacity={0.8}>
+            <Text style={offStyles.closeBtnText}>Chiudi</Text>
+          </TouchableOpacity>
+        </View>
+
+        <Text style={offStyles.sourceTag}>🌐 Open Food Facts</Text>
+
+        <View style={offStyles.macroGrid}>
+          {[
+            { label: 'kcal', value: product.kcal, color: Colors.dark.text },
+            { label: 'Proteine', value: product.protein, color: '#60a5fa' },
+            { label: 'Carboidrati', value: product.carbs, color: '#fbbf24' },
+            { label: 'Grassi', value: product.fat, color: '#f87171' },
+          ].map((m) => (
+            <View key={m.label} style={offStyles.macroCell}>
+              <Text style={[offStyles.macroValue, { color: m.color }]}>{roundMacro(m.value)}</Text>
+              <Text style={offStyles.macroLabel}>{m.label}</Text>
+              <Text style={offStyles.macroPer}>per 100g</Text>
+            </View>
+          ))}
+        </View>
+
+        <TouchableOpacity
+          style={[offStyles.btn, saving && offStyles.btnDisabled]}
+          onPress={handleSaveToCatalog}
+          disabled={saving}
+          activeOpacity={0.85}
+        >
+          <Text style={offStyles.btnText}>{saving ? `Salvataggio...` : `📚 Salva nel catalogo`}</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={offStyles.btnSecondary}
+          onPress={() => { onAddedToDiary(); onClose(); }}
+          activeOpacity={0.85}
+        >
+          <Text style={offStyles.btnSecondaryText}>📓 Aggiungi al diario</Text>
+        </TouchableOpacity>
+      </View>
+    </Modal>
+  );
+}
+
+const offStyles = StyleSheet.create({
+  container: { flex: 1, backgroundColor: Colors.dark.background, padding: 20, paddingTop: 12 },
+  handle: { width: 40, height: 4, backgroundColor: Colors.dark.border, borderRadius: 2, alignSelf: 'center', marginBottom: 20 },
+  header: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, marginBottom: 8 },
+  title: { fontSize: 18, fontWeight: '800', color: Colors.dark.text, flex: 1 },
+  closeBtn: { paddingVertical: 8, paddingHorizontal: 14, backgroundColor: Colors.dark.surfaceSoft, borderRadius: 12, borderWidth: 1, borderColor: Colors.dark.border },
+  closeBtnText: { color: Colors.dark.text, fontSize: 14, fontWeight: '600' },
+  sourceTag: { fontSize: 12, color: Colors.dark.textMuted, marginBottom: 20, fontWeight: '600' },
+  macroGrid: { flexDirection: 'row', backgroundColor: Colors.dark.surface, borderRadius: 16, padding: 16, borderWidth: 1, borderColor: Colors.dark.border, marginBottom: 24 },
+  macroCell: { flex: 1, alignItems: 'center', gap: 2 },
+  macroValue: { fontSize: 18, fontWeight: '800' },
+  macroLabel: { fontSize: 11, color: Colors.dark.textMuted, fontWeight: '600' },
+  macroPer: { fontSize: 11, color: 'rgba(211, 211, 211, 0.8)' },
+  btn: { backgroundColor: PRIMARY, borderRadius: 14, paddingVertical: 16, alignItems: 'center', marginBottom: 10 },
+  btnDisabled: { opacity: 0.6 },
+  btnText: { color: '#fff', fontSize: 15, fontWeight: '800' },
+  btnSecondary: { backgroundColor: Colors.dark.surface, borderRadius: 14, paddingVertical: 16, alignItems: 'center', borderWidth: 1, borderColor: Colors.dark.border },
+  btnSecondaryText: { color: Colors.dark.text, fontSize: 15, fontWeight: '700' },
+});
+
+// ─── Catalogo Section ─────────────────────────────────────────────────────────
+
 function CatalogoSection() {
   const [foods, setFoods] = useState<FoodItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [showAddModal, setShowAddModal] = useState(false);
+  const [offResults, setOffResults] = useState<OFFProduct[]>([]);
+  const [offLoading, setOffLoading] = useState(false);
+  const [selectedOFF, setSelectedOFF] = useState<OFFProduct | null>(null);
+  const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const loadFoods = useCallback(async () => {
     setLoading(true);
@@ -874,12 +1016,59 @@ function CatalogoSection() {
     return foods.filter((f) => f.name.toLowerCase().includes(q));
   }, [foods, search]);
 
+  // Ricerca online con debounce 600ms
+  const handleSearchChange = (text: string) => {
+    setSearch(text);
+    setOffResults([]);
+    if (searchTimer.current) clearTimeout(searchTimer.current);
+    if (text.trim().length >= 2) {
+      searchTimer.current = setTimeout(async () => {
+        setOffLoading(true);
+        try {
+          const results = await searchOpenFoodFacts(text.trim());
+          setOffResults(results);
+        } catch {
+          setOffResults([]);
+        } finally {
+          setOffLoading(false);
+        }
+      }, 600);
+    }
+  };
+
+  const renderFoodCard = (item: FoodItem) => (
+    <View key={item.id} style={catStyles.foodCard}>
+      <Text style={catStyles.foodName}>{item.name}</Text>
+      <View style={catStyles.macroGrid}>
+        <View style={catStyles.macroCell}>
+          <Text style={catStyles.macroCellValue}>{roundMacro(item.kcal_per_100g)}</Text>
+          <Text style={catStyles.macroCellLabel}>kcal</Text>
+        </View>
+        <View style={catStyles.macroCell}>
+          <Text style={[catStyles.macroCellValue, { color: '#60a5fa' }]}>{roundMacro(item.protein_g)}g</Text>
+          <Text style={catStyles.macroCellLabel}>Proteine</Text>
+        </View>
+        <View style={catStyles.macroCell}>
+          <Text style={[catStyles.macroCellValue, { color: '#fbbf24' }]}>{roundMacro(item.carbs_g)}g</Text>
+          <Text style={catStyles.macroCellLabel}>Carbo</Text>
+        </View>
+        <View style={catStyles.macroCell}>
+          <Text style={[catStyles.macroCellValue, { color: '#f87171' }]}>{roundMacro(item.fat_g)}g</Text>
+          <Text style={catStyles.macroCellLabel}>Grassi</Text>
+        </View>
+      </View>
+      {item.source === 'openfoodfacts' && (
+        <Text style={catStyles.sourceTag}>Open Food Facts</Text>
+      )}
+    </View>
+  );
+
   return (
     <>
       <View style={catStyles.searchRow}>
         <TextInput
           value={search}
-          onChangeText={setSearch}
+          onChangeText={handleSearchChange}
           placeholder="Cerca alimento..."
           placeholderTextColor={Colors.dark.textMuted}
           style={catStyles.searchInput}
@@ -895,47 +1084,50 @@ function CatalogoSection() {
         <Text style={catStyles.addBtnText}>+ Nuovo alimento</Text>
       </TouchableOpacity>
 
+      {/* Risultati catalogo locale */}
       {loading ? (
         <View style={catStyles.loadingBox}>
           <ActivityIndicator color={PRIMARY} />
         </View>
-      ) : filtered.length === 0 ? (
+      ) : filtered.length === 0 && !search.trim() ? (
         <View style={catStyles.emptyBox}>
-          <Text style={catStyles.emptyTitle}>
-            {search.trim() ? `Nessun risultato per "${search}"` : 'Catalogo vuoto'}
-          </Text>
-          <Text style={catStyles.emptyText}>
-            {!search.trim() && 'Aggiungi il tuo primo alimento con il pulsante qui sopra.'}
-          </Text>
+          <Text style={catStyles.emptyTitle}>Catalogo vuoto</Text>
+          <Text style={catStyles.emptyText}>Aggiungi il tuo primo alimento con il pulsante qui sopra.</Text>
         </View>
       ) : (
         <View style={catStyles.list}>
-          {filtered.map((item) => (
-            <View key={item.id} style={catStyles.foodCard}>
-              <Text style={catStyles.foodName}>{item.name}</Text>
-              <View style={catStyles.macroGrid}>
-                <View style={catStyles.macroCell}>
-                  <Text style={catStyles.macroCellValue}>{roundMacro(item.kcal_per_100g)}</Text>
-                  <Text style={catStyles.macroCellLabel}>kcal</Text>
-                </View>
-                <View style={catStyles.macroCell}>
-                  <Text style={[catStyles.macroCellValue, { color: '#60a5fa' }]}>{roundMacro(item.protein_g)}g</Text>
-                  <Text style={catStyles.macroCellLabel}>Proteine</Text>
-                </View>
-                <View style={catStyles.macroCell}>
-                  <Text style={[catStyles.macroCellValue, { color: '#fbbf24' }]}>{roundMacro(item.carbs_g)}g</Text>
-                  <Text style={catStyles.macroCellLabel}>Carbo</Text>
-                </View>
-                <View style={catStyles.macroCell}>
-                  <Text style={[catStyles.macroCellValue, { color: '#f87171' }]}>{roundMacro(item.fat_g)}g</Text>
-                  <Text style={catStyles.macroCellLabel}>Grassi</Text>
-                </View>
-              </View>
-              {item.source === 'openfoodfacts' && (
-                <Text style={catStyles.sourceTag}>Open Food Facts</Text>
-              )}
+          {filtered.map(renderFoodCard)}
+        </View>
+      )}
+
+      {/* Risultati Open Food Facts */}
+      {search.trim().length >= 2 && (
+        <View style={catStyles.offSection}>
+          <Text style={catStyles.offSectionTitle}>🌐 Risultati online</Text>
+          {offLoading ? (
+            <View style={catStyles.loadingBox}>
+              <ActivityIndicator color={PRIMARY} size="small" />
             </View>
-          ))}
+          ) : offResults.length === 0 && !offLoading ? (
+            <Text style={catStyles.offEmpty}>Nessun risultato online.</Text>
+          ) : (
+            offResults.map((item) => (
+              <TouchableOpacity
+                key={item.id}
+                style={catStyles.offCard}
+                onPress={() => setSelectedOFF(item)}
+                activeOpacity={0.85}
+              >
+                <View style={catStyles.offCardLeft}>
+                  <Text style={catStyles.offCardName}>{item.name}</Text>
+                  <Text style={catStyles.offCardMacros}>
+                    {roundMacro(item.kcal)} kcal · P {roundMacro(item.protein)}g · C {roundMacro(item.carbs)}g · G {roundMacro(item.fat)}g
+                  </Text>
+                </View>
+                <Text style={catStyles.offCardChevron}>›</Text>
+              </TouchableOpacity>
+            ))
+          )}
         </View>
       )}
 
@@ -944,6 +1136,18 @@ function CatalogoSection() {
         onClose={() => setShowAddModal(false)}
         onSaved={loadFoods}
       />
+
+      {selectedOFF && (
+        <OFFProductModal
+          product={selectedOFF}
+          onClose={() => setSelectedOFF(null)}
+          onSavedToCatalog={loadFoods}
+          onAddedToDiary={() => {
+            // TODO step 2: aprire direttamente il diario con l'alimento preselezionato
+            Alert.alert('Suggerimento', `Vai nel tab Diario e aggiungi "${selectedOFF.name}" dal catalogo dopo averlo salvato.`);
+          }}
+        />
+      )}
     </>
   );
 }
@@ -965,6 +1169,14 @@ const catStyles = StyleSheet.create({
   macroCellValue: { fontSize: 15, fontWeight: '800', color: Colors.dark.text },
   macroCellLabel: { fontSize: 11, color: Colors.dark.textMuted, fontWeight: '600' },
   sourceTag: { marginTop: 10, alignSelf: 'flex-start', fontSize: 11, color: Colors.dark.textMuted, backgroundColor: Colors.dark.surfaceSoft, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 },
+  offSection: { marginTop: 20, gap: 8 },
+  offSectionTitle: { fontSize: 13, fontWeight: '700', color: Colors.dark.textMuted, marginBottom: 4 },
+  offEmpty: { fontSize: 13, color: Colors.dark.textMuted, fontStyle: 'italic' },
+  offCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.dark.surface, borderRadius: 14, padding: 14, borderWidth: 1, borderColor: Colors.dark.border, gap: 10 },
+  offCardLeft: { flex: 1 },
+  offCardName: { fontSize: 14, fontWeight: '700', color: Colors.dark.text, marginBottom: 3 },
+  offCardMacros: { fontSize: 12, color: Colors.dark.textMuted },
+  offCardChevron: { fontSize: 20, color: Colors.dark.textMuted },
 });
 
 // ─── Water Bottle Component ───────────────────────────────────────────────────
@@ -1159,6 +1371,7 @@ function CorpoSection() {
   // Peso
   const [weightLogs, setWeightLogs] = useState<BodyWeightLog[]>([]);
   const [showWeightInput, setShowWeightInput] = useState(false);
+  const [weightDate, setWeightDate] = useState(today);
   const [weightValue, setWeightValue] = useState('');
   const [weightNotes, setWeightNotes] = useState('');
   const [savingWeight, setSavingWeight] = useState(false);
@@ -1186,6 +1399,14 @@ function CorpoSection() {
     }
   }, [today]);
 
+  // Aggiorna solo l'acqua senza mostrare il loading globale
+  const refreshWater = useCallback(async () => {
+    try {
+      const water = await getWaterLogByDate(today);
+      setWaterTotal(water);
+    } catch {}
+  }, [today]);
+
   useFocusEffect(useCallback(() => { loadData(); }, [loadData]));
 
   const todayWeight = weightLogs.find((l) => l.date === today) ?? null;
@@ -1198,7 +1419,7 @@ function CorpoSection() {
     }
     try {
       setSavingWeight(true);
-      await upsertBodyWeightLog(today, val, weightNotes.trim() || null);
+      await upsertBodyWeightLog(weightDate, val, weightNotes.trim() || null);
       setWeightValue('');
       setWeightNotes('');
       setShowWeightInput(false);
@@ -1226,7 +1447,7 @@ function CorpoSection() {
       setSavingWater(true);
       await addWaterLog(today, ml);
       setWaterCustom('');
-      await loadData();
+      await refreshWater(); // solo acqua, niente flash
     } catch {
       Alert.alert('Errore', 'Impossibile salvare il log acqua.');
     } finally {
@@ -1240,7 +1461,7 @@ function CorpoSection() {
       { text: 'Annulla', style: 'cancel' },
       { text: 'Azzera', style: 'destructive', onPress: async () => {
         await resetWaterLog(today);
-        await loadData();
+        await refreshWater(); // solo acqua, niente flash
       }},
     ]);
   };
@@ -1259,6 +1480,7 @@ function CorpoSection() {
             <TouchableOpacity
               style={corpoStyles.addBtn}
               onPress={() => {
+                setWeightDate(today);
                 setWeightValue(todayWeight ? String(todayWeight.weight_kg) : '');
                 setWeightNotes(todayWeight?.notes ?? '');
                 setShowWeightInput(true);
@@ -1288,7 +1510,26 @@ function CorpoSection() {
         {/* Input */}
         {showWeightInput && (
           <View style={corpoStyles.weightInputBox}>
-            <Text style={corpoStyles.inputLabel}>Peso (kg)</Text>
+            <Text style={corpoStyles.inputLabel}>Data pesata</Text>
+            <View style={corpoStyles.datePicker}>
+              <TouchableOpacity
+                style={corpoStyles.dateArrow}
+                onPress={() => setWeightDate(shiftDate(weightDate, -1))}
+                activeOpacity={0.8}
+              >
+                <Text style={corpoStyles.dateArrowText}>‹</Text>
+              </TouchableOpacity>
+              <Text style={corpoStyles.datePickerLabel}>{formatDateDisplay(weightDate)}</Text>
+              <TouchableOpacity
+                style={[corpoStyles.dateArrow, weightDate >= today && corpoStyles.dateArrowDisabled]}
+                onPress={() => weightDate < today && setWeightDate(shiftDate(weightDate, 1))}
+                disabled={weightDate >= today}
+                activeOpacity={0.8}
+              >
+                <Text style={[corpoStyles.dateArrowText, weightDate >= today && corpoStyles.dateArrowTextDisabled]}>›</Text>
+              </TouchableOpacity>
+            </View>
+            <Text style={[corpoStyles.inputLabel, { marginTop: 10 }]}>Peso (kg)</Text>
             <TextInput
               value={weightValue}
               onChangeText={setWeightValue}
@@ -1433,6 +1674,12 @@ const corpoStyles = StyleSheet.create({
   todayWeightLabel: { fontSize: 14, color: Colors.dark.textMuted, fontWeight: '600', marginLeft: 4 },
   emptyText: { fontSize: 13, color: Colors.dark.textMuted, fontStyle: 'italic', marginBottom: 4 },
   weightInputBox: { backgroundColor: '#101015', borderRadius: 14, padding: 14, borderWidth: 1, borderColor: Colors.dark.border, marginBottom: 14 },
+  datePicker: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: Colors.dark.surface, borderRadius: 12, borderWidth: 1, borderColor: Colors.dark.border, paddingVertical: 4, paddingHorizontal: 4, marginBottom: 4 },
+  datePickerLabel: { fontSize: 15, fontWeight: '700', color: Colors.dark.text },
+  dateArrow: { width: 36, height: 36, alignItems: 'center', justifyContent: 'center', borderRadius: 8 },
+  dateArrowDisabled: { opacity: 0.3 },
+  dateArrowText: { fontSize: 22, color: Colors.dark.text, fontWeight: '600', lineHeight: 26 },
+  dateArrowTextDisabled: { color: Colors.dark.textMuted },
   inputLabel: { fontSize: 12, fontWeight: '600', color: Colors.dark.textMuted, marginBottom: 6 },
   weightInput: { backgroundColor: Colors.dark.surface, borderWidth: 1, borderColor: Colors.dark.border, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, color: Colors.dark.text, fontSize: 22, fontWeight: '800' },
   notesInput: { backgroundColor: Colors.dark.surface, borderWidth: 1, borderColor: Colors.dark.border, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10, color: Colors.dark.text, fontSize: 14 },
@@ -1481,7 +1728,114 @@ function PianoSection() {
 
   // Modals
   const [showNewPlanModal, setShowNewPlanModal] = useState(false);
+  const [editingEntry, setEditingEntry] = useState<MealPlanEntry | null>(null);
+  const [importStep, setImportStep] = useState<'idle' | 'loading' | 'preview' | 'error'>('idle');
+  const [importError, setImportError] = useState('');
+  const [importedPlan, setImportedPlan] = useState<ImportedPlan | null>(null);
   const [showAddEntryModal, setShowAddEntryModal] = useState<{ dayId: number; mealType: string } | null>(null);
+
+  const handlePickAndImportPDF = async () => {
+    setImportStep('idle');
+    setImportError('');
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: '*/*',
+        copyToCacheDirectory: true,
+      });
+      if (result.canceled) return;
+      if (!result.assets || result.assets.length === 0) {
+        Alert.alert('Errore', 'Nessun file selezionato.');
+        return;
+      }
+      await processFile(result.assets[0]);
+    } catch (e: any) {
+      setImportError(e?.message ?? `Errore nella selezione del file.`);
+      setImportStep('error');
+    }
+  };
+
+  const processFile = async (file: { uri: string; name: string; mimeType?: string; size?: number }) => {
+    try {
+      setImportStep('loading');
+
+      const base64 = await FileSystem.readAsStringAsync(file.uri, {
+        encoding: 'base64',
+      });
+
+      if (!base64 || base64.length === 0) {
+        throw new Error('File vuoto o non leggibile.');
+      }
+
+      // Base64 letto correttamente, ora chiamata API
+      const response = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-api-key': ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' },
+        body: JSON.stringify({
+          model: 'claude-sonnet-4-20250514',
+          max_tokens: 4000,
+          messages: [{
+            role: 'user',
+            content: [
+              { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: base64 } },
+              { type: 'text', text: CLAUDE_PROMPT },
+            ],
+          }],
+        }),
+      });
+
+      if (!response.ok) {
+        const errBody = await response.text();
+        throw new Error(`API error ${response.status}: ${errBody.substring(0, 200)}`);
+      }
+
+      const data = await response.json();
+      const rawText = data.content?.find((b: any) => b.type === 'text')?.text ?? '';
+
+      if (!rawText) {
+        throw new Error(`Nessuna risposta dall'AI. Riprova.`);
+      }
+
+      const cleaned = rawText.replace(/```json|```/g, '').trim();
+      const parsed: ImportedPlan = JSON.parse(cleaned);
+      setImportedPlan(JSON.parse(JSON.stringify(parsed)));
+      setImportStep('preview');
+    } catch (e: any) {
+      const msg = e?.message ?? `Errore durante l'elaborazione del PDF.`;
+      setImportError(msg);
+      setImportStep('error');
+    }
+  };
+
+  const handleConfirmImport = async () => {
+    if (!importedPlan) return;
+    try {
+      const planId = await addMealPlan(importedPlan.name, importedPlan.plan_type);
+      for (let di = 0; di < importedPlan.days.length; di++) {
+        const day = importedPlan.days[di];
+        const dayId = await addMealPlanDay(planId, di + 1, day.label);
+        for (const meal of day.meals) {
+          for (const entry of meal.entries) {
+            await addMealPlanEntry({
+              meal_plan_day_id: dayId,
+              meal_type: meal.meal_type,
+              food_item_id: null,
+              food_name: entry.food_name,
+              grams: entry.grams,
+              kcal: entry.kcal,
+              protein: entry.protein,
+              carbs: entry.carbs,
+              fat: entry.fat,
+            });
+          }
+        }
+      }
+      setImportStep('idle');
+      setImportedPlan(null);
+      await loadPlans();
+    } catch (e: any) {
+      Alert.alert('Errore', e?.message ?? `Impossibile salvare il piano.`);
+    }
+  };
 
   const loadPlans = useCallback(async () => {
     setLoading(true);
@@ -1591,10 +1945,84 @@ function PianoSection() {
           <Text style={pianoStyles.emptyTitle}>Nessun piano alimentare</Text>
           <Text style={pianoStyles.emptyText}>Crea il tuo primo piano per avere sempre a portata di mano cosa mangiare.</Text>
           <TouchableOpacity style={pianoStyles.createBtn} onPress={() => setShowNewPlanModal(true)} activeOpacity={0.85}>
-            <Text style={pianoStyles.createBtnText}>+ Crea piano</Text>
+            <Text style={pianoStyles.createBtnText}>Crea piano</Text>
+          </TouchableOpacity>
+          <Text style={pianoStyles.importPDFHint}>
+            Hai già un piano del nutrizionista in PDF? Caricalo e Claude lo importerà automaticamente.
+          </Text>
+          <TouchableOpacity style={pianoStyles.importPDFBtn} onPress={handlePickAndImportPDF} activeOpacity={0.85}>
+            <Text style={pianoStyles.importPDFBtnText}>📄 Seleziona PDF</Text>
           </TouchableOpacity>
         </View>
         <NewPlanModal visible={showNewPlanModal} onClose={() => setShowNewPlanModal(false)} onSaved={() => { loadPlans(); setShowNewPlanModal(false); }} />
+        <Modal visible={importStep === 'preview' || importStep === 'loading' || importStep === 'error'} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setImportStep('idle')}>
+          <View style={importStyles.container}>
+            <View style={importStyles.handle} />
+            <View style={importStyles.header}>
+              <Text style={importStyles.title}>Importa da PDF</Text>
+              <TouchableOpacity onPress={() => setImportStep('idle')} style={importStyles.closeBtn} activeOpacity={0.8}>
+                <Text style={importStyles.closeBtnText}>Chiudi</Text>
+              </TouchableOpacity>
+            </View>
+            {importStep === 'loading' && (
+              <View style={importStyles.centered}>
+                <ActivityIndicator size="large" color={PRIMARY} />
+                <Text style={importStyles.loadingText}>Analisi del documento in corso...</Text>
+                <Text style={importStyles.loadingSubtext}>Potrebbe richiedere qualche secondo</Text>
+              </View>
+            )}
+            {importStep === 'error' && (
+              <View style={importStyles.centered}>
+                <Text style={importStyles.errorEmoji}>⚠️</Text>
+                <Text style={importStyles.errorTitle}>Impossibile leggere il piano</Text>
+                <Text style={importStyles.errorDesc}>{importError}</Text>
+                <TouchableOpacity style={importStyles.pickBtn} onPress={() => { setImportStep('idle'); setTimeout(handlePickAndImportPDF, 300); }} activeOpacity={0.85}>
+                  <Text style={importStyles.pickBtnText}>Riprova</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+            {importStep === 'preview' && importedPlan && (
+              <ScrollView contentContainerStyle={importStyles.previewContent} keyboardShouldPersistTaps="handled">
+                <View style={importStyles.previewHeader}>
+                  <Text style={importStyles.previewTitle}>{importedPlan.name}</Text>
+                  <Text style={importStyles.previewMeta}>{importedPlan.plan_type === 'weekly' ? '📅 Settimanale' : '🔄 Ciclo libero'} · {importedPlan.days.length} giorni</Text>
+                </View>
+                <Text style={importStyles.previewHint}>Controlla i dati estratti e modifica se necessario.</Text>
+                {importedPlan.days.map((day, dayIdx) => (
+                  <View key={dayIdx} style={importStyles.dayCard}>
+                    <Text style={importStyles.dayLabel}>{day.label}</Text>
+                    {day.meals.map((meal, mealIdx) => meal.entries.length > 0 ? (
+                      <View key={mealIdx} style={importStyles.mealGroup}>
+                        <Text style={importStyles.mealLabel}>{{ colazione: 'Colazione', pranzo: 'Pranzo', cena: 'Cena', spuntino: 'Spuntini' }[meal.meal_type] ?? meal.meal_type}</Text>
+                        {meal.entries.map((entry, entryIdx) => (
+                          <View key={entryIdx} style={importStyles.entryRow}>
+                            <View style={importStyles.entryMain}>
+                              <TextInput value={entry.food_name} onChangeText={(v) => { const p = JSON.parse(JSON.stringify(importedPlan)); p.days[dayIdx].meals[mealIdx].entries[entryIdx].food_name = v; setImportedPlan(p); }} style={importStyles.entryNameInput} />
+                              <View style={importStyles.entryMacroRow}>
+                                {(['grams','kcal','protein','carbs','fat'] as const).map((f) => (
+                                  <View key={f} style={importStyles.macroField}>
+                                    <Text style={importStyles.macroFieldLabel}>{f==='grams'?'g':f==='kcal'?'kcal':f==='protein'?'Prot':f==='carbs'?'Carb':'Gras'}</Text>
+                                    <TextInput value={entry[f] !== null ? String(entry[f]) : ''} onChangeText={(v) => { const p = JSON.parse(JSON.stringify(importedPlan)); const n = parseFloat(v.replace(',','.')); p.days[dayIdx].meals[mealIdx].entries[entryIdx][f] = isNaN(n) ? null : n; setImportedPlan(p); }} keyboardType="decimal-pad" style={importStyles.macroInput} placeholder="—" placeholderTextColor={Colors.dark.textMuted} />
+                                  </View>
+                                ))}
+                              </View>
+                            </View>
+                            <TouchableOpacity style={importStyles.removeEntryBtn} onPress={() => { const p = JSON.parse(JSON.stringify(importedPlan)); p.days[dayIdx].meals[mealIdx].entries.splice(entryIdx, 1); setImportedPlan(p); }} activeOpacity={0.8}>
+                              <Text style={importStyles.removeEntryBtnText}>✕</Text>
+                            </TouchableOpacity>
+                          </View>
+                        ))}
+                      </View>
+                    ) : null)}
+                  </View>
+                ))}
+                <TouchableOpacity style={importStyles.confirmBtn} onPress={handleConfirmImport} activeOpacity={0.85}>
+                  <Text style={importStyles.confirmBtnText}>✓ Importa piano</Text>
+                </TouchableOpacity>
+              </ScrollView>
+            )}
+          </View>
+        </Modal>
       </>
     );
   }
@@ -1701,12 +2129,12 @@ function PianoSection() {
                                         {done && <Text style={pianoStyles.checkboxTick}>✓</Text>}
                                       </View>
                                     </TouchableOpacity>
-                                    <View style={pianoStyles.entryInfo}>
+                                    <TouchableOpacity style={pianoStyles.entryInfo} onPress={() => setEditingEntry(entry)} activeOpacity={0.7}>
                                       <Text style={[pianoStyles.entryName, done && pianoStyles.entryNameDone]}>{entry.food_name}</Text>
                                       <Text style={pianoStyles.entryMacros}>
                                         {entry.grams}g · {roundMacro(entry.kcal)} kcal · P {roundMacro(entry.protein)}g · C {roundMacro(entry.carbs)}g · G {roundMacro(entry.fat)}g
                                       </Text>
-                                    </View>
+                                    </TouchableOpacity>
                                     <TouchableOpacity style={pianoStyles.deleteEntryBtn} onPress={() => handleDeleteEntry(entry, day.id)} activeOpacity={0.8}>
                                       <Text style={pianoStyles.deleteEntryBtnText}>✕</Text>
                                     </TouchableOpacity>
@@ -1742,8 +2170,25 @@ function PianoSection() {
       <TouchableOpacity style={pianoStyles.newPlanBottomBtn} onPress={() => setShowNewPlanModal(true)} activeOpacity={0.85}>
         <Text style={pianoStyles.newPlanBottomBtnText}>+ Crea nuovo piano</Text>
       </TouchableOpacity>
+      <Text style={pianoStyles.importPDFHint}>
+        Hai già un piano del nutrizionista in PDF? Caricalo e Claude lo importerà automaticamente.
+      </Text>
+      <TouchableOpacity style={pianoStyles.importPDFBtn} onPress={handlePickAndImportPDF} activeOpacity={0.85}>
+        <Text style={pianoStyles.importPDFBtnText}>📄 Seleziona PDF</Text>
+      </TouchableOpacity>
 
       <NewPlanModal visible={showNewPlanModal} onClose={() => setShowNewPlanModal(false)} onSaved={() => { loadPlans(); setShowNewPlanModal(false); }} />
+
+      {editingEntry && (
+        <EditEntryModal
+          entry={editingEntry}
+          onClose={() => setEditingEntry(null)}
+          onSaved={async () => {
+            setEditingEntry(null);
+            if (activePlanId) await loadPlanDetails(activePlanId);
+          }}
+        />
+      )}
 
       {showAddEntryModal && (
         <AddEntryToPlanModal
@@ -1760,12 +2205,437 @@ function PianoSection() {
 
 // ─── New Plan Modal ───────────────────────────────────────────────────────────
 
+// ─── Tipi per import PDF ──────────────────────────────────────────────────────
+
+type ImportedEntry = {
+  food_name: string;
+  grams: number;
+  kcal: number | null;
+  protein: number | null;
+  carbs: number | null;
+  fat: number | null;
+};
+
+type ImportedMeal = {
+  meal_type: 'colazione' | 'pranzo' | 'cena' | 'spuntino';
+  entries: ImportedEntry[];
+};
+
+type ImportedDay = {
+  label: string;
+  meals: ImportedMeal[];
+};
+
+type ImportedPlan = {
+  name: string;
+  plan_type: 'weekly' | 'cycle';
+  days: ImportedDay[];
+};
+
+// ─── Import PDF Modal ─────────────────────────────────────────────────────────
+
+const CLAUDE_PROMPT = `Analizza questo piano alimentare e restituisci SOLO un oggetto JSON valido, senza testo aggiuntivo, senza markdown, senza backtick.
+
+Il JSON deve seguire esattamente questa struttura:
+{
+  "name": "Nome del piano (es. Piano settimanale)",
+  "plan_type": "weekly" oppure "cycle",
+  "days": [
+    {
+      "label": "Lunedì" oppure "Giorno 1" ecc.,
+      "meals": [
+        {
+          "meal_type": "colazione" oppure "pranzo" oppure "cena" oppure "spuntino",
+          "entries": [
+            {
+              "food_name": "nome alimento",
+              "grams": 100,
+              "kcal": 250,
+              "protein": 20,
+              "carbs": 30,
+              "fat": 10
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
+
+Se i valori nutrizionali non sono specificati, usa null. Estrai tutti i giorni e tutti i pasti presenti nel documento.`;
+
+function ImportPDFModal({ visible, onClose, onImported, autoStart = false }: {
+  visible: boolean;
+  onClose: () => void;
+  onImported: (plan: ImportedPlan) => void;
+  autoStart?: boolean;
+}) {
+  const [step, setStep] = useState<'pick' | 'loading' | 'preview' | 'error'>('pick');
+  const [errorMsg, setErrorMsg] = useState('');
+  const [extractedPlan, setExtractedPlan] = useState<ImportedPlan | null>(null);
+  const [editingPlan, setEditingPlan] = useState<ImportedPlan | null>(null);
+
+  React.useEffect(() => {
+    if (!visible) { setStep('pick'); setExtractedPlan(null); setEditingPlan(null); setErrorMsg(''); }
+  }, [visible]);
+
+  // Avvia il picker automaticamente dopo che la modal è completamente montata
+  React.useEffect(() => {
+    if (visible && autoStart && step === 'pick') {
+      const t = setTimeout(() => handlePickPDF(), 600);
+      return () => clearTimeout(t);
+    }
+  }, [visible]);
+
+  const handlePickPDF = async () => {
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: 'application/pdf',
+        copyToCacheDirectory: true,
+      });
+      if (result.canceled) return;
+
+      setStep('loading');
+      const file = result.assets[0];
+      const base64 = await FileSystem.readAsStringAsync(file.uri, {
+        encoding: FileSystem.EncodingType.Base64,
+      });
+
+      const response = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-api-key': ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' },
+        body: JSON.stringify({
+          model: 'claude-sonnet-4-20250514',
+          max_tokens: 4000,
+          messages: [{
+            role: 'user',
+            content: [
+              {
+                type: 'document',
+                source: { type: 'base64', media_type: 'application/pdf', data: base64 },
+              },
+              { type: 'text', text: CLAUDE_PROMPT },
+            ],
+          }],
+        }),
+      });
+
+      const data = await response.json();
+      const rawText = data.content?.find((b: any) => b.type === 'text')?.text ?? '';
+
+      // Pulisce eventuali backtick residui
+      const cleaned = rawText.replace(/```json|```/g, '').trim();
+      const parsed: ImportedPlan = JSON.parse(cleaned);
+
+      setExtractedPlan(parsed);
+      setEditingPlan(JSON.parse(JSON.stringify(parsed))); // deep copy per editing
+      setStep('preview');
+    } catch (e: any) {
+      setErrorMsg(e?.message ?? `Errore durante l'elaborazione del PDF.`);
+      setStep('error');
+    }
+  };
+
+  const handleConfirm = () => {
+    if (!editingPlan) return;
+    onImported(editingPlan);
+    onClose();
+  };
+
+  const updateEntryField = (
+    dayIdx: number, mealIdx: number, entryIdx: number,
+    field: keyof ImportedEntry, value: string
+  ) => {
+    if (!editingPlan) return;
+    const plan = JSON.parse(JSON.stringify(editingPlan));
+    const entry = plan.days[dayIdx].meals[mealIdx].entries[entryIdx];
+    if (field === 'food_name') {
+      entry.food_name = value;
+    } else {
+      const n = parseFloat(value.replace(',', '.'));
+      (entry as any)[field] = isNaN(n) ? null : n;
+    }
+    setEditingPlan(plan);
+  };
+
+  const removeEntry = (dayIdx: number, mealIdx: number, entryIdx: number) => {
+    if (!editingPlan) return;
+    const plan = JSON.parse(JSON.stringify(editingPlan));
+    plan.days[dayIdx].meals[mealIdx].entries.splice(entryIdx, 1);
+    setEditingPlan(plan);
+  };
+
+  const mealLabel = (t: string) => ({ colazione: 'Colazione', pranzo: 'Pranzo', cena: 'Cena', spuntino: 'Spuntini' }[t] ?? t);
+
+  return (
+    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
+      <View style={importStyles.container}>
+        <View style={importStyles.handle} />
+        <View style={importStyles.header}>
+          <Text style={importStyles.title}>Importa da PDF</Text>
+          <TouchableOpacity onPress={onClose} style={importStyles.closeBtn} activeOpacity={0.8}>
+            <Text style={importStyles.closeBtnText}>Chiudi</Text>
+          </TouchableOpacity>
+        </View>
+
+        {step === 'pick' && (
+          <View style={importStyles.centered}>
+            <Text style={importStyles.pickEmoji}>📄</Text>
+            <Text style={importStyles.pickTitle}>Carica il tuo piano alimentare</Text>
+            <Text style={importStyles.pickDesc}>
+              Seleziona un PDF (es. piano del nutrizionista). Claude analizzerà il documento e compilerà automaticamente i giorni e i pasti.
+            </Text>
+            <TouchableOpacity style={importStyles.pickBtn} onPress={handlePickPDF} activeOpacity={0.85}>
+              <Text style={importStyles.pickBtnText}>Seleziona PDF</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {step === 'loading' && (
+          <View style={importStyles.centered}>
+            <ActivityIndicator size="large" color={PRIMARY} />
+            <Text style={importStyles.loadingText}>Analisi del documento in corso...</Text>
+            <Text style={importStyles.loadingSubtext}>Potrebbe richiedere qualche secondo</Text>
+          </View>
+        )}
+
+        {step === 'error' && (
+          <View style={importStyles.centered}>
+            <Text style={importStyles.errorEmoji}>⚠️</Text>
+            <Text style={importStyles.errorTitle}>Impossibile leggere il piano</Text>
+            <Text style={importStyles.errorDesc}>{errorMsg}</Text>
+            <TouchableOpacity style={importStyles.pickBtn} onPress={() => setStep('pick')} activeOpacity={0.85}>
+              <Text style={importStyles.pickBtnText}>Riprova</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {step === 'preview' && editingPlan && (
+          <ScrollView contentContainerStyle={importStyles.previewContent} keyboardShouldPersistTaps="handled">
+            <View style={importStyles.previewHeader}>
+              <Text style={importStyles.previewTitle}>{editingPlan.name}</Text>
+              <Text style={importStyles.previewMeta}>
+                {editingPlan.plan_type === 'weekly' ? '📅 Settimanale' : '🔄 Ciclo libero'} · {editingPlan.days.length} giorni
+              </Text>
+            </View>
+
+            <Text style={importStyles.previewHint}>
+              Controlla i dati estratti e modifica se necessario prima di importare.
+            </Text>
+
+            {editingPlan.days.map((day, dayIdx) => (
+              <View key={dayIdx} style={importStyles.dayCard}>
+                <Text style={importStyles.dayLabel}>{day.label}</Text>
+                {day.meals.map((meal, mealIdx) => (
+                  meal.entries.length > 0 ? (
+                    <View key={mealIdx} style={importStyles.mealGroup}>
+                      <Text style={importStyles.mealLabel}>{mealLabel(meal.meal_type)}</Text>
+                      {meal.entries.map((entry, entryIdx) => (
+                        <View key={entryIdx} style={importStyles.entryRow}>
+                          <View style={importStyles.entryMain}>
+                            <TextInput
+                              value={entry.food_name}
+                              onChangeText={(v) => updateEntryField(dayIdx, mealIdx, entryIdx, 'food_name', v)}
+                              style={importStyles.entryNameInput}
+                              placeholderTextColor={Colors.dark.textMuted}
+                            />
+                            <View style={importStyles.entryMacroRow}>
+                              {(['grams', 'kcal', 'protein', 'carbs', 'fat'] as const).map((field) => (
+                                <View key={field} style={importStyles.macroField}>
+                                  <Text style={importStyles.macroFieldLabel}>
+                                    {field === 'grams' ? 'g' : field === 'kcal' ? 'kcal' : field === 'protein' ? 'Prot' : field === 'carbs' ? 'Carb' : 'Gras'}
+                                  </Text>
+                                  <TextInput
+                                    value={entry[field] !== null ? String(entry[field]) : ''}
+                                    onChangeText={(v) => updateEntryField(dayIdx, mealIdx, entryIdx, field, v)}
+                                    keyboardType="decimal-pad"
+                                    style={importStyles.macroInput}
+                                    placeholderTextColor={Colors.dark.textMuted}
+                                    placeholder="—"
+                                  />
+                                </View>
+                              ))}
+                            </View>
+                          </View>
+                          <TouchableOpacity
+                            style={importStyles.removeEntryBtn}
+                            onPress={() => removeEntry(dayIdx, mealIdx, entryIdx)}
+                            activeOpacity={0.8}
+                          >
+                            <Text style={importStyles.removeEntryBtnText}>✕</Text>
+                          </TouchableOpacity>
+                        </View>
+                      ))}
+                    </View>
+                  ) : null
+                ))}
+              </View>
+            ))}
+
+            <TouchableOpacity style={importStyles.confirmBtn} onPress={handleConfirm} activeOpacity={0.85}>
+              <Text style={importStyles.confirmBtnText}>✓ Importa piano</Text>
+            </TouchableOpacity>
+          </ScrollView>
+        )}
+      </View>
+    </Modal>
+  );
+}
+
+const importStyles = StyleSheet.create({
+  container: { flex: 1, backgroundColor: Colors.dark.background, paddingTop: 12 },
+  handle: { width: 40, height: 4, backgroundColor: Colors.dark.border, borderRadius: 2, alignSelf: 'center', marginBottom: 16 },
+  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, marginBottom: 8 },
+  title: { fontSize: 20, fontWeight: '800', color: Colors.dark.text },
+  closeBtn: { paddingVertical: 8, paddingHorizontal: 14, backgroundColor: Colors.dark.surfaceSoft, borderRadius: 12, borderWidth: 1, borderColor: Colors.dark.border },
+  closeBtnText: { color: Colors.dark.text, fontSize: 14, fontWeight: '600' },
+  centered: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 32, gap: 12 },
+  pickEmoji: { fontSize: 48 },
+  pickTitle: { fontSize: 18, fontWeight: '800', color: Colors.dark.text, textAlign: 'center' },
+  pickDesc: { fontSize: 14, color: Colors.dark.textMuted, textAlign: 'center', lineHeight: 20 },
+  pickBtn: { backgroundColor: PRIMARY, borderRadius: 14, paddingVertical: 14, paddingHorizontal: 32, marginTop: 8 },
+  pickBtnText: { color: '#fff', fontSize: 15, fontWeight: '800' },
+  loadingText: { fontSize: 16, fontWeight: '700', color: Colors.dark.text, marginTop: 16 },
+  loadingSubtext: { fontSize: 13, color: Colors.dark.textMuted },
+  errorEmoji: { fontSize: 48 },
+  errorTitle: { fontSize: 18, fontWeight: '800', color: Colors.dark.danger, textAlign: 'center' },
+  errorDesc: { fontSize: 13, color: Colors.dark.textMuted, textAlign: 'center', lineHeight: 18 },
+  previewContent: { padding: 20, paddingBottom: 40 },
+  previewHeader: { marginBottom: 8, gap: 4 },
+  previewTitle: { fontSize: 20, fontWeight: '800', color: Colors.dark.text },
+  previewMeta: { fontSize: 13, color: Colors.dark.textMuted, fontWeight: '600' },
+  previewHint: { fontSize: 13, color: Colors.dark.textMuted, backgroundColor: Colors.dark.surfaceSoft, borderRadius: 10, padding: 12, marginBottom: 16, lineHeight: 18 },
+  dayCard: { backgroundColor: Colors.dark.surface, borderRadius: 16, padding: 14, borderWidth: 1, borderColor: Colors.dark.border, marginBottom: 12 },
+  dayLabel: { fontSize: 16, fontWeight: '800', color: Colors.dark.text, marginBottom: 10 },
+  mealGroup: { marginBottom: 10 },
+  mealLabel: { fontSize: 12, fontWeight: '700', color: PRIMARY, marginBottom: 6, letterSpacing: 0.3 },
+  entryRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 8, backgroundColor: '#101015', borderRadius: 10, padding: 10, marginBottom: 6 },
+  entryMain: { flex: 1, gap: 6 },
+  entryNameInput: { fontSize: 14, fontWeight: '700', color: Colors.dark.text, borderBottomWidth: 1, borderBottomColor: Colors.dark.border, paddingBottom: 4 },
+  entryMacroRow: { flexDirection: 'row', gap: 6 },
+  macroField: { flex: 1, alignItems: 'center', gap: 2 },
+  macroFieldLabel: { fontSize: 9, color: Colors.dark.textMuted, fontWeight: '700' },
+  macroInput: { width: '100%', fontSize: 12, color: Colors.dark.text, textAlign: 'center', backgroundColor: Colors.dark.surface, borderRadius: 6, paddingVertical: 4 },
+  removeEntryBtn: { width: 26, height: 26, backgroundColor: 'rgba(239,68,68,0.12)', borderRadius: 7, borderWidth: 1, borderColor: Colors.dark.danger, alignItems: 'center', justifyContent: 'center', marginTop: 2 },
+  removeEntryBtnText: { color: Colors.dark.danger, fontSize: 12, fontWeight: '800' },
+  confirmBtn: { backgroundColor: PRIMARY, borderRadius: 16, paddingVertical: 16, alignItems: 'center', marginTop: 8 },
+  confirmBtnText: { color: '#fff', fontSize: 16, fontWeight: '800' },
+});
+
+// ─── Edit Entry Modal ─────────────────────────────────────────────────────────
+
+function EditEntryModal({ entry, onClose, onSaved }: {
+  entry: MealPlanEntry;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [foodName, setFoodName] = useState(entry.food_name);
+  const [grams, setGrams] = useState(entry.grams !== null ? String(entry.grams) : '');
+  const [kcal, setKcal] = useState(entry.kcal !== null ? String(entry.kcal) : '');
+  const [protein, setProtein] = useState(entry.protein !== null ? String(entry.protein) : '');
+  const [carbs, setCarbs] = useState(entry.carbs !== null ? String(entry.carbs) : '');
+  const [fat, setFat] = useState(entry.fat !== null ? String(entry.fat) : '');
+  const [saving, setSaving] = useState(false);
+
+  const parseField = (v: string): number | null => {
+    const n = parseFloat(v.replace(',', '.'));
+    return isNaN(n) ? null : n;
+  };
+
+  const handleSave = async () => {
+    const g = parseField(grams);
+    if (!g || g <= 0) {
+      Alert.alert('Grammi mancanti', 'Inserisci la quantità in grammi.');
+      return;
+    }
+    try {
+      setSaving(true);
+      await updateMealPlanEntry(entry.id, g, parseField(kcal), parseField(protein), parseField(carbs), parseField(fat));
+      onSaved();
+    } catch {
+      Alert.alert('Errore', `Impossibile salvare le modifiche.`);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const fields: { label: string; value: string; onChange: (v: string) => void; placeholder: string }[] = [
+    { label: 'Grammi *', value: grams, onChange: setGrams, placeholder: 'Es. 100' },
+    { label: 'Calorie (kcal)', value: kcal, onChange: setKcal, placeholder: 'Es. 250' },
+    { label: 'Proteine (g)', value: protein, onChange: setProtein, placeholder: 'Es. 20' },
+    { label: 'Carboidrati (g)', value: carbs, onChange: setCarbs, placeholder: 'Es. 30' },
+    { label: 'Grassi (g)', value: fat, onChange: setFat, placeholder: 'Es. 10' },
+  ];
+
+  return (
+    <Modal visible animationType="slide" presentationStyle="formSheet" onRequestClose={onClose}>
+      <ScrollView style={editEntryStyles.container} contentContainerStyle={editEntryStyles.content} keyboardShouldPersistTaps="handled">
+        <View style={editEntryStyles.handle} />
+        <View style={editEntryStyles.header}>
+          <Text style={editEntryStyles.title} numberOfLines={1}>{entry.food_name}</Text>
+          <TouchableOpacity onPress={onClose} style={editEntryStyles.closeBtn} activeOpacity={0.8}>
+            <Text style={editEntryStyles.closeBtnText}>Chiudi</Text>
+          </TouchableOpacity>
+        </View>
+
+        <Text style={editEntryStyles.fieldLabel}>Nome alimento</Text>
+        <TextInput
+          value={foodName}
+          onChangeText={setFoodName}
+          style={editEntryStyles.input}
+          placeholderTextColor={Colors.dark.textMuted}
+        />
+
+        {fields.map((f) => (
+          <View key={f.label} style={{ marginBottom: 12 }}>
+            <Text style={editEntryStyles.fieldLabel}>{f.label}</Text>
+            <TextInput
+              value={f.value}
+              onChangeText={f.onChange}
+              placeholder={f.placeholder}
+              placeholderTextColor={Colors.dark.textMuted}
+              keyboardType="decimal-pad"
+              style={editEntryStyles.input}
+            />
+          </View>
+        ))}
+
+        <TouchableOpacity
+          style={[editEntryStyles.saveBtn, saving && editEntryStyles.saveBtnDisabled]}
+          onPress={handleSave}
+          disabled={saving}
+          activeOpacity={0.85}
+        >
+          <Text style={editEntryStyles.saveBtnText}>{saving ? `Salvataggio...` : `Salva modifiche`}</Text>
+        </TouchableOpacity>
+      </ScrollView>
+    </Modal>
+  );
+}
+
+const editEntryStyles = StyleSheet.create({
+  container: { flex: 1, backgroundColor: Colors.dark.background },
+  content: { padding: 20, paddingBottom: 60 },
+  handle: { width: 40, height: 4, backgroundColor: Colors.dark.border, borderRadius: 2, alignSelf: 'center', marginBottom: 20 },
+  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
+  title: { fontSize: 18, fontWeight: '800', color: Colors.dark.text, flex: 1, marginRight: 12 },
+  closeBtn: { paddingVertical: 8, paddingHorizontal: 14, backgroundColor: Colors.dark.surfaceSoft, borderRadius: 12, borderWidth: 1, borderColor: Colors.dark.border },
+  closeBtnText: { color: Colors.dark.text, fontSize: 14, fontWeight: '600' },
+  fieldLabel: { fontSize: 13, fontWeight: '600', color: Colors.dark.textMuted, marginBottom: 8 },
+  input: { backgroundColor: Colors.dark.surface, borderWidth: 1, borderColor: Colors.dark.border, borderRadius: 14, paddingHorizontal: 16, paddingVertical: 13, color: Colors.dark.text, fontSize: 15, marginBottom: 4 },
+  saveBtn: { backgroundColor: PRIMARY, borderRadius: 16, paddingVertical: 16, alignItems: 'center', marginTop: 8 },
+  saveBtnDisabled: { opacity: 0.6 },
+  saveBtnText: { color: '#fff', fontSize: 16, fontWeight: '800' },
+});
+
 function NewPlanModal({ visible, onClose, onSaved }: { visible: boolean; onClose: () => void; onSaved: () => void }) {
   const [name, setName] = useState('');
   const [planType, setPlanType] = useState<PlanType>('weekly');
+  const [sameEveryDay, setSameEveryDay] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [showImport, setShowImport] = useState(false);
 
-  React.useEffect(() => { if (!visible) { setName(''); setPlanType('weekly'); } }, [visible]);
+  React.useEffect(() => { if (!visible) { setName(''); setPlanType('weekly'); setSameEveryDay(false); } }, [visible]);
 
   const handleSave = async () => {
     if (!name.trim()) { Alert.alert('Nome mancante', 'Inserisci il nome del piano.'); return; }
@@ -1775,6 +2645,37 @@ function NewPlanModal({ visible, onClose, onSaved }: { visible: boolean; onClose
       onSaved();
     } catch (e: any) {
       Alert.alert('Errore', e?.message ?? 'Impossibile creare il piano.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleImported = async (plan: ImportedPlan) => {
+    try {
+      setSaving(true);
+      const planId = await addMealPlan(plan.name, plan.plan_type);
+      for (let di = 0; di < plan.days.length; di++) {
+        const day = plan.days[di];
+        const dayId = await addMealPlanDay(planId, di + 1, day.label);
+        for (const meal of day.meals) {
+          for (const entry of meal.entries) {
+            await addMealPlanEntry({
+              meal_plan_day_id: dayId,
+              meal_type: meal.meal_type,
+              food_item_id: null,
+              food_name: entry.food_name,
+              grams: entry.grams,
+              kcal: entry.kcal,
+              protein: entry.protein,
+              carbs: entry.carbs,
+              fat: entry.fat,
+            });
+          }
+        }
+      }
+      onSaved();
+    } catch (e: any) {
+      Alert.alert('Errore', e?.message ?? 'Impossibile salvare il piano importato.');
     } finally {
       setSaving(false);
     }
@@ -1809,9 +2710,26 @@ function NewPlanModal({ visible, onClose, onSaved }: { visible: boolean; onClose
           ))}
         </View>
 
+        {planType === 'weekly' && (
+          <TouchableOpacity
+            style={newPlanStyles.sameEveryDayRow}
+            onPress={() => setSameEveryDay(!sameEveryDay)}
+            activeOpacity={0.8}
+          >
+            <View style={[newPlanStyles.toggle, sameEveryDay && newPlanStyles.toggleActive]}>
+              {sameEveryDay && <View style={newPlanStyles.toggleThumb} />}
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={newPlanStyles.sameEveryDayLabel}>Piano uguale ogni giorno</Text>
+              <Text style={newPlanStyles.sameEveryDayDesc}>Crea automaticamente tutti e 7 i giorni della settimana</Text>
+            </View>
+          </TouchableOpacity>
+        )}
+
         <TouchableOpacity style={[newPlanStyles.saveBtn, saving && newPlanStyles.saveBtnDisabled]} onPress={handleSave} disabled={saving} activeOpacity={0.85}>
           <Text style={newPlanStyles.saveBtnText}>{saving ? 'Creazione...' : 'Crea piano'}</Text>
         </TouchableOpacity>
+
       </ScrollView>
     </Modal>
   );
@@ -1819,7 +2737,7 @@ function NewPlanModal({ visible, onClose, onSaved }: { visible: boolean; onClose
 
 const newPlanStyles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.dark.background },
-  content: { padding: 20, paddingBottom: 60 },
+  content: { padding: 20, paddingBottom: 120 },
   handle: { width: 40, height: 4, backgroundColor: Colors.dark.border, borderRadius: 2, alignSelf: 'center', marginBottom: 20 },
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
   title: { fontSize: 20, fontWeight: '800', color: Colors.dark.text },
@@ -1836,6 +2754,12 @@ const newPlanStyles = StyleSheet.create({
   saveBtn: { backgroundColor: PRIMARY, borderRadius: 16, paddingVertical: 16, alignItems: 'center' },
   saveBtnDisabled: { opacity: 0.6 },
   saveBtnText: { color: '#fff', fontSize: 16, fontWeight: '800' },
+  sameEveryDayRow: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: Colors.dark.surface, borderRadius: 14, padding: 14, borderWidth: 1, borderColor: Colors.dark.border, marginBottom: 16 },
+  sameEveryDayLabel: { fontSize: 14, fontWeight: '700', color: Colors.dark.text },
+  sameEveryDayDesc: { fontSize: 12, color: Colors.dark.textMuted, marginTop: 2 },
+  toggle: { width: 44, height: 26, borderRadius: 13, backgroundColor: Colors.dark.border, justifyContent: 'center', paddingHorizontal: 3 },
+  toggleActive: { backgroundColor: PRIMARY },
+  toggleThumb: { width: 20, height: 20, borderRadius: 10, backgroundColor: '#fff', alignSelf: 'flex-end' },
 });
 
 // ─── Add Entry to Plan Modal ──────────────────────────────────────────────────
@@ -2013,14 +2937,14 @@ const pianoStyles = StyleSheet.create({
   emptyMealText: { fontSize: 12, color: Colors.dark.textMuted, fontStyle: 'italic' },
   entryList: { gap: 6 },
   entryRow: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: '#101015', borderRadius: 12, padding: 10, borderWidth: 1, borderColor: Colors.dark.border },
-  entryRowDone: { opacity: 0.5 },
+  entryRowDone: { borderColor: Colors.dark.success, backgroundColor: 'rgba(34,197,94,0.06)' },
   entryCheckbox: { padding: 2 },
   checkbox: { width: 22, height: 22, borderRadius: 6, borderWidth: 2, borderColor: Colors.dark.border, alignItems: 'center', justifyContent: 'center' },
-  checkboxDone: { backgroundColor: PRIMARY, borderColor: PRIMARY },
+  checkboxDone: { backgroundColor: Colors.dark.success, borderColor: Colors.dark.success },
   checkboxTick: { color: '#fff', fontSize: 12, fontWeight: '800' },
   entryInfo: { flex: 1 },
   entryName: { fontSize: 13, fontWeight: '700', color: Colors.dark.text, marginBottom: 2 },
-  entryNameDone: { textDecorationLine: 'line-through' },
+  entryNameDone: { color: Colors.dark.success },
   entryMacros: { fontSize: 11, color: Colors.dark.textMuted },
   deleteEntryBtn: { width: 26, height: 26, backgroundColor: 'rgba(239,68,68,0.12)', borderRadius: 7, borderWidth: 1, borderColor: Colors.dark.danger, alignItems: 'center', justifyContent: 'center' },
   deleteEntryBtnText: { color: Colors.dark.danger, fontSize: 12, fontWeight: '800' },
@@ -2029,6 +2953,9 @@ const pianoStyles = StyleSheet.create({
   newPlanSeparator: { marginTop: 24, marginBottom: 12, height: 1, backgroundColor: Colors.dark.border },
   newPlanBottomBtn: { backgroundColor: Colors.dark.surface, borderRadius: 14, borderWidth: 1, borderColor: Colors.dark.border, paddingVertical: 14, alignItems: 'center' },
   newPlanBottomBtnText: { color: PRIMARY, fontSize: 14, fontWeight: '700' },
+  importPDFHint: { fontSize: 13, color: Colors.dark.textMuted, textAlign: 'center', lineHeight: 18, marginTop: 16, paddingHorizontal: 8 },
+  importPDFBtn: { marginTop: 10, backgroundColor: 'rgba(126,71,255,0.08)', borderRadius: 14, borderWidth: 1.5, borderColor: 'rgba(126,71,255,0.35)', borderStyle: 'dashed', paddingVertical: 14, paddingHorizontal: 24, alignItems: 'center' },
+  importPDFBtnText: { color: PRIMARY, fontSize: 14, fontWeight: '700' },
 });
 
 // ─── Screen ───────────────────────────────────────────────────────────────────
