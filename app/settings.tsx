@@ -1,15 +1,21 @@
 import { Colors } from '@/constants/Colors';
 import { useUserPreferences, type WeightUnit } from '@/context/UserPreferencesContext';
-import { resetAll, resetSessions } from '@/database';
+import { exportAllData, exportAllDataCSV, importData, type ImportMode, resetAll, resetSessions } from '@/database';
+import * as DocumentPicker from 'expo-document-picker';
+import * as FileSystem from 'expo-file-system/legacy';
 import { useRouter } from 'expo-router';
 import React, { useState } from 'react';
 import {
-    Alert,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View,
+  Alert,
+  Modal,
+  Platform,
+  Pressable,
+  ScrollView,
+  Share,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -100,13 +106,258 @@ function Stepper({ value, min, max, onChange }: StepperProps) {
   );
 }
 
+// ─── Data Management Modal ────────────────────────────────────────────────────
+
+type DataModalProps = {
+  visible: boolean;
+  onClose: () => void;
+  busy: boolean;
+  onExportJSON: () => void;
+  onExportCSV: () => void;
+  onImport: () => void;
+  onResetSessions: () => void;
+  onResetAll: () => void;
+};
+
+function DataManagementModal({
+  visible,
+  onClose,
+  busy,
+  onExportJSON,
+  onExportCSV,
+  onImport,
+  onResetSessions,
+  onResetAll,
+}: DataModalProps) {
+  return (
+    <Modal
+      visible={visible}
+      transparent
+      animationType="slide"
+      onRequestClose={onClose}
+    >
+      <Pressable style={styles.modalOverlay} onPress={onClose}>
+        <Pressable style={styles.modalSheet} onPress={() => {}}>
+          {/* Handle bar */}
+          <View style={styles.modalHandle} />
+
+          <Text style={styles.modalTitle}>Gestione dati</Text>
+
+          {/* EXPORT */}
+          <Text style={styles.modalSectionLabel}>ESPORTA</Text>
+          <View style={styles.modalCard}>
+            <TouchableOpacity
+              style={[styles.modalRow, styles.modalRowBorder]}
+              onPress={() => { onClose(); setTimeout(onExportJSON, 300); }}
+              disabled={busy}
+              activeOpacity={0.7}
+            >
+              <View style={styles.modalRowIcon}>
+                <Text style={styles.modalRowIconText}>📦</Text>
+              </View>
+              <View style={styles.modalRowContent}>
+                <Text style={styles.modalRowLabel}>Backup JSON</Text>
+                <Text style={styles.modalRowSubtitle}>Backup completo, reimportabile</Text>
+              </View>
+              <Text style={styles.modalRowChevron}>›</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.modalRow}
+              onPress={() => { onClose(); setTimeout(onExportCSV, 300); }}
+              disabled={busy}
+              activeOpacity={0.7}
+            >
+              <View style={styles.modalRowIcon}>
+                <Text style={styles.modalRowIconText}>📊</Text>
+              </View>
+              <View style={styles.modalRowContent}>
+                <Text style={styles.modalRowLabel}>Esporta CSV</Text>
+                <Text style={styles.modalRowSubtitle}>Leggibile in Excel, Numbers, Fogli Google</Text>
+              </View>
+              <Text style={styles.modalRowChevron}>›</Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* IMPORT */}
+          <Text style={styles.modalSectionLabel}>IMPORTA</Text>
+          <View style={styles.modalCard}>
+            <TouchableOpacity
+              style={styles.modalRow}
+              onPress={() => { onClose(); setTimeout(onImport, 300); }}
+              disabled={busy}
+              activeOpacity={0.7}
+            >
+              <View style={styles.modalRowIcon}>
+                <Text style={styles.modalRowIconText}>📥</Text>
+              </View>
+              <View style={styles.modalRowContent}>
+                <Text style={styles.modalRowLabel}>Importa backup JSON</Text>
+                <Text style={styles.modalRowSubtitle}>Ripristina da un file esportato in precedenza</Text>
+              </View>
+              <Text style={styles.modalRowChevron}>›</Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* RESET */}
+          <Text style={styles.modalSectionLabel}>RESET</Text>
+          <View style={styles.modalCard}>
+            <TouchableOpacity
+              style={[styles.modalRow, styles.modalRowBorder]}
+              onPress={() => { onClose(); setTimeout(onResetSessions, 300); }}
+              disabled={busy}
+              activeOpacity={0.7}
+            >
+              <View style={styles.modalRowIcon}>
+                <Text style={styles.modalRowIconText}>🗑️</Text>
+              </View>
+              <View style={styles.modalRowContent}>
+                <Text style={[styles.modalRowLabel, styles.modalRowLabelDanger]}>Reset sessioni</Text>
+                <Text style={styles.modalRowSubtitle}>Mantiene template ed esercizi</Text>
+              </View>
+              <Text style={styles.modalRowChevron}>›</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.modalRow}
+              onPress={() => { onClose(); setTimeout(onResetAll, 300); }}
+              disabled={busy}
+              activeOpacity={0.7}
+            >
+              <View style={styles.modalRowIcon}>
+                <Text style={styles.modalRowIconText}>⚠️</Text>
+              </View>
+              <View style={styles.modalRowContent}>
+                <Text style={[styles.modalRowLabel, styles.modalRowLabelDanger]}>Reset completo</Text>
+                <Text style={styles.modalRowSubtitle}>Cancella tutti i dati dell'app</Text>
+              </View>
+              <Text style={styles.modalRowChevron}>›</Text>
+            </TouchableOpacity>
+          </View>
+
+          <TouchableOpacity style={styles.modalCancelButton} onPress={onClose} activeOpacity={0.8}>
+            <Text style={styles.modalCancelText}>Annulla</Text>
+          </TouchableOpacity>
+        </Pressable>
+      </Pressable>
+    </Modal>
+  );
+}
+
 // ─── Screen ───────────────────────────────────────────────────────────────────
 
 export default function SettingsScreen() {
   const router = useRouter();
   const { preferences, setUnit, setWeeklyGoal } = useUserPreferences();
   const [resetting, setResetting] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const [dataModalVisible, setDataModalVisible] = useState(false);
 
+  const busy = resetting || exporting || importing;
+
+  // ── Export JSON ──────────────────────────────────────────────────────────
+  const handleExportJSON = async () => {
+    try {
+      setExporting(true);
+      const data = await exportAllData();
+      const json = JSON.stringify(data, null, 2);
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+      const fileName = `gym-tracker-backup-${timestamp}.json`;
+      const filePath = `${FileSystem.cacheDirectory}${fileName}`;
+      await FileSystem.writeAsStringAsync(filePath, json, { encoding: 'utf8' as any });
+      if (Platform.OS === 'ios') {
+        await Share.share({ url: filePath, title: fileName });
+      } else {
+        await Share.share({ title: fileName, message: json });
+      }
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      if (msg !== 'User did not share') {
+        Alert.alert('Errore', 'Impossibile esportare i dati.');
+      }
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  // ── Export CSV ───────────────────────────────────────────────────────────
+  const handleExportCSV = async () => {
+    try {
+      setExporting(true);
+      const csv = await exportAllDataCSV();
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+      const fileName = `gym-tracker-export-${timestamp}.csv`;
+      const filePath = `${FileSystem.cacheDirectory}${fileName}`;
+      await FileSystem.writeAsStringAsync(filePath, csv, { encoding: 'utf8' as any });
+      if (Platform.OS === 'ios') {
+        await Share.share({ url: filePath, title: fileName });
+      } else {
+        await Share.share({ title: fileName, message: csv });
+      }
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      if (msg !== 'User did not share') {
+        Alert.alert('Errore', 'Impossibile esportare il CSV.');
+      }
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  // ── Import JSON ──────────────────────────────────────────────────────────
+  const handleImportJSON = async () => {
+    Alert.alert(
+      'Importa backup JSON',
+      'Scegli come gestire i dati esistenti:',
+      [
+        { text: 'Annulla', style: 'cancel' },
+        {
+          text: 'Sostituisci tutto',
+          style: 'destructive',
+          onPress: () => pickAndImport('replace_all'),
+        },
+        {
+          text: 'Sovrascrivi esistenti',
+          onPress: () => pickAndImport('overwrite_existing'),
+        },
+        {
+          text: 'Aggiungi senza sovrascrivere',
+          onPress: () => pickAndImport('add_only'),
+        },
+      ]
+    );
+  };
+
+  const pickAndImport = async (mode: ImportMode) => {
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: 'application/json',
+        copyToCacheDirectory: true,
+      });
+      if (result.canceled) return;
+
+      setImporting(true);
+      const fileUri = result.assets[0].uri;
+      const content = await FileSystem.readAsStringAsync(fileUri, { encoding: 'utf8' as any });
+      const payload = JSON.parse(content);
+
+      if (!payload.exported_at || !payload.app_version) {
+        Alert.alert('Errore', 'Il file selezionato non è un backup valido di Gym Tracker.');
+        return;
+      }
+
+      await importData(payload, mode);
+      Alert.alert('Importazione completata', 'I dati sono stati importati correttamente.');
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      Alert.alert('Errore importazione', msg.length < 120 ? msg : 'Impossibile importare il file.');
+    } finally {
+      setImporting(false);
+    }
+  };
+
+  // ── Reset ────────────────────────────────────────────────────────────────
   const handleResetSessions = () => {
     Alert.alert(
       'Reset sessioni',
@@ -142,7 +393,6 @@ export default function SettingsScreen() {
           text: 'Sono sicuro, resetta tutto',
           style: 'destructive',
           onPress: () => {
-            // Doppia conferma per il reset totale
             Alert.alert(
               'Sei davvero sicuro?',
               'Non sarà possibile recuperare i dati eliminati.',
@@ -221,30 +471,19 @@ export default function SettingsScreen() {
         <SectionHeader title="DATI" />
         <SettingsCard>
           <Row
-            label="Reset sessioni"
-            subtitle="Cancella lo storico allenamenti, mantiene template ed esercizi"
-          >
-            <TouchableOpacity
-              style={[styles.dangerButton, resetting && styles.dangerButtonDisabled]}
-              onPress={handleResetSessions}
-              disabled={resetting}
-              activeOpacity={0.8}
-            >
-              <Text style={styles.dangerButtonText}>Reset</Text>
-            </TouchableOpacity>
-          </Row>
-          <Row
-            label="Reset completo"
-            subtitle="Cancella tutti i dati dell'app"
+            label="Gestione dati"
+            subtitle="Esporta, importa o reimposta i tuoi dati"
             isLast
           >
             <TouchableOpacity
-              style={[styles.dangerButton, styles.dangerButtonFull, resetting && styles.dangerButtonDisabled]}
-              onPress={handleResetAll}
-              disabled={resetting}
+              style={[styles.dataButton, busy && styles.dataButtonDisabled]}
+              onPress={() => setDataModalVisible(true)}
+              disabled={busy}
               activeOpacity={0.8}
             >
-              <Text style={styles.dangerButtonText}>Reset</Text>
+              <Text style={styles.dataButtonText}>
+                {busy ? '…' : 'Gestisci'}
+              </Text>
             </TouchableOpacity>
           </Row>
         </SettingsCard>
@@ -267,6 +506,18 @@ export default function SettingsScreen() {
           </Row>
         </SettingsCard>
       </ScrollView>
+
+      {/* Data Management Modal */}
+      <DataManagementModal
+        visible={dataModalVisible}
+        onClose={() => setDataModalVisible(false)}
+        busy={busy}
+        onExportJSON={handleExportJSON}
+        onExportCSV={handleExportCSV}
+        onImport={handleImportJSON}
+        onResetSessions={handleResetSessions}
+        onResetAll={handleResetAll}
+      />
     </SafeAreaView>
   );
 }
@@ -412,23 +663,20 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
 
-  // Danger buttons
-  dangerButton: {
-    backgroundColor: 'rgba(239,68,68,0.12)',
+  // Gestione dati button
+  dataButton: {
+    backgroundColor: Colors.dark.surfaceSoft,
     borderRadius: 10,
     borderWidth: 1,
-    borderColor: Colors.dark.danger,
+    borderColor: Colors.dark.border,
     paddingHorizontal: 14,
     paddingVertical: 8,
   },
-  dangerButtonFull: {
-    backgroundColor: 'rgba(239,68,68,0.2)',
-  },
-  dangerButtonDisabled: {
+  dataButtonDisabled: {
     opacity: 0.5,
   },
-  dangerButtonText: {
-    color: Colors.dark.danger,
+  dataButtonText: {
+    color: Colors.dark.text,
     fontSize: 13,
     fontWeight: '700',
   },
@@ -453,5 +701,109 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: Colors.dark.textMuted,
     fontWeight: '600',
+  },
+
+  // ── Modal bottom sheet ───────────────────────────────────────────────────
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    justifyContent: 'flex-end',
+  },
+  modalSheet: {
+    backgroundColor: Colors.dark.surface,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingHorizontal: 20,
+    paddingBottom: 36,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderColor: Colors.dark.border,
+  },
+  modalHandle: {
+    width: 36,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: Colors.dark.border,
+    alignSelf: 'center',
+    marginBottom: 20,
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: Colors.dark.text,
+    marginBottom: 20,
+  },
+  modalSectionLabel: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: Colors.dark.textMuted,
+    letterSpacing: 1.1,
+    marginBottom: 6,
+    marginLeft: 2,
+  },
+  modalCard: {
+    backgroundColor: Colors.dark.surfaceSoft,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: Colors.dark.border,
+    overflow: 'hidden',
+    marginBottom: 16,
+  },
+  modalRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 14,
+    paddingVertical: 13,
+    gap: 12,
+  },
+  modalRowBorder: {
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.dark.border,
+  },
+  modalRowIcon: {
+    width: 34,
+    height: 34,
+    borderRadius: 9,
+    backgroundColor: Colors.dark.surface,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalRowIconText: {
+    fontSize: 16,
+  },
+  modalRowContent: {
+    flex: 1,
+    gap: 2,
+  },
+  modalRowLabel: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: Colors.dark.text,
+  },
+  modalRowLabelDanger: {
+    color: Colors.dark.danger,
+  },
+  modalRowSubtitle: {
+    fontSize: 12,
+    color: Colors.dark.textMuted,
+  },
+  modalRowChevron: {
+    fontSize: 20,
+    color: Colors.dark.textMuted,
+    fontWeight: '300',
+  },
+  modalCancelButton: {
+    backgroundColor: Colors.dark.surfaceSoft,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: Colors.dark.border,
+    paddingVertical: 14,
+    alignItems: 'center',
+    marginTop: 4,
+  },
+  modalCancelText: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: Colors.dark.text,
   },
 });
