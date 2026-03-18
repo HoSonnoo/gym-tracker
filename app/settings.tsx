@@ -1,6 +1,6 @@
 import { Colors } from '@/constants/Colors';
 import { useUserPreferences, type WeightUnit } from '@/context/UserPreferencesContext';
-import { exportAllData, exportAllDataCSV, importData, type ImportMode, resetAll, resetSessions } from '@/database';
+import { exportAllData, exportAllDataCSV, importData, resetSelective, type ImportMode, type ResetOptions } from '@/database';
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system/legacy';
 import { useRouter } from 'expo-router';
@@ -15,7 +15,7 @@ import {
   StyleSheet,
   Text,
   TouchableOpacity,
-  View,
+  View
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -115,8 +115,7 @@ type DataModalProps = {
   onExportJSON: () => void;
   onExportCSV: () => void;
   onImport: () => void;
-  onResetSessions: () => void;
-  onResetAll: () => void;
+  onReset: () => void;
 };
 
 function DataManagementModal({
@@ -126,8 +125,7 @@ function DataManagementModal({
   onExportJSON,
   onExportCSV,
   onImport,
-  onResetSessions,
-  onResetAll,
+  onReset,
 }: DataModalProps) {
   return (
     <Modal
@@ -203,8 +201,8 @@ function DataManagementModal({
           <Text style={styles.modalSectionLabel}>RESET</Text>
           <View style={styles.modalCard}>
             <TouchableOpacity
-              style={[styles.modalRow, styles.modalRowBorder]}
-              onPress={() => { onClose(); setTimeout(onResetSessions, 300); }}
+              style={styles.modalRow}
+              onPress={() => { onClose(); setTimeout(onReset, 300); }}
               disabled={busy}
               activeOpacity={0.7}
             >
@@ -212,24 +210,8 @@ function DataManagementModal({
                 <Text style={styles.modalRowIconText}>🗑️</Text>
               </View>
               <View style={styles.modalRowContent}>
-                <Text style={[styles.modalRowLabel, styles.modalRowLabelDanger]}>Reset sessioni</Text>
-                <Text style={styles.modalRowSubtitle}>Mantiene template ed esercizi</Text>
-              </View>
-              <Text style={styles.modalRowChevron}>›</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.modalRow}
-              onPress={() => { onClose(); setTimeout(onResetAll, 300); }}
-              disabled={busy}
-              activeOpacity={0.7}
-            >
-              <View style={styles.modalRowIcon}>
-                <Text style={styles.modalRowIconText}>⚠️</Text>
-              </View>
-              <View style={styles.modalRowContent}>
-                <Text style={[styles.modalRowLabel, styles.modalRowLabelDanger]}>Reset completo</Text>
-                <Text style={styles.modalRowSubtitle}>Cancella tutti i dati dell'app</Text>
+                <Text style={[styles.modalRowLabel, styles.modalRowLabelDanger]}>Reset dati</Text>
+                <Text style={styles.modalRowSubtitle}>Scegli cosa cancellare</Text>
               </View>
               <Text style={styles.modalRowChevron}>›</Text>
             </TouchableOpacity>
@@ -244,17 +226,281 @@ function DataManagementModal({
   );
 }
 
+// ─── Reset Modal ─────────────────────────────────────────────────────────────
+
+type ResetModalProps = {
+  visible: boolean;
+  onClose: () => void;
+  options: ResetOptions;
+  onToggle: (key: keyof ResetOptions) => void;
+  allSelected: boolean;
+  onToggleAll: () => void;
+  onConfirm: () => void;
+  labels: Record<keyof ResetOptions, { label: string; subtitle: string; emoji: string }>;
+  busy: boolean;
+};
+
+function ResetModal({
+  visible,
+  onClose,
+  options,
+  onToggle,
+  allSelected,
+  onToggleAll,
+  onConfirm,
+  labels,
+  busy,
+}: ResetModalProps) {
+  const keys = Object.keys(options) as (keyof ResetOptions)[];
+  const anySelected = keys.some((k) => options[k]);
+
+  return (
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+      <Pressable style={styles.modalOverlay} onPress={onClose}>
+        <Pressable style={styles.modalSheet} onPress={() => {}}>
+          <View style={styles.modalHandle} />
+          <Text style={styles.modalTitle}>Reset dati</Text>
+          <Text style={resetStyles.subtitle}>
+            Seleziona le categorie da cancellare definitivamente.
+          </Text>
+
+          {/* Seleziona tutto */}
+          <TouchableOpacity
+            style={resetStyles.selectAllRow}
+            onPress={onToggleAll}
+            activeOpacity={0.8}
+          >
+            <View style={[resetStyles.checkbox, allSelected && resetStyles.checkboxActive]}>
+              {allSelected && <Text style={resetStyles.checkmark}>✓</Text>}
+            </View>
+            <Text style={resetStyles.selectAllLabel}>Seleziona tutto</Text>
+          </TouchableOpacity>
+
+          {/* Lista categorie */}
+          <View style={styles.modalCard}>
+            {keys.map((key, idx) => {
+              const item = labels[key];
+              const checked = options[key];
+              return (
+                <TouchableOpacity
+                  key={key}
+                  style={[resetStyles.optionRow, idx < keys.length - 1 && resetStyles.optionRowBorder]}
+                  onPress={() => onToggle(key)}
+                  activeOpacity={0.7}
+                >
+                  <View style={styles.modalRowIcon}>
+                    <Text style={styles.modalRowIconText}>{item.emoji}</Text>
+                  </View>
+                  <View style={resetStyles.optionContent}>
+                    <Text style={[resetStyles.optionLabel, checked && resetStyles.optionLabelActive]}>
+                      {item.label}
+                    </Text>
+                    <Text style={resetStyles.optionSubtitle}>{item.subtitle}</Text>
+                  </View>
+                  <View style={[resetStyles.checkbox, checked && resetStyles.checkboxActive]}>
+                    {checked && <Text style={resetStyles.checkmark}>✓</Text>}
+                  </View>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+
+          {/* Bottone conferma */}
+          <TouchableOpacity
+            style={[resetStyles.confirmBtn, !anySelected && resetStyles.confirmBtnDisabled, busy && resetStyles.confirmBtnDisabled]}
+            onPress={onConfirm}
+            disabled={!anySelected || busy}
+            activeOpacity={0.85}
+          >
+            <Text style={resetStyles.confirmBtnText}>
+              {busy ? 'Reset in corso…' : 'Resetta selezionati'}
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity style={styles.modalCancelButton} onPress={onClose} activeOpacity={0.8}>
+            <Text style={styles.modalCancelText}>Annulla</Text>
+          </TouchableOpacity>
+        </Pressable>
+      </Pressable>
+    </Modal>
+  );
+}
+
+const resetStyles = StyleSheet.create({
+  subtitle: {
+    fontSize: 13,
+    color: Colors.dark.textMuted,
+    marginBottom: 16,
+    lineHeight: 18,
+  },
+  selectAllRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 10,
+    marginBottom: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.dark.border,
+  },
+  selectAllLabel: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: Colors.dark.text,
+    flex: 1,
+  },
+  checkbox: {
+    width: 24,
+    height: 24,
+    borderRadius: 7,
+    borderWidth: 2,
+    borderColor: Colors.dark.border,
+    backgroundColor: Colors.dark.surfaceSoft,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  checkboxActive: {
+    borderColor: Colors.dark.danger,
+    backgroundColor: 'rgba(239,68,68,0.15)',
+  },
+  checkmark: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: Colors.dark.danger,
+    lineHeight: 16,
+  },
+  optionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 14,
+    paddingVertical: 13,
+    gap: 12,
+  },
+  optionRowBorder: {
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.dark.border,
+  },
+  optionContent: {
+    flex: 1,
+    gap: 2,
+  },
+  optionLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: Colors.dark.textMuted,
+  },
+  optionLabelActive: {
+    color: Colors.dark.danger,
+  },
+  optionSubtitle: {
+    fontSize: 12,
+    color: Colors.dark.textMuted,
+  },
+  confirmBtn: {
+    backgroundColor: 'rgba(239,68,68,0.15)',
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: Colors.dark.danger,
+    paddingVertical: 14,
+    alignItems: 'center',
+    marginTop: 12,
+    marginBottom: 8,
+  },
+  confirmBtnDisabled: {
+    opacity: 0.35,
+  },
+  confirmBtnText: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: Colors.dark.danger,
+  },
+});
+
 // ─── Screen ───────────────────────────────────────────────────────────────────
 
 export default function SettingsScreen() {
   const router = useRouter();
   const { preferences, setUnit, setWeeklyGoal } = useUserPreferences();
-  const [resetting, setResetting] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [importing, setImporting] = useState(false);
+  const [resetting, setResetting] = useState(false);
   const [dataModalVisible, setDataModalVisible] = useState(false);
+  const [resetModalVisible, setResetModalVisible] = useState(false);
+  const [resetOptions, setResetOptions] = useState<ResetOptions>({
+    sessions: false,
+    templates: false,
+    nutritionLogs: false,
+    mealPlans: false,
+    bodyWeight: false,
+    foodCatalog: false,
+  });
 
   const busy = resetting || exporting || importing;
+
+  const resetKeys = Object.keys(resetOptions) as (keyof ResetOptions)[];
+  const allSelected = resetKeys.every((k) => resetOptions[k]);
+  const noneSelected = resetKeys.every((k) => !resetOptions[k]);
+
+  const toggleAll = () => {
+    const next = !allSelected;
+    setResetOptions({ sessions: next, templates: next, nutritionLogs: next, mealPlans: next, bodyWeight: next, foodCatalog: next });
+  };
+
+  const RESET_LABELS: Record<keyof ResetOptions, { label: string; subtitle: string; emoji: string }> = {
+    sessions:     { emoji: '🏋️', label: 'Sessioni allenamento', subtitle: 'Storico allenamenti e sessione attiva' },
+    templates:    { emoji: '📋', label: 'Template ed esercizi', subtitle: 'Tutti i template e il catalogo esercizi' },
+    nutritionLogs:{ emoji: '🥗', label: 'Log nutrizione', subtitle: 'Diario alimentare e log acqua giornalieri' },
+    mealPlans:    { emoji: '📅', label: 'Piani alimentari', subtitle: 'Tutti i piani alimentari salvati' },
+    bodyWeight:   { emoji: '⚖️', label: 'Peso corporeo', subtitle: 'Tutto lo storico delle pesate' },
+    foodCatalog:  { emoji: '🍎', label: 'Catalogo alimenti', subtitle: 'Tutti gli alimenti salvati manualmente' },
+  };
+
+  const handleConfirmReset = () => {
+    if (noneSelected) {
+      Alert.alert('Nessuna selezione', 'Seleziona almeno una categoria da resettare.');
+      return;
+    }
+    const selectedLabels = resetKeys
+      .filter((k) => resetOptions[k])
+      .map((k) => `• ${RESET_LABELS[k].label}`)
+      .join('\n');
+    Alert.alert(
+      'Conferma reset',
+      `Stai per cancellare definitivamente:\n\n${selectedLabels}\n\nQuesta operazione è irreversibile.`,
+      [
+        { text: 'Annulla', style: 'cancel' },
+        {
+          text: 'Resetta',
+          style: 'destructive',
+          onPress: () => {
+            Alert.alert(
+              'Sei sicuro?',
+              'I dati selezionati verranno eliminati permanentemente.',
+              [
+                { text: 'Annulla', style: 'cancel' },
+                {
+                  text: 'Sì, resetta',
+                  style: 'destructive',
+                  onPress: async () => {
+                    try {
+                      setResetting(true);
+                      setResetModalVisible(false);
+                      await resetSelective(resetOptions);
+                      setResetOptions({ sessions: false, templates: false, nutritionLogs: false, mealPlans: false, bodyWeight: false, foodCatalog: false });
+                      Alert.alert('Fatto', 'I dati selezionati sono stati cancellati.');
+                    } catch {
+                      Alert.alert('Errore', 'Impossibile eseguire il reset.');
+                    } finally {
+                      setResetting(false);
+                    }
+                  },
+                },
+              ]
+            );
+          },
+        },
+      ]
+    );
+  };
 
   // ── Export JSON ──────────────────────────────────────────────────────────
   const handleExportJSON = async () => {
@@ -357,69 +603,7 @@ export default function SettingsScreen() {
     }
   };
 
-  // ── Reset ────────────────────────────────────────────────────────────────
-  const handleResetSessions = () => {
-    Alert.alert(
-      'Reset sessioni',
-      'Verranno cancellati tutti gli allenamenti completati e la sessione attiva, se presente. Template ed esercizi rimarranno intatti.',
-      [
-        { text: 'Annulla', style: 'cancel' },
-        {
-          text: 'Reset sessioni',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              setResetting(true);
-              await resetSessions();
-              Alert.alert('Fatto', 'Tutte le sessioni sono state cancellate.');
-            } catch {
-              Alert.alert('Errore', 'Impossibile eseguire il reset.');
-            } finally {
-              setResetting(false);
-            }
-          },
-        },
-      ]
-    );
-  };
-
-  const handleResetAll = () => {
-    Alert.alert(
-      'Reset completo',
-      'Verranno cancellati tutti i dati: sessioni, template ed esercizi. Le preferenze rimarranno invariate. Questa operazione è irreversibile.',
-      [
-        { text: 'Annulla', style: 'cancel' },
-        {
-          text: 'Sono sicuro, resetta tutto',
-          style: 'destructive',
-          onPress: () => {
-            Alert.alert(
-              'Sei davvero sicuro?',
-              'Non sarà possibile recuperare i dati eliminati.',
-              [
-                { text: 'Annulla', style: 'cancel' },
-                {
-                  text: 'Resetta tutto',
-                  style: 'destructive',
-                  onPress: async () => {
-                    try {
-                      setResetting(true);
-                      await resetAll();
-                      Alert.alert('Fatto', 'Tutti i dati sono stati cancellati.');
-                    } catch {
-                      Alert.alert('Errore', 'Impossibile eseguire il reset.');
-                    } finally {
-                      setResetting(false);
-                    }
-                  },
-                },
-              ]
-            );
-          },
-        },
-      ]
-    );
-  };
+  // ── Reset ── (gestito da handleConfirmReset sopra)
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top']}>
@@ -515,8 +699,20 @@ export default function SettingsScreen() {
         onExportJSON={handleExportJSON}
         onExportCSV={handleExportCSV}
         onImport={handleImportJSON}
-        onResetSessions={handleResetSessions}
-        onResetAll={handleResetAll}
+        onReset={() => setResetModalVisible(true)}
+      />
+
+      {/* Reset Modal */}
+      <ResetModal
+        visible={resetModalVisible}
+        onClose={() => setResetModalVisible(false)}
+        options={resetOptions}
+        onToggle={(key) => setResetOptions((prev) => ({ ...prev, [key]: !prev[key] }))}
+        allSelected={allSelected}
+        onToggleAll={toggleAll}
+        onConfirm={handleConfirmReset}
+        labels={RESET_LABELS}
+        busy={resetting}
       />
     </SafeAreaView>
   );

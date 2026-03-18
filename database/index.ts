@@ -1089,33 +1089,76 @@ export async function getExerciseWeightHistory(
   `, [exerciseName]);
 }
 
-export async function resetSessions() {
+export type ResetOptions = {
+  sessions: boolean;        // sessioni allenamento (sets + exercises + sessions)
+  templates: boolean;       // template + esercizi del catalogo
+  nutritionLogs: boolean;   // log nutrizione giornalieri
+  mealPlans: boolean;       // piani alimentari
+  bodyWeight: boolean;      // pesate corporee
+  foodCatalog: boolean;     // catalogo alimenti
+};
+
+export async function resetSelective(options: ResetOptions): Promise<void> {
   const database = await getDb();
-  await database.execAsync(`
-    DELETE FROM workout_session_sets;
-    DELETE FROM workout_session_exercises;
-    DELETE FROM workout_sessions;
-  `);
+
+  await database.withTransactionAsync(async () => {
+    if (options.sessions) {
+      await database.execAsync(`
+        DELETE FROM workout_session_sets;
+        DELETE FROM workout_session_exercises;
+        DELETE FROM workout_sessions;
+      `);
+    }
+    if (options.templates) {
+      // Prima rimuovi sessioni che dipendono dai template, se non già resettate
+      if (!options.sessions) {
+        await database.execAsync(`
+          DELETE FROM workout_session_sets;
+          DELETE FROM workout_session_exercises;
+          DELETE FROM workout_sessions;
+        `);
+      }
+      await database.execAsync(`
+        DELETE FROM template_exercise_sets;
+        DELETE FROM workout_template_exercises;
+        DELETE FROM workout_templates;
+        DELETE FROM exercises;
+      `);
+    }
+    if (options.nutritionLogs) {
+      await database.execAsync(`
+        DELETE FROM nutrition_logs;
+        DELETE FROM water_logs;
+      `);
+    }
+    if (options.mealPlans) {
+      await database.execAsync(`
+        DELETE FROM meal_plan_entries;
+        DELETE FROM meal_plan_days;
+        DELETE FROM meal_plans;
+      `);
+    }
+    if (options.bodyWeight) {
+      await database.execAsync(`DELETE FROM body_weight_logs;`);
+    }
+    if (options.foodCatalog) {
+      // Azzera i riferimenti nei log prima di cancellare il catalogo
+      await database.execAsync(`
+        UPDATE nutrition_logs SET food_item_id = NULL;
+        UPDATE meal_plan_entries SET food_item_id = NULL;
+        DELETE FROM food_items;
+      `);
+    }
+  });
+}
+
+// Mantenute per retrocompatibilità interna
+export async function resetSessions() {
+  return resetSelective({ sessions: true, templates: false, nutritionLogs: false, mealPlans: false, bodyWeight: false, foodCatalog: false });
 }
 
 export async function resetAll() {
-  const database = await getDb();
-  await database.execAsync(`
-    DELETE FROM workout_session_sets;
-    DELETE FROM workout_session_exercises;
-    DELETE FROM workout_sessions;
-    DELETE FROM template_exercise_sets;
-    DELETE FROM workout_template_exercises;
-    DELETE FROM workout_templates;
-    DELETE FROM exercises;
-    DELETE FROM meal_plan_entries;
-    DELETE FROM meal_plan_days;
-    DELETE FROM meal_plans;
-    DELETE FROM nutrition_logs;
-    DELETE FROM water_logs;
-    DELETE FROM body_weight_logs;
-    DELETE FROM food_items;
-  `);
+  return resetSelective({ sessions: true, templates: true, nutritionLogs: true, mealPlans: true, bodyWeight: true, foodCatalog: true });
 }
 
 export async function hasExercises(): Promise<boolean> {
