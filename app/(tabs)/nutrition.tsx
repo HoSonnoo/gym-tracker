@@ -58,7 +58,7 @@ import Animated, {
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const PRIMARY = '#7e47ff';
-const ANTHROPIC_API_KEY = 'INSERISCI_QUI_LA_TUA_API_KEY';
+const ANTHROPIC_API_KEY = '';
 
 const MEAL_TYPES = [
   { key: 'colazione', label: 'Colazione', emoji: '☀️' },
@@ -1374,6 +1374,7 @@ function CorpoSection() {
   const [weightDate, setWeightDate] = useState(today);
   const [weightValue, setWeightValue] = useState('');
   const [weightNotes, setWeightNotes] = useState('');
+  const [weightPhase, setWeightPhase] = useState<'bulk' | 'cut' | null>(null);
   const [savingWeight, setSavingWeight] = useState(false);
 
   // Acqua
@@ -1419,9 +1420,10 @@ function CorpoSection() {
     }
     try {
       setSavingWeight(true);
-      await upsertBodyWeightLog(weightDate, val, weightNotes.trim() || null);
+      await upsertBodyWeightLog(weightDate, val, weightNotes.trim() || null, weightPhase);
       setWeightValue('');
       setWeightNotes('');
+      setWeightPhase(null);
       setShowWeightInput(false);
       await loadData();
     } catch {
@@ -1483,6 +1485,7 @@ function CorpoSection() {
                 setWeightDate(today);
                 setWeightValue(todayWeight ? String(todayWeight.weight_kg) : '');
                 setWeightNotes(todayWeight?.notes ?? '');
+                setWeightPhase(todayWeight?.phase ?? null);
                 setShowWeightInput(true);
               }}
               activeOpacity={0.8}
@@ -1500,6 +1503,13 @@ function CorpoSection() {
             <Text style={corpoStyles.todayWeightValue}>{todayWeight.weight_kg}</Text>
             <Text style={corpoStyles.todayWeightUnit}>kg</Text>
             <Text style={corpoStyles.todayWeightLabel}>oggi</Text>
+            {todayWeight.phase && (
+              <View style={[corpoStyles.phaseBadge, todayWeight.phase === 'bulk' ? corpoStyles.phaseBadgeBulk : corpoStyles.phaseBadgeCut]}>
+                <Text style={corpoStyles.phaseBadgeText}>
+                  {todayWeight.phase === 'bulk' ? '💪 Bulk' : '🔥 Cut'}
+                </Text>
+              </View>
+            )}
           </View>
         ) : (
           !showWeightInput && (
@@ -1548,6 +1558,21 @@ function CorpoSection() {
               placeholderTextColor={Colors.dark.textMuted}
               style={corpoStyles.notesInput}
             />
+            <Text style={[corpoStyles.inputLabel, { marginTop: 10 }]}>Fase (opzionale)</Text>
+            <View style={corpoStyles.phaseSelector}>
+              {([null, 'bulk', 'cut'] as const).map((p) => (
+                <TouchableOpacity
+                  key={String(p)}
+                  style={[corpoStyles.phaseOption, weightPhase === p && corpoStyles.phaseOptionActive]}
+                  onPress={() => setWeightPhase(p)}
+                  activeOpacity={0.8}
+                >
+                  <Text style={[corpoStyles.phaseOptionText, weightPhase === p && corpoStyles.phaseOptionTextActive]}>
+                    {p === null ? 'Nessuna' : p === 'bulk' ? '💪 Bulk' : '🔥 Cut'}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
             <View style={corpoStyles.weightInputActions}>
               <TouchableOpacity
                 style={[corpoStyles.saveWeightBtn, savingWeight && corpoStyles.disabledBtn]}
@@ -1570,30 +1595,6 @@ function CorpoSection() {
           </View>
         )}
 
-        {/* Storico */}
-        {weightLogs.length > 0 && (
-          <View style={corpoStyles.historyBox}>
-            <Text style={corpoStyles.historyTitle}>Storico</Text>
-            <View style={corpoStyles.historyList}>
-              {weightLogs.map((log) => (
-                <View key={log.id} style={corpoStyles.historyRow}>
-                  <View style={corpoStyles.historyLeft}>
-                    <Text style={corpoStyles.historyDate}>{formatDateDisplay(log.date)}</Text>
-                    {log.notes ? <Text style={corpoStyles.historyNotes}>{log.notes}</Text> : null}
-                  </View>
-                  <Text style={corpoStyles.historyWeight}>{log.weight_kg} kg</Text>
-                  <TouchableOpacity
-                    style={corpoStyles.deleteBtn}
-                    onPress={() => handleDeleteWeight(log)}
-                    activeOpacity={0.8}
-                  >
-                    <Text style={corpoStyles.deleteBtnText}>✕</Text>
-                  </TouchableOpacity>
-                </View>
-              ))}
-            </View>
-          </View>
-        )}
       </View>
 
       {/* ── Acqua ── */}
@@ -1682,6 +1683,15 @@ const corpoStyles = StyleSheet.create({
   dateArrowTextDisabled: { color: Colors.dark.textMuted },
   inputLabel: { fontSize: 12, fontWeight: '600', color: Colors.dark.textMuted, marginBottom: 6 },
   weightInput: { backgroundColor: Colors.dark.surface, borderWidth: 1, borderColor: Colors.dark.border, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, color: Colors.dark.text, fontSize: 22, fontWeight: '800' },
+  phaseSelector: { flexDirection: 'row', gap: 8, marginTop: 4 },
+  phaseOption: { flex: 1, paddingVertical: 9, borderRadius: 10, borderWidth: 1, borderColor: Colors.dark.border, backgroundColor: Colors.dark.surfaceSoft, alignItems: 'center' },
+  phaseOptionActive: { borderColor: '#7e47ff', backgroundColor: 'rgba(126,71,255,0.12)' },
+  phaseOptionText: { fontSize: 13, fontWeight: '700', color: Colors.dark.textMuted },
+  phaseOptionTextActive: { color: '#7e47ff' },
+  phaseBadge: { borderRadius: 8, paddingHorizontal: 10, paddingVertical: 4, marginLeft: 8 },
+  phaseBadgeBulk: { backgroundColor: 'rgba(126,71,255,0.15)' },
+  phaseBadgeCut: { backgroundColor: 'rgba(239,68,68,0.12)' },
+  phaseBadgeText: { fontSize: 12, fontWeight: '700', color: Colors.dark.text },
   notesInput: { backgroundColor: Colors.dark.surface, borderWidth: 1, borderColor: Colors.dark.border, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10, color: Colors.dark.text, fontSize: 14 },
   weightInputActions: { flexDirection: 'row', gap: 10, marginTop: 12 },
   saveWeightBtn: { flex: 1, backgroundColor: PRIMARY, borderRadius: 12, paddingVertical: 12, alignItems: 'center' },
@@ -1735,8 +1745,6 @@ function PianoSection() {
   const [showAddEntryModal, setShowAddEntryModal] = useState<{ dayId: number; mealType: string } | null>(null);
 
   const handlePickAndImportPDF = async () => {
-    setImportStep('idle');
-    setImportError('');
     try {
       const result = await DocumentPicker.getDocumentAsync({
         type: '*/*',
@@ -1747,6 +1755,9 @@ function PianoSection() {
         Alert.alert('Errore', 'Nessun file selezionato.');
         return;
       }
+      // Reset stato solo dopo selezione riuscita
+      setImportError('');
+      setImportStep('loading');
       await processFile(result.assets[0]);
     } catch (e: any) {
       setImportError(e?.message ?? `Errore nella selezione del file.`);
@@ -1756,7 +1767,6 @@ function PianoSection() {
 
   const processFile = async (file: { uri: string; name: string; mimeType?: string; size?: number }) => {
     try {
-      setImportStep('loading');
 
       const base64 = await FileSystem.readAsStringAsync(file.uri, {
         encoding: 'base64',
@@ -1772,7 +1782,7 @@ function PianoSection() {
         headers: { 'Content-Type': 'application/json', 'x-api-key': ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' },
         body: JSON.stringify({
           model: 'claude-sonnet-4-20250514',
-          max_tokens: 4000,
+          max_tokens: 8000,
           messages: [{
             role: 'user',
             content: [
@@ -1795,8 +1805,18 @@ function PianoSection() {
         throw new Error(`Nessuna risposta dall'AI. Riprova.`);
       }
 
-      const cleaned = rawText.replace(/```json|```/g, '').trim();
-      const parsed: ImportedPlan = JSON.parse(cleaned);
+      Alert.alert('RAW', rawText.substring(0, 400));
+
+      // Estrae il JSON anche se è dentro backtick o ha testo prima/dopo
+      let jsonStr = rawText;
+      const jsonMatch = rawText.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        jsonStr = jsonMatch[0];
+      } else {
+        jsonStr = rawText.replace(/```json|```/g, '').trim();
+      }
+
+      const parsed: ImportedPlan = JSON.parse(jsonStr);
       setImportedPlan(JSON.parse(JSON.stringify(parsed)));
       setImportStep('preview');
     } catch (e: any) {
@@ -2190,6 +2210,75 @@ function PianoSection() {
         />
       )}
 
+      <Modal visible={importStep === 'preview' || importStep === 'loading' || importStep === 'error'} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setImportStep('idle')}>
+        <View style={importStyles.container}>
+          <View style={importStyles.handle} />
+          <View style={importStyles.header}>
+            <Text style={importStyles.title}>Importa da PDF</Text>
+            <TouchableOpacity onPress={() => setImportStep('idle')} style={importStyles.closeBtn} activeOpacity={0.8}>
+              <Text style={importStyles.closeBtnText}>Chiudi</Text>
+            </TouchableOpacity>
+          </View>
+          {importStep === 'loading' && (
+            <View style={importStyles.centered}>
+              <ActivityIndicator size="large" color={PRIMARY} />
+              <Text style={importStyles.loadingText}>Analisi del documento in corso...</Text>
+              <Text style={importStyles.loadingSubtext}>Potrebbe richiedere qualche secondo</Text>
+            </View>
+          )}
+          {importStep === 'error' && (
+            <View style={importStyles.centered}>
+              <Text style={importStyles.errorEmoji}>⚠️</Text>
+              <Text style={importStyles.errorTitle}>Impossibile leggere il piano</Text>
+              <Text style={importStyles.errorDesc}>{importError}</Text>
+              <TouchableOpacity style={importStyles.pickBtn} onPress={() => { setImportStep('idle'); setTimeout(handlePickAndImportPDF, 300); }} activeOpacity={0.85}>
+                <Text style={importStyles.pickBtnText}>Riprova</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+          {importStep === 'preview' && importedPlan && (
+            <ScrollView contentContainerStyle={importStyles.previewContent} keyboardShouldPersistTaps="handled">
+              <View style={importStyles.previewHeader}>
+                <Text style={importStyles.previewTitle}>{importedPlan.name}</Text>
+                <Text style={importStyles.previewMeta}>{importedPlan.plan_type === 'weekly' ? '📅 Settimanale' : '🔄 Ciclo libero'} · {importedPlan.days.length} giorni</Text>
+              </View>
+              <Text style={importStyles.previewHint}>Controlla i dati estratti e modifica se necessario.</Text>
+              {importedPlan.days.map((day, dayIdx) => (
+                <View key={dayIdx} style={importStyles.dayCard}>
+                  <Text style={importStyles.dayLabel}>{day.label}</Text>
+                  {day.meals.map((meal, mealIdx) => meal.entries.length > 0 ? (
+                    <View key={mealIdx} style={importStyles.mealGroup}>
+                      <Text style={importStyles.mealLabel}>{{ colazione: 'Colazione', pranzo: 'Pranzo', cena: 'Cena', spuntino: 'Spuntini' }[meal.meal_type] ?? meal.meal_type}</Text>
+                      {meal.entries.map((entry, entryIdx) => (
+                        <View key={entryIdx} style={importStyles.entryRow}>
+                          <View style={importStyles.entryMain}>
+                            <TextInput value={entry.food_name} onChangeText={(v) => { const p = JSON.parse(JSON.stringify(importedPlan)); p.days[dayIdx].meals[mealIdx].entries[entryIdx].food_name = v; setImportedPlan(p); }} style={importStyles.entryNameInput} />
+                            <View style={importStyles.entryMacroRow}>
+                              {(['grams','kcal','protein','carbs','fat'] as const).map((f) => (
+                                <View key={f} style={importStyles.macroField}>
+                                  <Text style={importStyles.macroFieldLabel}>{f==='grams'?'g':f==='kcal'?'kcal':f==='protein'?'Prot':f==='carbs'?'Carb':'Gras'}</Text>
+                                  <TextInput value={entry[f] !== null ? String(entry[f]) : ''} onChangeText={(v) => { const p = JSON.parse(JSON.stringify(importedPlan)); const n = parseFloat(v.replace(',','.')); p.days[dayIdx].meals[mealIdx].entries[entryIdx][f] = isNaN(n) ? null : n; setImportedPlan(p); }} keyboardType="decimal-pad" style={importStyles.macroInput} placeholder="—" placeholderTextColor={Colors.dark.textMuted} />
+                                </View>
+                              ))}
+                            </View>
+                          </View>
+                          <TouchableOpacity style={importStyles.removeEntryBtn} onPress={() => { const p = JSON.parse(JSON.stringify(importedPlan)); p.days[dayIdx].meals[mealIdx].entries.splice(entryIdx, 1); setImportedPlan(p); }} activeOpacity={0.8}>
+                            <Text style={importStyles.removeEntryBtnText}>✕</Text>
+                          </TouchableOpacity>
+                        </View>
+                      ))}
+                    </View>
+                  ) : null)}
+                </View>
+              ))}
+              <TouchableOpacity style={importStyles.confirmBtn} onPress={handleConfirmImport} activeOpacity={0.85}>
+                <Text style={importStyles.confirmBtnText}>✓ Importa piano</Text>
+              </TouchableOpacity>
+            </ScrollView>
+          )}
+        </View>
+      </Modal>
+
       {showAddEntryModal && (
         <AddEntryToPlanModal
           visible={!!showAddEntryModal}
@@ -2306,7 +2395,7 @@ function ImportPDFModal({ visible, onClose, onImported, autoStart = false }: {
         headers: { 'Content-Type': 'application/json', 'x-api-key': ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' },
         body: JSON.stringify({
           model: 'claude-sonnet-4-20250514',
-          max_tokens: 4000,
+          max_tokens: 8000,
           messages: [{
             role: 'user',
             content: [
@@ -2998,7 +3087,7 @@ export default function NutritionScreen() {
 // ─── Styles ───────────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
-  safeArea: { flex: 1, backgroundColor: Colors.dark.background },
+  safeArea: { flex: 1, backgroundColor: Colors.dark.background }, 
   container: { flex: 1, backgroundColor: Colors.dark.background },
   content: { padding: 20, paddingTop: 8, paddingBottom: 40 },
   pageTitle: { fontSize: 30, fontWeight: '800', color: Colors.dark.text, marginBottom: 16 },
