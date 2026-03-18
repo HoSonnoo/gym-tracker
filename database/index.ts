@@ -190,6 +190,14 @@ export async function initDatabase() {
       FOREIGN KEY (template_set_id) REFERENCES template_exercise_sets(id) ON DELETE SET NULL
     );
   `);
+
+  // ─── Migrazioni ────────────────────────────────────────────────────────────
+  // v1.1: aggiunge colonna phase a body_weight_logs
+  try {
+    await database.execAsync(`ALTER TABLE body_weight_logs ADD COLUMN phase TEXT`);
+  } catch {
+    // colonna già esistente, ignorato
+  }
 }
 
 export type Exercise = {
@@ -1100,6 +1108,13 @@ export async function resetAll() {
     DELETE FROM workout_template_exercises;
     DELETE FROM workout_templates;
     DELETE FROM exercises;
+    DELETE FROM meal_plan_entries;
+    DELETE FROM meal_plan_days;
+    DELETE FROM meal_plans;
+    DELETE FROM nutrition_logs;
+    DELETE FROM water_logs;
+    DELETE FROM body_weight_logs;
+    DELETE FROM food_items;
   `);
 }
 
@@ -1269,6 +1284,7 @@ export type BodyWeightLog = {
   date: string;
   weight_kg: number;
   notes: string | null;
+  phase: 'bulk' | 'cut' | null;
   created_at: string;
 };
 
@@ -1376,21 +1392,37 @@ export async function resetWaterLog(date: string): Promise<void> {
 
 // ─── Alimentazione — Body Weight ──────────────────────────────────────────────
 
-export async function getBodyWeightLogs(): Promise<BodyWeightLog[]> {
+export async function getBodyWeightLogs(phase?: 'bulk' | 'cut' | null): Promise<BodyWeightLog[]> {
   const database = await getDb();
+  if (phase !== undefined && phase !== null) {
+    return database.getAllAsync<BodyWeightLog>(
+      `SELECT * FROM body_weight_logs WHERE phase = ? ORDER BY date DESC`,
+      [phase]
+    );
+  }
   return database.getAllAsync<BodyWeightLog>(
     `SELECT * FROM body_weight_logs ORDER BY date DESC`
   );
 }
 
-export async function upsertBodyWeightLog(date: string, weight_kg: number, notes: string | null): Promise<void> {
+export async function upsertBodyWeightLog(date: string, weight_kg: number, notes: string | null, phase: 'bulk' | 'cut' | null = null): Promise<void> {
   const database = await getDb();
-  await database.runAsync(
-    `INSERT INTO body_weight_logs (date, weight_kg, notes)
-     VALUES (?, ?, ?)
-     ON CONFLICT(date) DO UPDATE SET weight_kg = excluded.weight_kg, notes = excluded.notes`,
-    [date, weight_kg, notes]
+  // Controlla se esiste già una riga con stessa data e stessa fase
+  const existing = await database.getFirstAsync<{ id: number }>(
+    `SELECT id FROM body_weight_logs WHERE date = ? AND (phase = ? OR (phase IS NULL AND ? IS NULL))`,
+    [date, phase, phase]
   );
+  if (existing) {
+    await database.runAsync(
+      `UPDATE body_weight_logs SET weight_kg = ?, notes = ? WHERE id = ?`,
+      [weight_kg, notes, existing.id]
+    );
+  } else {
+    await database.runAsync(
+      `INSERT INTO body_weight_logs (date, weight_kg, notes, phase) VALUES (?, ?, ?, ?)`,
+      [date, weight_kg, notes, phase]
+    );
+  }
 }
 
 export async function deleteBodyWeightLog(id: number): Promise<void> {
@@ -1512,4 +1544,455 @@ export async function updateMealPlanEntry(id: number, food_name: string, grams: 
 export async function deleteMealPlanEntry(id: number): Promise<void> {
   const database = await getDb();
   await database.runAsync(`DELETE FROM meal_plan_entries WHERE id = ?`, [id]);
+}
+// ─── Export dati ──────────────────────────────────────────────────────────────
+
+export type ExportData = {
+  exported_at: string;
+  app_version: string;
+  exercises: Exercise[];
+  workout_templates: (WorkoutTemplate & {
+    exercises: (TemplateExercise & { sets: TemplateExerciseSet[] })[];
+  })[];
+  workout_sessions: (WorkoutSession & {
+    exercises: (WorkoutSessionExercise & { sets: WorkoutSessionSet[] })[];
+  })[];
+  food_items: FoodItem[];
+  nutrition_logs: NutritionLog[];
+  body_weight_logs: BodyWeightLog[];
+  meal_plans: (MealPlan & {
+    days: (MealPlanDay & { entries: MealPlanEntry[] })[];
+  })[];
+};
+
+export async function exportAllData(): Promise<ExportData> {
+  const database = await getDb();
+
+  // Esercizi
+  const exercises = await getExercises();
+
+  // Template con esercizi e serie
+  const rawTemplates = await getWorkoutTemplates();
+  const workout_templates = await Promise.all(
+    rawTemplates.map(async (template) => {
+      const templateExercises = await getTemplateExercises(template.id);
+      const exercisesWithSets = await Promise.all(
+        templateExercises.map(async (ex) => ({
+          ...ex,
+          sets: await getTemplateExerciseSets(ex.id),
+        }))
+      );
+      return { ...template, exercises: exercisesWithSets };
+    })
+  );
+
+  // Sessioni completate + attive con esercizi e serie
+  const rawSessions = await database.getAllAsync<WorkoutSession>(`
+    SELECT id, template_id, name, notes, status, started_at, completed_at, created_at
+    FROM workout_sessions
+    ORDER BY started_at DESC
+  `);
+  const workout_sessions = await Promise.all(
+    rawSessions.map(async (session) => {
+      const sessionExercises = await getWorkoutSessionExercises(session.id);
+      const exercisesWithSets = await Promise.all(
+        sessionExercises.map(async (ex) => ({
+          ...ex,
+          sets: await getWorkoutSessionSets(ex.id),
+        }))
+      );
+      return { ...session, exercises: exercisesWithSets };
+    })
+  );
+
+  // Alimentazione
+  const food_items = await getFoodItems();
+  const nutrition_logs = await database.getAllAsync<NutritionLog>(
+    `SELECT * FROM nutrition_logs ORDER BY date DESC, created_at DESC`
+  );
+  const body_weight_logs = await getBodyWeightLogs();
+
+  // Piani alimentari
+  const rawMealPlans = await getMealPlans();
+  const meal_plans = await Promise.all(
+    rawMealPlans.map(async (plan) => {
+      const days = await getMealPlanDays(plan.id);
+      const daysWithEntries = await Promise.all(
+        days.map(async (day) => ({
+          ...day,
+          entries: await getMealPlanEntries(day.id),
+        }))
+      );
+      return { ...plan, days: daysWithEntries };
+    })
+  );
+
+  return {
+    exported_at: new Date().toISOString(),
+    app_version: '1.0.0',
+    exercises,
+    workout_templates,
+    workout_sessions,
+    food_items,
+    nutrition_logs,
+    body_weight_logs,
+    meal_plans,
+  };
+}
+
+// ─── Import dati ──────────────────────────────────────────────────────────────
+
+export type ImportMode = 'replace_all' | 'overwrite_existing' | 'add_only';
+
+export async function importData(payload: ExportData, mode: ImportMode): Promise<void> {
+  const database = await getDb();
+
+  await database.withTransactionAsync(async () => {
+
+    // ── REPLACE ALL: cancella tutto e reinserisce ──────────────────────────
+    if (mode === 'replace_all') {
+      await database.execAsync(`
+        DELETE FROM workout_session_sets;
+        DELETE FROM workout_session_exercises;
+        DELETE FROM workout_sessions;
+        DELETE FROM template_exercise_sets;
+        DELETE FROM workout_template_exercises;
+        DELETE FROM workout_templates;
+        DELETE FROM exercises;
+        DELETE FROM meal_plan_entries;
+        DELETE FROM meal_plan_days;
+        DELETE FROM meal_plans;
+        DELETE FROM nutrition_logs;
+        DELETE FROM water_logs;
+        DELETE FROM body_weight_logs;
+        DELETE FROM food_items;
+      `);
+    }
+
+    // ── ESERCIZI ──────────────────────────────────────────────────────────
+    const exerciseIdMap = new Map<number, number>(); // old_id → new_id
+
+    for (const ex of payload.exercises ?? []) {
+      if (mode === 'add_only') {
+        const existing = await database.getFirstAsync<{ id: number }>(
+          `SELECT id FROM exercises WHERE name = ?`, [ex.name]
+        );
+        if (existing) { exerciseIdMap.set(ex.id, existing.id); continue; }
+      }
+      if (mode === 'overwrite_existing') {
+        await database.runAsync(
+          `INSERT INTO exercises (name, category, created_at) VALUES (?, ?, ?)
+           ON CONFLICT(name) DO UPDATE SET category = excluded.category`,
+          [ex.name, ex.category, ex.created_at]
+        );
+        const row = await database.getFirstAsync<{ id: number }>(
+          `SELECT id FROM exercises WHERE name = ?`, [ex.name]
+        );
+        if (row) exerciseIdMap.set(ex.id, row.id);
+      } else {
+        const result = await database.runAsync(
+          `INSERT OR IGNORE INTO exercises (name, category, created_at) VALUES (?, ?, ?)`,
+          [ex.name, ex.category, ex.created_at]
+        );
+        const newId = result.lastInsertRowId
+          ? Number(result.lastInsertRowId)
+          : (await database.getFirstAsync<{ id: number }>(
+              `SELECT id FROM exercises WHERE name = ?`, [ex.name]
+            ))?.id ?? ex.id;
+        exerciseIdMap.set(ex.id, newId);
+      }
+    }
+
+    // ── TEMPLATE ──────────────────────────────────────────────────────────
+    for (const tmpl of payload.workout_templates ?? []) {
+      let templateDbId: number;
+
+      if (mode === 'add_only') {
+        const existing = await database.getFirstAsync<{ id: number }>(
+          `SELECT id FROM workout_templates WHERE name = ? AND created_at = ?`,
+          [tmpl.name, tmpl.created_at]
+        );
+        if (existing) continue;
+      }
+
+      const tmplResult = await database.runAsync(
+        `INSERT INTO workout_templates (name, notes, created_at) VALUES (?, ?, ?)`,
+        [tmpl.name, tmpl.notes, tmpl.created_at]
+      );
+      templateDbId = Number(tmplResult.lastInsertRowId);
+
+      for (const ex of tmpl.exercises ?? []) {
+        const mappedExId = exerciseIdMap.get(ex.exercise_id) ?? ex.exercise_id;
+        const exResult = await database.runAsync(
+          `INSERT INTO workout_template_exercises
+            (template_id, exercise_id, exercise_order, target_sets, target_reps_min, target_reps_max, rest_seconds, notes)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+          [templateDbId, mappedExId, ex.exercise_order, ex.target_sets, ex.target_reps_min, ex.target_reps_max, ex.rest_seconds, ex.notes]
+        );
+        const templateExerciseDbId = Number(exResult.lastInsertRowId);
+
+        for (const set of ex.sets ?? []) {
+          await database.runAsync(
+            `INSERT INTO template_exercise_sets
+              (template_exercise_id, set_order, set_type, weight_kg, reps_min, reps_max, rest_seconds, effort_type, buffer_value, notes, created_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            [templateExerciseDbId, set.set_order, set.set_type, set.weight_kg, set.reps_min, set.reps_max, set.rest_seconds, set.effort_type, set.buffer_value, set.notes, set.created_at]
+          );
+        }
+      }
+    }
+
+    // ── SESSIONI ──────────────────────────────────────────────────────────
+    for (const session of payload.workout_sessions ?? []) {
+      if (mode === 'add_only') {
+        const existing = await database.getFirstAsync<{ id: number }>(
+          `SELECT id FROM workout_sessions WHERE started_at = ? AND name = ?`,
+          [session.started_at, session.name]
+        );
+        if (existing) continue;
+      }
+
+      const sessResult = await database.runAsync(
+        `INSERT INTO workout_sessions (name, notes, status, started_at, completed_at, created_at)
+         VALUES (?, ?, ?, ?, ?, ?)`,
+        [session.name, session.notes, session.status, session.started_at, session.completed_at, session.created_at]
+      );
+      const sessionDbId = Number(sessResult.lastInsertRowId);
+
+      for (const ex of session.exercises ?? []) {
+        const mappedExId = ex.exercise_id ? (exerciseIdMap.get(ex.exercise_id) ?? ex.exercise_id) : null;
+        const exResult = await database.runAsync(
+          `INSERT INTO workout_session_exercises
+            (session_id, exercise_id, exercise_name, category, exercise_order, notes, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?)`,
+          [sessionDbId, mappedExId, ex.exercise_name, ex.category, ex.exercise_order, ex.notes, ex.created_at]
+        );
+        const sessionExDbId = Number(exResult.lastInsertRowId);
+
+        for (const set of ex.sets ?? []) {
+          await database.runAsync(
+            `INSERT INTO workout_session_sets
+              (session_exercise_id, set_order, target_set_type, target_weight_kg, target_reps_min, target_reps_max,
+               target_rest_seconds, target_effort_type, target_buffer_value, target_notes,
+               actual_weight_kg, actual_reps, actual_effort_type, actual_buffer_value, actual_rir, actual_notes,
+               is_completed, completed_at, created_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            [
+              sessionExDbId, set.set_order, set.target_set_type, set.target_weight_kg,
+              set.target_reps_min, set.target_reps_max, set.target_rest_seconds,
+              set.target_effort_type, set.target_buffer_value, set.target_notes,
+              set.actual_weight_kg, set.actual_reps, set.actual_effort_type,
+              set.actual_buffer_value, set.actual_rir, set.actual_notes,
+              set.is_completed, set.completed_at, set.created_at,
+            ]
+          );
+        }
+      }
+    }
+
+    // ── FOOD ITEMS ────────────────────────────────────────────────────────
+    const foodIdMap = new Map<number, number>();
+
+    for (const food of payload.food_items ?? []) {
+      if (mode === 'add_only') {
+        const existing = await database.getFirstAsync<{ id: number }>(
+          `SELECT id FROM food_items WHERE name = ?`, [food.name]
+        );
+        if (existing) { foodIdMap.set(food.id, existing.id); continue; }
+      }
+      if (mode === 'overwrite_existing') {
+        await database.runAsync(
+          `INSERT INTO food_items (name, kcal_per_100g, protein_g, carbs_g, fat_g, source, external_id, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+           ON CONFLICT(name) DO UPDATE SET kcal_per_100g=excluded.kcal_per_100g, protein_g=excluded.protein_g,
+             carbs_g=excluded.carbs_g, fat_g=excluded.fat_g`,
+          [food.name, food.kcal_per_100g, food.protein_g, food.carbs_g, food.fat_g, food.source, food.external_id, food.created_at]
+        );
+      } else {
+        await database.runAsync(
+          `INSERT OR IGNORE INTO food_items (name, kcal_per_100g, protein_g, carbs_g, fat_g, source, external_id, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+          [food.name, food.kcal_per_100g, food.protein_g, food.carbs_g, food.fat_g, food.source, food.external_id, food.created_at]
+        );
+      }
+      const row = await database.getFirstAsync<{ id: number }>(
+        `SELECT id FROM food_items WHERE name = ?`, [food.name]
+      );
+      if (row) foodIdMap.set(food.id, row.id);
+    }
+
+    // ── NUTRITION LOGS ────────────────────────────────────────────────────
+    for (const log of payload.nutrition_logs ?? []) {
+      if (mode === 'add_only') {
+        const existing = await database.getFirstAsync<{ id: number }>(
+          `SELECT id FROM nutrition_logs WHERE date = ? AND food_name = ? AND created_at = ?`,
+          [log.date, log.food_name, log.created_at]
+        );
+        if (existing) continue;
+      }
+      const mappedFoodId = log.food_item_id ? (foodIdMap.get(log.food_item_id) ?? log.food_item_id) : null;
+      await database.runAsync(
+        `INSERT INTO nutrition_logs (date, meal_type, food_item_id, food_name, grams, kcal, protein, carbs, fat, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [log.date, log.meal_type, mappedFoodId, log.food_name, log.grams, log.kcal, log.protein, log.carbs, log.fat, log.created_at]
+      );
+    }
+
+    // ── BODY WEIGHT LOGS ──────────────────────────────────────────────────
+    for (const bw of payload.body_weight_logs ?? []) {
+      if (mode === 'overwrite_existing' || mode === 'replace_all') {
+        await database.runAsync(
+          `INSERT INTO body_weight_logs (date, weight_kg, notes, phase, created_at) VALUES (?, ?, ?, ?, ?)
+           ON CONFLICT(date) DO UPDATE SET weight_kg=excluded.weight_kg, notes=excluded.notes, phase=excluded.phase`,
+          [bw.date, bw.weight_kg, bw.notes, bw.phase ?? null, bw.created_at]
+        );
+      } else {
+        await database.runAsync(
+          `INSERT OR IGNORE INTO body_weight_logs (date, weight_kg, notes, phase, created_at) VALUES (?, ?, ?, ?, ?)`,
+          [bw.date, bw.weight_kg, bw.notes, bw.phase ?? null, bw.created_at]
+        );
+      }
+    }
+
+    // ── MEAL PLANS ────────────────────────────────────────────────────────
+    for (const plan of payload.meal_plans ?? []) {
+      if (mode === 'add_only') {
+        const existing = await database.getFirstAsync<{ id: number }>(
+          `SELECT id FROM meal_plans WHERE name = ? AND created_at = ?`,
+          [plan.name, plan.created_at]
+        );
+        if (existing) continue;
+      }
+      const planResult = await database.runAsync(
+        `INSERT INTO meal_plans (name, plan_type, created_at) VALUES (?, ?, ?)`,
+        [plan.name, plan.plan_type, plan.created_at]
+      );
+      const planDbId = Number(planResult.lastInsertRowId);
+
+      for (const day of plan.days ?? []) {
+        const dayResult = await database.runAsync(
+          `INSERT INTO meal_plan_days (meal_plan_id, day_order, label, created_at) VALUES (?, ?, ?, ?)`,
+          [planDbId, day.day_order, day.label, day.created_at]
+        );
+        const dayDbId = Number(dayResult.lastInsertRowId);
+
+        for (const entry of day.entries ?? []) {
+          const mappedFoodId = entry.food_item_id ? (foodIdMap.get(entry.food_item_id) ?? entry.food_item_id) : null;
+          await database.runAsync(
+            `INSERT INTO meal_plan_entries (meal_plan_day_id, meal_type, food_item_id, food_name, grams, kcal, protein, carbs, fat, created_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            [dayDbId, entry.meal_type, mappedFoodId, entry.food_name, entry.grams, entry.kcal, entry.protein, entry.carbs, entry.fat, entry.created_at]
+          );
+        }
+      }
+    }
+  });
+}
+
+// ─── Export CSV ───────────────────────────────────────────────────────────────
+
+function csvRow(fields: (string | number | null | undefined)[]): string {
+  return fields
+    .map((f) => {
+      if (f === null || f === undefined) return '';
+      const str = String(f);
+      if (str.includes(',') || str.includes('"') || str.includes('\n')) {
+        return `"${str.replace(/"/g, '""')}"`;
+      }
+      return str;
+    })
+    .join(',');
+}
+
+export async function exportAllDataCSV(): Promise<string> {
+  const data = await exportAllData();
+  const sections: string[] = [];
+
+  // ── Esercizi ──────────────────────────────────────────────────────────
+  sections.push('### ESERCIZI ###');
+  sections.push(csvRow(['ID', 'Nome', 'Categoria', 'Creato il']));
+  for (const ex of data.exercises) {
+    sections.push(csvRow([ex.id, ex.name, ex.category, ex.created_at]));
+  }
+
+  // ── Template ──────────────────────────────────────────────────────────
+  sections.push('');
+  sections.push('### TEMPLATE ALLENAMENTO ###');
+  sections.push(csvRow(['Template', 'Esercizio', 'Ordine', 'Set', 'Tipo set', 'Peso (kg)', 'Reps min', 'Reps max', 'Recupero (s)', 'Tipo sforzo', 'Note']));
+  for (const tmpl of data.workout_templates) {
+    for (const ex of tmpl.exercises) {
+      if (ex.sets.length === 0) {
+        sections.push(csvRow([tmpl.name, ex.exercise_name, ex.exercise_order, '', '', '', '', '', '', '', ex.notes]));
+      } else {
+        for (const set of ex.sets) {
+          sections.push(csvRow([tmpl.name, ex.exercise_name, ex.exercise_order, set.set_order, set.set_type, set.weight_kg, set.reps_min, set.reps_max, set.rest_seconds, set.effort_type, set.notes]));
+        }
+      }
+    }
+  }
+
+  // ── Sessioni ──────────────────────────────────────────────────────────
+  sections.push('');
+  sections.push('### SESSIONI ALLENAMENTO ###');
+  sections.push(csvRow(['Sessione', 'Data inizio', 'Data fine', 'Stato', 'Esercizio', 'Set', 'Tipo set', 'Peso target (kg)', 'Reps target', 'Peso eseguito (kg)', 'Reps eseguite', 'Completata']));
+  for (const session of data.workout_sessions) {
+    for (const ex of session.exercises) {
+      for (const set of ex.sets) {
+        sections.push(csvRow([
+          session.name,
+          session.started_at,
+          session.completed_at,
+          session.status,
+          ex.exercise_name,
+          set.set_order,
+          set.target_set_type,
+          set.target_weight_kg,
+          set.target_reps_min != null && set.target_reps_max != null
+            ? `${set.target_reps_min}-${set.target_reps_max}`
+            : set.target_reps_min ?? set.target_reps_max,
+          set.actual_weight_kg,
+          set.actual_reps,
+          set.is_completed ? 'Sì' : 'No',
+        ]));
+      }
+    }
+  }
+
+  // ── Peso corporeo ─────────────────────────────────────────────────────
+  sections.push('');
+  sections.push('### PESO CORPOREO ###');
+  sections.push(csvRow(['Data', 'Peso (kg)', 'Fase', 'Note']));
+  for (const bw of data.body_weight_logs) {
+    sections.push(csvRow([bw.date, bw.weight_kg, bw.phase ?? '', bw.notes]));
+  }
+
+  // ── Catalogo alimenti ─────────────────────────────────────────────────
+  sections.push('');
+  sections.push('### CATALOGO ALIMENTI ###');
+  sections.push(csvRow(['Nome', 'Kcal/100g', 'Proteine (g)', 'Carboidrati (g)', 'Grassi (g)', 'Fonte']));
+  for (const food of data.food_items) {
+    sections.push(csvRow([food.name, food.kcal_per_100g, food.protein_g, food.carbs_g, food.fat_g, food.source]));
+  }
+
+  // ── Log nutrizione ────────────────────────────────────────────────────
+  sections.push('');
+  sections.push('### LOG NUTRIZIONE ###');
+  sections.push(csvRow(['Data', 'Pasto', 'Alimento', 'Grammi', 'Kcal', 'Proteine (g)', 'Carboidrati (g)', 'Grassi (g)']));
+  for (const log of data.nutrition_logs) {
+    sections.push(csvRow([log.date, log.meal_type, log.food_name, log.grams, log.kcal, log.protein, log.carbs, log.fat]));
+  }
+
+  // ── Piani alimentari ──────────────────────────────────────────────────
+  sections.push('');
+  sections.push('### PIANI ALIMENTARI ###');
+  sections.push(csvRow(['Piano', 'Giorno', 'Pasto', 'Alimento', 'Grammi', 'Kcal', 'Proteine (g)', 'Carboidrati (g)', 'Grassi (g)']));
+  for (const plan of data.meal_plans) {
+    for (const day of plan.days) {
+      for (const entry of day.entries) {
+        sections.push(csvRow([plan.name, day.label, entry.meal_type, entry.food_name, entry.grams, entry.kcal, entry.protein, entry.carbs, entry.fat]));
+      }
+    }
+  }
+
+  return sections.join('\n');
 }
