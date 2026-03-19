@@ -14,10 +14,9 @@ import {
   ScrollView,
   Share,
   StyleSheet,
-  Switch,
   Text,
   TouchableOpacity,
-  View,
+  View
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -701,7 +700,7 @@ export default function SettingsScreen() {
               </Row>
             </>
           ) : (
-            <Row label={isGuest ? 'Stai usando l'app come ospite' : 'Accedi o registrati'} subtitle="Sblocca backup cloud e storico illimitato" isLast>
+            <Row label={isGuest ? `Stai usando l'app come ospite` : 'Accedi o registrati'} subtitle="Sblocca backup cloud e storico illimitato" isLast>
               <TouchableOpacity
                 style={styles.signInButton}
                 onPress={() => router.push('/auth')}

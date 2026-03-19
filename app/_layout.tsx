@@ -3,7 +3,7 @@ import { AuthProvider, useAuth } from '@/context/AuthContext';
 import { RestTimerProvider } from '@/context/RestTimerContext';
 import { UserPreferencesProvider } from '@/context/UserPreferencesContext';
 import { initDatabase } from '@/database';
-import { Redirect, Stack } from 'expo-router';
+import { Stack, useRouter, useSegments } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, View } from 'react-native';
 
@@ -11,6 +11,23 @@ import { ActivityIndicator, View } from 'react-native';
 
 function AppNavigator() {
   const { user, loading, isGuest } = useAuth();
+  const router = useRouter();
+  const segments = useSegments();
+
+  useEffect(() => {
+    if (loading) return;
+
+    const inAuthScreen = segments[0] === 'auth';
+    const isAuthenticated = !!user || isGuest;
+
+    if (!isAuthenticated && !inAuthScreen) {
+      // Non autenticato → vai a login
+      router.replace('/auth');
+    } else if (isAuthenticated && inAuthScreen) {
+      // Già autenticato ma su schermata auth → vai all'app
+      router.replace('/(tabs)');
+    }
+  }, [user, isGuest, loading, segments]);
 
   if (loading) {
     return (
@@ -20,14 +37,10 @@ function AppNavigator() {
     );
   }
 
-  // Non autenticato e non ospite → schermata auth
-  if (!user && !isGuest) {
-    return <Redirect href="/auth" />;
-  }
-
   return (
     <Stack screenOptions={{ headerShown: false }}>
       <Stack.Screen name="(tabs)" />
+      <Stack.Screen name="auth" options={{ headerShown: false }} />
       <Stack.Screen name="exercises" />
       <Stack.Screen name="template/[id]" />
       <Stack.Screen name="template/exercise/[id]" />
@@ -38,10 +51,6 @@ function AppNavigator() {
       <Stack.Screen
         name="settings"
         options={{ presentation: 'modal', headerShown: false }}
-      />
-      <Stack.Screen
-        name="auth"
-        options={{ headerShown: false }}
       />
     </Stack>
   );
