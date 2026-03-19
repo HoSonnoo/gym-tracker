@@ -3,16 +3,17 @@ import { useAuth } from '@/context/AuthContext';
 import { useRouter } from 'expo-router';
 import React, { useState } from 'react';
 import {
-    ActivityIndicator,
-    Alert,
-    KeyboardAvoidingView,
-    Platform,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
+  ActivityIndicator,
+  Alert,
+  Image,
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -98,9 +99,11 @@ export default function AuthScreen() {
         >
           {/* Logo / Titolo */}
           <View style={styles.header}>
-            <View style={styles.logoBox}>
-              <Text style={styles.logoText}>V</Text>
-            </View>
+            <Image
+              source={require('../assets/images/icon.png')}
+              style={styles.logoImage}
+              resizeMode="contain"
+            />
             <Text style={styles.appName}>VYRO</Text>
             <Text style={styles.appTagline}>Il tuo tracker di allenamento</Text>
           </View>
@@ -233,20 +236,11 @@ const styles = StyleSheet.create({
     paddingTop: 24,
     gap: 8,
   },
-  logoBox: {
-    width: 72,
-    height: 72,
+  logoImage: {
+    width: 90,
+    height: 90,
     borderRadius: 22,
-    backgroundColor: PRIMARY,
-    alignItems: 'center',
-    justifyContent: 'center',
     marginBottom: 4,
-  },
-  logoText: {
-    fontSize: 36,
-    fontWeight: '900',
-    color: '#fff',
-    letterSpacing: -1,
   },
   appName: {
     fontSize: 32,
