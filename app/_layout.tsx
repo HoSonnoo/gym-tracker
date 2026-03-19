@@ -7,8 +7,6 @@ import { Stack, useRouter, useSegments } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, View } from 'react-native';
 
-// ─── Inner layout (ha accesso all'AuthContext) ────────────────────────────────
-
 function AppNavigator() {
   const { user, loading, isGuest } = useAuth();
   const router = useRouter();
@@ -21,13 +19,11 @@ function AppNavigator() {
     const isAuthenticated = !!user || isGuest;
 
     if (!isAuthenticated && !inAuthScreen) {
-      // Non autenticato → vai a login
       router.replace('/auth');
     } else if (isAuthenticated && inAuthScreen) {
-      // Già autenticato ma su schermata auth → vai all'app
       router.replace('/(tabs)');
     }
-  }, [user, isGuest, loading, segments]);
+  }, [user, isGuest, loading]);
 
   if (loading) {
     return (
@@ -55,8 +51,6 @@ function AppNavigator() {
     </Stack>
   );
 }
-
-// ─── Root layout ──────────────────────────────────────────────────────────────
 
 export default function RootLayout() {
   const [dbReady, setDbReady] = useState(false);
