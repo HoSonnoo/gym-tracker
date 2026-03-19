@@ -3,6 +3,7 @@ import { useAuth } from '@/context/AuthContext';
 import { useUserPreferences, type WeightUnit } from '@/context/UserPreferencesContext';
 import { exportAllData, exportAllDataCSV, importData, resetSelective, type ImportMode, type ResetOptions } from '@/database';
 import { useGuestLimits } from '@/hooks/use-guest-limits';
+import { supabase } from '@/lib/supabase';
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system/legacy';
 import { useRouter } from 'expo-router';
@@ -424,6 +425,46 @@ export default function SettingsScreen() {
   const { preferences, setUnit, setWeeklyGoal } = useUserPreferences();
   const { user, isGuest, isRegistered, signOut } = useAuth();
   const { checkExportAllowed } = useGuestLimits();
+
+  const handleDeleteAccount = () => {
+    Alert.alert(
+      'Elimina account',
+      'Sei sicuro di voler eliminare definitivamente il tuo account? Tutti i tuoi dati cloud verranno cancellati. I dati locali sul dispositivo rimarranno.',
+      [
+        { text: 'Annulla', style: 'cancel' },
+        {
+          text: 'Elimina account',
+          style: 'destructive',
+          onPress: () => {
+            Alert.alert(
+              'Conferma eliminazione',
+              'Questa operazione è irreversibile. Il tuo account verrà eliminato permanentemente.',
+              [
+                { text: 'Annulla', style: 'cancel' },
+                {
+                  text: 'Sì, elimina',
+                  style: 'destructive',
+                  onPress: async () => {
+                    try {
+                      const { error } = await supabase.rpc('delete_user_account');
+                      if (error) throw error;
+                      await signOut();
+                      router.replace('/auth');
+                      Alert.alert('Account eliminato', 'Il tuo account è stato eliminato con successo.');
+                    } catch {
+                      await signOut();
+                      router.replace('/auth');
+                      Alert.alert('Account disconnesso', 'Sei stato disconnesso.');
+                    }
+                  },
+                },
+              ]
+            );
+          },
+        },
+      ]
+    );
+  };
   const [exporting, setExporting] = useState(false);
   const [importing, setImporting] = useState(false);
   const [resetting, setResetting] = useState(false);
@@ -690,7 +731,7 @@ export default function SettingsScreen() {
                   </Text>
                 </View>
               </Row>
-              <Row label="Disconnetti" subtitle="Esci dal tuo account" isLast>
+              <Row label="Disconnetti" subtitle="Esci dal tuo account">
                 <TouchableOpacity
                   style={styles.signOutButton}
                   onPress={async () => {
@@ -700,6 +741,15 @@ export default function SettingsScreen() {
                   activeOpacity={0.8}
                 >
                   <Text style={styles.signOutButtonText}>Esci</Text>
+                </TouchableOpacity>
+              </Row>
+              <Row label="Elimina account" subtitle="Cancella definitivamente account e dati cloud" isLast>
+                <TouchableOpacity
+                  style={styles.deleteAccountButton}
+                  onPress={handleDeleteAccount}
+                  activeOpacity={0.8}
+                >
+                  <Text style={styles.deleteAccountButtonText}>Elimina</Text>
                 </TouchableOpacity>
               </Row>
             </>
@@ -934,6 +984,19 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
   },
   signOutButtonText: {
+    color: Colors.dark.danger,
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  deleteAccountButton: {
+    backgroundColor: 'rgba(239,68,68,0.08)',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: Colors.dark.danger,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+  },
+  deleteAccountButtonText: {
     color: Colors.dark.danger,
     fontSize: 13,
     fontWeight: '700',
