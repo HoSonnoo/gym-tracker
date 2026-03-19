@@ -6,6 +6,7 @@ import {
   type WorkoutSession,
   type WorkoutSessionDetail,
 } from '@/database';
+import { useGuestLimits } from '@/hooks/use-guest-limits';
 import { useFocusEffect } from '@react-navigation/native';
 import React, { useCallback, useMemo, useState } from 'react';
 import {
@@ -230,13 +231,15 @@ export default function CalendarScreen() {
   const [currentYear, setCurrentYear] = useState(today.getFullYear());
   const [currentMonth, setCurrentMonth] = useState(today.getMonth());
   const [sessions, setSessions] = useState<WorkoutSession[]>([]);
+  const { filterByHistoryLimit, isGuest, GUEST_LIMITS } = useGuestLimits();
   const [loading, setLoading] = useState(true);
   const [selectedSessionId, setSelectedSessionId] = useState<number | null>(null);
 
   const loadSessions = useCallback(async () => {
     setLoading(true);
     try {
-      const data = await getCompletedWorkoutSessions();
+      const raw = await getCompletedWorkoutSessions();
+      const data = filterByHistoryLimit(raw);
       setSessions(data);
     } catch {
       setSessions([]);

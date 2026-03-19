@@ -5,6 +5,7 @@ import {
   Exercise,
   getExercises,
 } from '@/database';
+import { useGuestLimits } from '@/hooks/use-guest-limits';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useState } from 'react';
 import {
@@ -22,6 +23,7 @@ export default function ExercisesScreen() {
   const router = useRouter();
 
   const [exercises, setExercises] = useState<Exercise[]>([]);
+  const { checkExerciseLimit } = useGuestLimits();
   const [name, setName] = useState('');
   const [category, setCategory] = useState('');
   const [isSaving, setIsSaving] = useState(false);
@@ -36,6 +38,7 @@ export default function ExercisesScreen() {
   }, []);
 
   const handleAddExercise = useCallback(async () => {
+    if (!checkExerciseLimit(exercises.length)) return;
     try {
       setIsSaving(true);
       await addExercise(name, category);

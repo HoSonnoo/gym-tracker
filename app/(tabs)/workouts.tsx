@@ -7,6 +7,7 @@ import {
   hasTemplates,
   WorkoutTemplate,
 } from '@/database';
+import { useGuestLimits } from '@/hooks/use-guest-limits';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useState } from 'react';
 import {
@@ -251,6 +252,7 @@ export default function WorkoutsScreen() {
   const router = useRouter();
 
   const [templates, setTemplates] = useState<WorkoutTemplate[]>([]);
+  const { checkTemplateLimit, isGuest, GUEST_LIMITS } = useGuestLimits();
   const [name, setName] = useState('');
   const [notes, setNotes] = useState('');
   const [isSaving, setIsSaving] = useState(false);
@@ -282,6 +284,7 @@ export default function WorkoutsScreen() {
   );
 
 const handleAddTemplate = useCallback(async () => {
+  if (!checkTemplateLimit(templates.length)) return;
   try {
     setIsSaving(true);
     const newTemplateId = await addWorkoutTemplate(name, notes);
@@ -348,6 +351,13 @@ const handleAddTemplate = useCallback(async () => {
   return (
     <View style={styles.container}>
       <Text style={styles.pageTitle}>Allenamenti</Text>
+      {isGuest && (
+        <View style={styles.guestBanner}>
+          <Text style={styles.guestBannerText}>
+            👤 Ospite · Max {GUEST_LIMITS.MAX_TEMPLATES} template e {GUEST_LIMITS.MAX_EXERCISES} esercizi · <Text style={styles.guestBannerLink} onPress={() => router.push('/auth')}>Registrati gratis →</Text>
+          </Text>
+        </View>
+      )}
 
       <View style={styles.card}>
         <Text style={styles.cardTitle}>Nuovo template</Text>
@@ -425,6 +435,9 @@ const handleAddTemplate = useCallback(async () => {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.dark.background, paddingTop: 20 },
   pageTitle: { fontSize: 30, fontWeight: '800', color: Colors.dark.text, marginTop: 8, marginBottom: 16, paddingHorizontal: 20 },
+  guestBanner: { backgroundColor: 'rgba(126,71,255,0.08)', borderRadius: 12, borderWidth: 1, borderColor: 'rgba(126,71,255,0.2)', paddingHorizontal: 16, paddingVertical: 10, marginHorizontal: 20, marginBottom: 8 },
+  guestBannerText: { fontSize: 13, color: Colors.dark.textMuted, lineHeight: 18 },
+  guestBannerLink: { color: '#7e47ff', fontWeight: '700' },
   card: { backgroundColor: Colors.dark.surface, borderRadius: 18, padding: 18, borderWidth: 1, borderColor: Colors.dark.border, marginBottom: 14, marginHorizontal: 20 },
   cardTitle: { fontSize: 18, fontWeight: '700', color: Colors.dark.text, marginBottom: 12 },
   cardText: { fontSize: 15, lineHeight: 22, color: Colors.dark.textMuted },

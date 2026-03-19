@@ -11,6 +11,7 @@ import {
   type ExerciseVolume,
   type ExerciseWeightHistory,
 } from '@/database';
+import { useGuestLimits } from '@/hooks/use-guest-limits';
 import { useFocusEffect } from '@react-navigation/native';
 import React, { useCallback, useState } from 'react';
 import {
@@ -710,6 +711,7 @@ export default function ProgressScreen() {
   const [loading, setLoading] = useState(true);
   const [selectedExercise, setSelectedExercise] = useState<string | null>(null);
 
+  const { filterByHistoryLimit, isGuest, GUEST_LIMITS } = useGuestLimits();
   const [records, setRecords] = useState<ExercisePR[]>([]);
   const [volumes, setVolumes] = useState<ExerciseVolume[]>([]);
   const [frequency, setFrequency] = useState<{
@@ -729,7 +731,7 @@ export default function ProgressScreen() {
       setRecords(prs);
       setVolumes(vols);
       setFrequency(freq);
-      setWeightLogs(wlogs);
+      setWeightLogs(filterByHistoryLimit(wlogs));
     } catch {
       // silenzioso
     } finally {

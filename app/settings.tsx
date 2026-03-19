@@ -2,6 +2,7 @@ import { Colors } from '@/constants/Colors';
 import { useAuth } from '@/context/AuthContext';
 import { useUserPreferences, type WeightUnit } from '@/context/UserPreferencesContext';
 import { exportAllData, exportAllDataCSV, importData, resetSelective, type ImportMode, type ResetOptions } from '@/database';
+import { useGuestLimits } from '@/hooks/use-guest-limits';
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system/legacy';
 import { useRouter } from 'expo-router';
@@ -422,6 +423,7 @@ export default function SettingsScreen() {
   const router = useRouter();
   const { preferences, setUnit, setWeeklyGoal } = useUserPreferences();
   const { user, isGuest, isRegistered, signOut } = useAuth();
+  const { checkExportAllowed } = useGuestLimits();
   const [exporting, setExporting] = useState(false);
   const [importing, setImporting] = useState(false);
   const [resetting, setResetting] = useState(false);
@@ -506,6 +508,7 @@ export default function SettingsScreen() {
 
   // ── Export JSON ──────────────────────────────────────────────────────────
   const handleExportJSON = async () => {
+    if (!checkExportAllowed()) return;
     try {
       setExporting(true);
       const data = await exportAllData();
@@ -531,6 +534,7 @@ export default function SettingsScreen() {
 
   // ── Export CSV ───────────────────────────────────────────────────────────
   const handleExportCSV = async () => {
+    if (!checkExportAllowed()) return;
     try {
       setExporting(true);
       const csv = await exportAllDataCSV();
