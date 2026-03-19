@@ -1,58 +1,78 @@
 import { Colors } from '@/constants/Colors';
+import { AuthProvider, useAuth } from '@/context/AuthContext';
 import { RestTimerProvider } from '@/context/RestTimerContext';
 import { UserPreferencesProvider } from '@/context/UserPreferencesContext';
 import { initDatabase } from '@/database';
-import { Stack } from 'expo-router';
+import { Redirect, Stack } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, View } from 'react-native';
 
+// ─── Inner layout (ha accesso all'AuthContext) ────────────────────────────────
+
+function AppNavigator() {
+  const { user, loading, isGuest } = useAuth();
+
+  if (loading) {
+    return (
+      <View style={{ flex: 1, backgroundColor: Colors.dark.background, justifyContent: 'center', alignItems: 'center' }}>
+        <ActivityIndicator size="large" color={Colors.dark.primary} />
+      </View>
+    );
+  }
+
+  // Non autenticato e non ospite → schermata auth
+  if (!user && !isGuest) {
+    return <Redirect href="/auth" />;
+  }
+
+  return (
+    <Stack screenOptions={{ headerShown: false }}>
+      <Stack.Screen name="(tabs)" />
+      <Stack.Screen name="exercises" />
+      <Stack.Screen name="template/[id]" />
+      <Stack.Screen name="template/exercise/[id]" />
+      <Stack.Screen
+        name="template/exercise/set/[id]"
+        options={{ presentation: 'modal' }}
+      />
+      <Stack.Screen
+        name="settings"
+        options={{ presentation: 'modal', headerShown: false }}
+      />
+      <Stack.Screen
+        name="auth"
+        options={{ headerShown: false }}
+      />
+    </Stack>
+  );
+}
+
+// ─── Root layout ──────────────────────────────────────────────────────────────
+
 export default function RootLayout() {
-  const [isReady, setIsReady] = useState(false);
+  const [dbReady, setDbReady] = useState(false);
 
   useEffect(() => {
-    async function setupApp() {
-      try {
-        await initDatabase();
-      } catch (error) {
-        console.error('Errore inizializzazione database:', error);
-      } finally {
-        setIsReady(true);
-      }
-    }
-    setupApp();
+    initDatabase()
+      .catch((e) => console.error('Errore DB:', e))
+      .finally(() => setDbReady(true));
   }, []);
 
-  if (!isReady) {
+  if (!dbReady) {
     return (
-      <View style={{
-        flex: 1,
-        backgroundColor: Colors.dark.background,
-        justifyContent: 'center',
-        alignItems: 'center',
-      }}>
+      <View style={{ flex: 1, backgroundColor: Colors.dark.background, justifyContent: 'center', alignItems: 'center' }}>
         <ActivityIndicator size="large" color={Colors.dark.primary} />
       </View>
     );
   }
 
   return (
-    <UserPreferencesProvider>
-      <RestTimerProvider>
-        <Stack screenOptions={{ headerShown: false }}>
-          <Stack.Screen name="(tabs)" />
-          <Stack.Screen name="exercises" />
-          <Stack.Screen name="template/[id]" />
-          <Stack.Screen name="template/exercise/[id]" />
-          <Stack.Screen
-            name="template/exercise/set/[id]"
-            options={{ presentation: 'modal' }}
-          />
-          <Stack.Screen
-            name="settings"
-            options={{ presentation: 'modal', headerShown: false }}
-          />
-        </Stack>
-      </RestTimerProvider>
-    </UserPreferencesProvider>
+    <AuthProvider>
+      <UserPreferencesProvider>
+        <RestTimerProvider>
+          <AppNavigator />
+        </RestTimerProvider>
+      </UserPreferencesProvider>
+    </AuthProvider>
   );
 }

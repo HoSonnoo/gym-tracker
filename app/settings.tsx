@@ -1,4 +1,5 @@
 import { Colors } from '@/constants/Colors';
+import { useAuth } from '@/context/AuthContext';
 import { useUserPreferences, type WeightUnit } from '@/context/UserPreferencesContext';
 import { exportAllData, exportAllDataCSV, importData, resetSelective, type ImportMode, type ResetOptions } from '@/database';
 import * as DocumentPicker from 'expo-document-picker';
@@ -13,9 +14,10 @@ import {
   ScrollView,
   Share,
   StyleSheet,
+  Switch,
   Text,
   TouchableOpacity,
-  View
+  View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -420,6 +422,7 @@ const resetStyles = StyleSheet.create({
 export default function SettingsScreen() {
   const router = useRouter();
   const { preferences, setUnit, setWeeklyGoal } = useUserPreferences();
+  const { user, isGuest, isRegistered, signOut } = useAuth();
   const [exporting, setExporting] = useState(false);
   const [importing, setImporting] = useState(false);
   const [resetting, setResetting] = useState(false);
@@ -675,11 +678,39 @@ export default function SettingsScreen() {
         {/* ACCOUNT */}
         <SectionHeader title="ACCOUNT" />
         <SettingsCard>
-          <Row label="Accedi / Registrati" subtitle="Disponibile nella versione completa" isLast>
-            <View style={styles.comingSoonBadge}>
-              <Text style={styles.comingSoonText}>Presto</Text>
-            </View>
-          </Row>
+          {isRegistered && user ? (
+            <>
+              <Row label="Account" subtitle={user.email ?? ''}>
+                <View style={styles.tierBadge}>
+                  <Text style={styles.tierBadgeText}>
+                    {user.tier === 'premium' ? '💎 Premium' : '✓ Registrato'}
+                  </Text>
+                </View>
+              </Row>
+              <Row label="Disconnetti" subtitle="Esci dal tuo account" isLast>
+                <TouchableOpacity
+                  style={styles.signOutButton}
+                  onPress={async () => {
+                    await signOut();
+                    router.replace('/auth');
+                  }}
+                  activeOpacity={0.8}
+                >
+                  <Text style={styles.signOutButtonText}>Esci</Text>
+                </TouchableOpacity>
+              </Row>
+            </>
+          ) : (
+            <Row label={isGuest ? 'Stai usando l'app come ospite' : 'Accedi o registrati'} subtitle="Sblocca backup cloud e storico illimitato" isLast>
+              <TouchableOpacity
+                style={styles.signInButton}
+                onPress={() => router.push('/auth')}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.signInButtonText}>Accedi</Text>
+              </TouchableOpacity>
+            </Row>
+          )}
         </SettingsCard>
 
         {/* APP */}
@@ -873,6 +904,47 @@ const styles = StyleSheet.create({
   },
   dataButtonText: {
     color: Colors.dark.text,
+    fontSize: 13,
+    fontWeight: '700',
+  },
+
+  // Account
+  tierBadge: {
+    backgroundColor: 'rgba(126,71,255,0.12)',
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderWidth: 1,
+    borderColor: 'rgba(126,71,255,0.3)',
+  },
+  tierBadgeText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#7e47ff',
+  },
+  signOutButton: {
+    backgroundColor: 'rgba(239,68,68,0.10)',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: Colors.dark.danger,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+  },
+  signOutButtonText: {
+    color: Colors.dark.danger,
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  signInButton: {
+    backgroundColor: 'rgba(126,71,255,0.12)',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#7e47ff',
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+  },
+  signInButtonText: {
+    color: '#7e47ff',
     fontSize: 13,
     fontWeight: '700',
   },
