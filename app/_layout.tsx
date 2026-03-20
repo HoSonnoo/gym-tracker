@@ -1,8 +1,10 @@
+import { ONBOARDING_KEY } from '@/app/onboarding';
 import { Colors } from '@/constants/Colors';
 import { AuthProvider, useAuth } from '@/context/AuthContext';
 import { RestTimerProvider } from '@/context/RestTimerContext';
 import { UserPreferencesProvider } from '@/context/UserPreferencesContext';
 import { initDatabase } from '@/database';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Stack, useRouter, useSegments } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, View } from 'react-native';
@@ -11,19 +13,35 @@ function AppNavigator() {
   const { user, loading, isGuest } = useAuth();
   const router = useRouter();
   const segments = useSegments();
+  const [onboardingChecked, setOnboardingChecked] = useState(false);
 
   useEffect(() => {
     if (loading) return;
 
     const inAuthScreen = segments[0] === 'auth';
+    const inOnboarding = segments[0] === 'onboarding';
     const isAuthenticated = !!user || isGuest;
 
     if (!isAuthenticated && !inAuthScreen) {
       router.replace('/auth');
-    } else if (isAuthenticated && inAuthScreen) {
-      router.replace('/(tabs)');
+      return;
     }
-  }, [user, isGuest, loading]);
+
+    if (isAuthenticated && inAuthScreen) {
+      router.replace('/(tabs)');
+      return;
+    }
+
+    // Controlla onboarding solo per utenti registrati (non ospiti) al primo accesso
+    if (isAuthenticated && !isGuest && user && !inOnboarding && !onboardingChecked) {
+      setOnboardingChecked(true);
+      AsyncStorage.getItem(ONBOARDING_KEY).then((val) => {
+        if (!val) {
+          router.replace('/onboarding');
+        }
+      });
+    }
+  }, [user, isGuest, loading, segments]);
 
   if (loading) {
     return (
@@ -37,6 +55,7 @@ function AppNavigator() {
     <Stack screenOptions={{ headerShown: false }}>
       <Stack.Screen name="(tabs)" />
       <Stack.Screen name="auth" options={{ headerShown: false }} />
+      <Stack.Screen name="onboarding" options={{ headerShown: false, gestureEnabled: false }} />
       <Stack.Screen name="exercises" />
       <Stack.Screen name="template/[id]" />
       <Stack.Screen name="template/exercise/[id]" />

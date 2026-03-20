@@ -1,18 +1,22 @@
+import {
+  cancelRestTimerNotification,
+  scheduleRestTimerNotification,
+} from '@/lib/notifications';
 import React, {
-    createContext,
-    useCallback,
-    useContext,
-    useEffect,
-    useRef,
-    useState,
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useRef,
+  useState,
 } from 'react';
 
 type RestTimerState = {
   isActive: boolean;
-  durationSeconds: number;   // durata totale impostata
-  remainingSeconds: number;  // secondi rimanenti
-  exerciseName: string;      // nome esercizio per display
-  setLabel: string;          // es. "Serie 2 · Target"
+  durationSeconds: number;
+  remainingSeconds: number;
+  exerciseName: string;
+  setLabel: string;
 };
 
 type RestTimerContextValue = {
@@ -48,15 +52,17 @@ export function RestTimerProvider({ children }: { children: React.ReactNode }) {
 
   const stopTimer = useCallback(() => {
     clearTimer();
+    cancelRestTimerNotification();
     setTimer(DEFAULT_STATE);
   }, [clearTimer]);
 
   const startTimer = useCallback(
     (durationSeconds: number, exerciseName: string, setLabel: string) => {
-      // Ferma eventuale timer precedente
       clearTimer();
-
       if (durationSeconds <= 0) return;
+
+      // Programma notifica di sistema per quando il timer scade
+      scheduleRestTimerNotification(durationSeconds, exerciseName, setLabel);
 
       setTimer({
         isActive: true,
@@ -70,7 +76,6 @@ export function RestTimerProvider({ children }: { children: React.ReactNode }) {
         setTimer((prev) => {
           if (!prev.isActive) return prev;
           if (prev.remainingSeconds <= 1) {
-            // Timer scaduto: si ferma da solo
             clearInterval(intervalRef.current!);
             intervalRef.current = null;
             return { ...prev, remainingSeconds: 0, isActive: false };
@@ -82,8 +87,10 @@ export function RestTimerProvider({ children }: { children: React.ReactNode }) {
     [clearTimer]
   );
 
-  // Cleanup on unmount
-  useEffect(() => () => clearTimer(), [clearTimer]);
+  useEffect(() => () => {
+    clearTimer();
+    cancelRestTimerNotification();
+  }, [clearTimer]);
 
   return (
     <RestTimerContext.Provider value={{ timer, startTimer, stopTimer }}>
