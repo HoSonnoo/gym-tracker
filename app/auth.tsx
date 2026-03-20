@@ -1,6 +1,7 @@
 import { Colors } from '@/constants/Colors';
 import { useAuth } from '@/context/AuthContext';
 import { supabase } from '@/lib/supabase';
+import * as AppleAuthentication from 'expo-apple-authentication';
 import * as AuthSession from 'expo-auth-session';
 import { useRouter } from 'expo-router';
 import * as WebBrowser from 'expo-web-browser';
@@ -38,6 +39,7 @@ export default function AuthScreen() {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
+  const [appleLoading, setAppleLoading] = useState(false);
 
   const handleSubmit = async () => {
     const trimmedEmail = email.trim().toLowerCase();
@@ -148,6 +150,37 @@ export default function AuthScreen() {
       Alert.alert('Errore Google', msg);
     } finally {
       setGoogleLoading(false);
+    }
+  };
+
+  const handleAppleSignIn = async () => {
+    try {
+      setAppleLoading(true);
+
+      const credential = await AppleAuthentication.signInAsync({
+        requestedScopes: [
+          AppleAuthentication.AppleAuthenticationScope.FULL_NAME,
+          AppleAuthentication.AppleAuthenticationScope.EMAIL,
+        ],
+      });
+
+      if (!credential.identityToken) {
+        throw new Error('Nessun identity token da Apple');
+      }
+
+      const { error } = await supabase.auth.signInWithIdToken({
+        provider: 'apple',
+        token: credential.identityToken,
+      });
+
+      if (error) throw error;
+      router.replace('/(tabs)');
+    } catch (error: any) {
+      if (error?.code === 'ERR_REQUEST_CANCELED') return; // utente ha annullato
+      const msg = error instanceof Error ? error.message : 'Errore sconosciuto';
+      Alert.alert('Errore Apple', msg);
+    } finally {
+      setAppleLoading(false);
     }
   };
 
@@ -291,6 +324,22 @@ export default function AuthScreen() {
             <View style={styles.dividerLine} />
           </View>
 
+          {/* Apple Sign In — visibile solo su iOS */}
+          <AppleAuthentication.AppleAuthenticationButton
+            buttonType={AppleAuthentication.AppleAuthenticationButtonType.SIGN_IN}
+            buttonStyle={AppleAuthentication.AppleAuthenticationButtonStyle.BLACK}
+            cornerRadius={14}
+            style={styles.appleBtn}
+            onPress={handleAppleSignIn}
+          />
+
+          {/* Divisore */}
+          <View style={styles.divider}>
+            <View style={styles.dividerLine} />
+            <Text style={styles.dividerText}>oppure</Text>
+            <View style={styles.dividerLine} />
+          </View>
+
           {/* Ospite */}
           <TouchableOpacity
             style={styles.guestBtn}
@@ -382,6 +431,10 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   socialBtnText: { fontSize: 15, fontWeight: '700', color: Colors.dark.text },
+  appleBtn: {
+    height: 50,
+    width: '100%',
+  },
   guestBtn: {
     backgroundColor: Colors.dark.surface,
     borderRadius: 14,

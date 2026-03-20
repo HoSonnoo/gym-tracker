@@ -1,7 +1,7 @@
 {
   "expo": {
     "name": "Vyro",
-    "slug": "vyro",
+    "slug": "gym-tracker",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
@@ -11,7 +11,7 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.hosonno.gymtracker",
-      "buildNumber": "1",
+      "buildNumber": "2",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
         "UIFileSharingEnabled": true,
@@ -54,7 +54,8 @@
           }
         }
       ],
-      "expo-sqlite"
+      "expo-sqlite",
+      "expo-apple-authentication"
     ],
     "experiments": {
       "typedRoutes": true,
