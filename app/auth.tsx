@@ -93,40 +93,56 @@ export default function AuthScreen() {
     try {
       setGoogleLoading(true);
 
+      // In Expo Go usa exp://, in produzione usa lo scheme custom
       const redirectUrl = AuthSession.makeRedirectUri({
         scheme: 'com.hosonno.gymtracker',
-        path: 'auth/callback',
+        preferLocalhost: false,
       });
 
       const { data, error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
           redirectTo: redirectUrl,
-          queryParams: {
-            access_type: 'offline',
-            prompt: 'consent',
-          },
+          skipBrowserRedirect: true,
+          scopes: 'email profile',
+          queryParams: { prompt: 'select_account' },
         },
       });
 
       if (error) throw error;
       if (!data.url) throw new Error('URL OAuth non disponibile');
 
-      const result = await WebBrowser.openAuthSessionAsync(data.url, redirectUrl);
+      const result = await WebBrowser.openAuthSessionAsync(
+        data.url,
+        redirectUrl
+      );
 
-      if (result.type === 'success' && result.url) {
-        const url = new URL(result.url);
-        const accessToken = url.searchParams.get('access_token');
-        const refreshToken = url.searchParams.get('refresh_token');
+      if (result.type !== 'success' || !result.url) return;
 
-        if (accessToken) {
-          await supabase.auth.setSession({
-            access_token: accessToken,
-            refresh_token: refreshToken ?? '',
-          });
-          router.replace('/(tabs)');
-        }
+      // Estrai token dal fragment o code dai query params
+      const parsed = new URL(result.url);
+      const hashParams = new URLSearchParams(
+        parsed.hash.startsWith('#') ? parsed.hash.slice(1) : ''
+      );
+
+      const accessToken = hashParams.get('access_token');
+      if (accessToken) {
+        await supabase.auth.setSession({
+          access_token: accessToken,
+          refresh_token: hashParams.get('refresh_token') ?? '',
+        });
+        router.replace('/(tabs)');
+        return;
       }
+
+      const code = parsed.searchParams.get('code');
+      if (code) {
+        await supabase.auth.exchangeCodeForSession(result.url);
+        router.replace('/(tabs)');
+        return;
+      }
+
+      throw new Error('Nessun token ricevuto');
     } catch (error) {
       const msg = error instanceof Error ? error.message : 'Errore sconosciuto';
       Alert.alert('Errore Google', msg);
