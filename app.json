@@ -11,7 +11,7 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.hosonno.gymtracker",
-      "buildNumber": "3",
+      "buildNumber": "9",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
         "UIFileSharingEnabled": true,
@@ -19,8 +19,7 @@
         "CFBundleURLTypes": [
           {
             "CFBundleURLSchemes": [
-              "com.hosonno.gymtracker",
-              "118589769055-0jff34po7f7ma8qjt98h0pgvfpfpg0lu"
+              "com.hosonno.gymtracker"
             ]
           }
         ]

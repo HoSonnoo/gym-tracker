@@ -39,6 +39,14 @@ export default function AuthScreen() {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
+  const [shouldNavigate, setShouldNavigate] = useState(false);
+
+  // Redirect separato dalla logica asincrona — funziona sempre su iOS
+  React.useEffect(() => {
+    if (shouldNavigate) {
+      router.replace('/(tabs)');
+    }
+  }, [shouldNavigate]);
   const [appleLoading, setAppleLoading] = useState(false);
 
   const handleSubmit = async () => {
@@ -119,9 +127,22 @@ export default function AuthScreen() {
         redirectUrl
       );
 
+      // Dopo che il browser si chiude, poll la sessione per max 5 secondi
+      let sessionFound = false;
+      for (let i = 0; i < 10; i++) {
+        await new Promise(resolve => setTimeout(resolve, 500));
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session) {
+          sessionFound = true;
+          setShouldNavigate(true);
+          return;
+        }
+      }
+
+      if (sessionFound) return;
       if (result.type !== 'success' || !result.url) return;
 
-      // Estrai token dal fragment o code dai query params
+      // Prova a estrarre token dall'URL di callback
       const parsed = new URL(result.url);
       const hashParams = new URLSearchParams(
         parsed.hash.startsWith('#') ? parsed.hash.slice(1) : ''
@@ -133,18 +154,16 @@ export default function AuthScreen() {
           access_token: accessToken,
           refresh_token: hashParams.get('refresh_token') ?? '',
         });
-        router.replace('/(tabs)');
+        setShouldNavigate(true);
         return;
       }
 
       const code = parsed.searchParams.get('code');
       if (code) {
         await supabase.auth.exchangeCodeForSession(result.url);
-        router.replace('/(tabs)');
+        setShouldNavigate(true);
         return;
       }
-
-      throw new Error('Nessun token ricevuto');
     } catch (error) {
       const msg = error instanceof Error ? error.message : 'Errore sconosciuto';
       Alert.alert('Errore Google', msg);

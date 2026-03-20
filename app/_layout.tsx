@@ -10,11 +10,26 @@ import { useEffect, useState } from 'react';
 import { ActivityIndicator, View } from 'react-native';
 
 function AppNavigator() {
-  const { user, loading, isGuest } = useAuth();
+  const { user, loading, isGuest, justLoggedIn, clearJustLoggedIn } = useAuth();
   const router = useRouter();
   const segments = useSegments();
   const [onboardingChecked, setOnboardingChecked] = useState(false);
 
+  // Gestisce il redirect dopo un nuovo login (es. Google OAuth)
+  useEffect(() => {
+    if (!justLoggedIn || !user) return;
+    clearJustLoggedIn();
+
+    AsyncStorage.getItem(ONBOARDING_KEY).then((val) => {
+      if (!val) {
+        router.replace('/onboarding');
+      } else {
+        router.replace('/(tabs)');
+      }
+    });
+  }, [justLoggedIn, user]);
+
+  // Gestisce redirect auth/guest
   useEffect(() => {
     if (loading) return;
 
@@ -28,11 +43,21 @@ function AppNavigator() {
     }
 
     if (isAuthenticated && inAuthScreen) {
-      router.replace('/(tabs)');
+      if (!isGuest && user) {
+        AsyncStorage.getItem(ONBOARDING_KEY).then((val) => {
+          if (!val) {
+            router.replace('/onboarding');
+          } else {
+            router.replace('/(tabs)');
+          }
+        });
+      } else {
+        router.replace('/(tabs)');
+      }
       return;
     }
 
-    // Controlla onboarding solo per utenti registrati (non ospiti) al primo accesso
+    // Controlla onboarding al primo accesso
     if (isAuthenticated && !isGuest && user && !inOnboarding && !onboardingChecked) {
       setOnboardingChecked(true);
       AsyncStorage.getItem(ONBOARDING_KEY).then((val) => {

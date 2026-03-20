@@ -1,6 +1,6 @@
 import { supabase } from '@/lib/supabase';
 import { Session, User } from '@supabase/supabase-js';
-import React, { createContext, useCallback, useContext, useEffect, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 
 export type UserTier = 'guest' | 'registered' | 'premium';
 
@@ -12,13 +12,13 @@ export type AuthUser = {
 };
 
 type AuthState = {
-  // null = ospite non loggato, AuthUser = utente autenticato
   user: AuthUser | null;
   session: Session | null;
   loading: boolean;
   isGuest: boolean;
   isRegistered: boolean;
   isPremium: boolean;
+  justLoggedIn: boolean;
 };
 
 type AuthActions = {
@@ -27,6 +27,7 @@ type AuthActions = {
   signOut: () => Promise<void>;
   continueAsGuest: () => void;
   refreshProfile: () => Promise<void>;
+  clearJustLoggedIn: () => void;
 };
 
 type AuthContextType = AuthState & AuthActions;
@@ -44,6 +45,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [loading, setLoading] = useState(true);
   const [isGuest, setIsGuest] = useState(false);
+  const [justLoggedIn, setJustLoggedIn] = useState(false);
+  const initialLoadDone = useRef(false);
 
   const fetchProfile = useCallback(async (supabaseUser: User): Promise<AuthUser> => {
     try {
@@ -54,12 +57,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         .single();
 
       if (error || !data) {
-        return {
-          id: supabaseUser.id,
-          email: supabaseUser.email ?? null,
-          displayName: null,
-          tier: 'registered',
-        };
+        return { id: supabaseUser.id, email: supabaseUser.email ?? null, displayName: null, tier: 'registered' };
       }
 
       return {
@@ -69,12 +67,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         tier: (data.tier as UserTier) ?? 'registered',
       };
     } catch {
-      return {
-        id: supabaseUser.id,
-        email: supabaseUser.email ?? null,
-        displayName: null,
-        tier: 'registered',
-      };
+      return { id: supabaseUser.id, email: supabaseUser.email ?? null, displayName: null, tier: 'registered' };
     }
   }, []);
 
@@ -85,10 +78,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [session, fetchProfile]);
 
   useEffect(() => {
-    // Timeout di sicurezza — se getSession non risponde entro 5s, sblocca il loading
     const timeout = setTimeout(() => setLoading(false), 5000);
 
-    // Carica sessione esistente
     supabase.auth.getSession().then(async ({ data: { session: s } }) => {
       clearTimeout(timeout);
       setSession(s);
@@ -97,22 +88,29 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setUser(profile);
         setIsGuest(false);
       }
+      initialLoadDone.current = true;
       setLoading(false);
     }).catch(() => {
       clearTimeout(timeout);
+      initialLoadDone.current = true;
       setLoading(false);
     });
 
-    // Ascolta cambiamenti di sessione
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, s) => {
       setSession(s);
       if (s?.user) {
         const profile = await fetchProfile(s.user);
         setUser(profile);
         setIsGuest(false);
+        // Segnala nuovo login solo dopo il caricamento iniziale
+        // (evita di triggerare il redirect all'avvio se c'è già una sessione)
+        if (initialLoadDone.current && (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED')) {
+          setJustLoggedIn(true);
+        }
       } else if (event === 'SIGNED_OUT') {
         setUser(null);
         setIsGuest(false);
+        setJustLoggedIn(false);
       }
     });
 
@@ -133,12 +131,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     await supabase.auth.signOut();
     setUser(null);
     setIsGuest(false);
+    setJustLoggedIn(false);
   };
 
   const continueAsGuest = () => {
     setIsGuest(true);
     setUser(null);
   };
+
+  const clearJustLoggedIn = () => setJustLoggedIn(false);
 
   const tier = user?.tier ?? 'guest';
 
@@ -151,11 +152,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         isGuest: isGuest && !user,
         isRegistered: tier === 'registered' || tier === 'premium',
         isPremium: tier === 'premium',
+        justLoggedIn,
         signUpWithEmail,
         signInWithEmail,
         signOut,
         continueAsGuest,
         refreshProfile,
+        clearJustLoggedIn,
       }}
     >
       {children}
