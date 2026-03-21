@@ -3,8 +3,8 @@ import { useAuth } from '@/context/AuthContext';
 import { supabase } from '@/lib/supabase';
 import * as AppleAuthentication from 'expo-apple-authentication';
 import * as AuthSession from 'expo-auth-session';
-import * as WebBrowser from 'expo-web-browser';
 import { useRouter } from 'expo-router';
+import * as WebBrowser from 'expo-web-browser';
 import React, { useState } from 'react';
 import {
   ActivityIndicator,
@@ -150,7 +150,7 @@ export default function AuthScreen() {
       // informa l'utente che il login è avvenuto ma serve riavviare l'app
       Alert.alert(
         '✅ Accesso effettuato',
-        'Il tuo account Google è stato collegato correttamente.\n\nPer un problema temporaneo, chiudi e riapri Vyro per accedere.\n\nStiamo già lavorando alla soluzione.'.
+        'Il tuo account Google è stato collegato correttamente.\n\nPer un problema temporaneo, chiudi e riapri Vyro per accedere.\n\nStiamo già lavorando alla soluzione.',
         [{ text: 'OK', style: 'default' }]
       );
     } catch (error) {
