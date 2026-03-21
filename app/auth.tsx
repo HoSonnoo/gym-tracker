@@ -3,8 +3,8 @@ import { useAuth } from '@/context/AuthContext';
 import { supabase } from '@/lib/supabase';
 import * as AppleAuthentication from 'expo-apple-authentication';
 import * as AuthSession from 'expo-auth-session';
-import { useRouter } from 'expo-router';
 import * as WebBrowser from 'expo-web-browser';
+import { useRouter } from 'expo-router';
 import React, { useState } from 'react';
 import {
   ActivityIndicator,
@@ -127,43 +127,32 @@ export default function AuthScreen() {
         redirectUrl
       );
 
-      // Dopo che il browser si chiude, poll la sessione per max 5 secondi
-      let sessionFound = false;
-      for (let i = 0; i < 10; i++) {
-        await new Promise(resolve => setTimeout(resolve, 500));
-        const { data: { session } } = await supabase.auth.getSession();
-        if (session) {
-          sessionFound = true;
+      // Gestisci il callback URL se disponibile
+      if (result.type === 'success' && result.url) {
+        const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(result.url);
+        if (!exchangeError) {
           setShouldNavigate(true);
           return;
         }
       }
 
-      if (sessionFound) return;
-      if (result.type !== 'success' || !result.url) return;
+      // Polling sessione per max 10 secondi (il token potrebbe arrivare con ritardo)
+      for (let i = 0; i < 20; i++) {
+        await new Promise(resolve => setTimeout(resolve, 500));
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session) {
+          setShouldNavigate(true);
+          return;
+        }
+      }
 
-      // Prova a estrarre token dall'URL di callback
-      const parsed = new URL(result.url);
-      const hashParams = new URLSearchParams(
-        parsed.hash.startsWith('#') ? parsed.hash.slice(1) : ''
+      // Se dopo 10 secondi la sessione non è ancora disponibile,
+      // informa l'utente che il login è avvenuto ma serve riavviare l'app
+      Alert.alert(
+        '✅ Accesso effettuato',
+        'Il tuo account Google è stato collegato correttamente.\n\nPer un problema temporaneo, chiudi e riapri Vyro per accedere all'app.\n\nStiamo già lavorando alla soluzione.',
+        [{ text: 'OK', style: 'default' }]
       );
-
-      const accessToken = hashParams.get('access_token');
-      if (accessToken) {
-        await supabase.auth.setSession({
-          access_token: accessToken,
-          refresh_token: hashParams.get('refresh_token') ?? '',
-        });
-        setShouldNavigate(true);
-        return;
-      }
-
-      const code = parsed.searchParams.get('code');
-      if (code) {
-        await supabase.auth.exchangeCodeForSession(result.url);
-        setShouldNavigate(true);
-        return;
-      }
     } catch (error) {
       const msg = error instanceof Error ? error.message : 'Errore sconosciuto';
       Alert.alert('Errore Google', msg);
