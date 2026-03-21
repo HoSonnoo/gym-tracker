@@ -150,7 +150,7 @@ export default function AuthScreen() {
       // informa l'utente che il login è avvenuto ma serve riavviare l'app
       Alert.alert(
         '✅ Accesso effettuato',
-        'Il tuo account Google è stato collegato correttamente.\n\nPer un problema temporaneo, chiudi e riapri Vyro per accedere all'app.\n\nStiamo già lavorando alla soluzione.',
+        'Il tuo account Google è stato collegato correttamente.\n\nPer un problema temporaneo, chiudi e riapri Vyro per accedere.\n\nStiamo già lavorando alla soluzione.'.
         [{ text: 'OK', style: 'default' }]
       );
     } catch (error) {
