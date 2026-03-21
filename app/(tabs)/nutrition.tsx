@@ -58,7 +58,7 @@ import Animated, {
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const PRIMARY = '#7e47ff';
-const ANTHROPIC_API_KEY = '';
+const ANTHROPIC_API_KEY = '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';
 
 const MEAL_TYPES = [
   { key: 'colazione', label: 'Colazione', emoji: '☀️' },
