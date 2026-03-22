@@ -127,19 +127,12 @@ export default function AuthScreen() {
         redirectUrl
       );
 
-      // Controlla prima se la sessione è già disponibile
+      // Controlla la sessione — potrebbe essere già disponibile
       const { data: { session } } = await supabase.auth.getSession();
       if (session) {
         setShouldNavigate(true);
-        return;
       }
-
-      // Sessione non disponibile — mostra messaggio e naviga quando l'utente preme OK
-      Alert.alert(
-        '✅ Accesso effettuato',
-        "Il tuo account Google è stato collegato correttamente.\n\nChiudi e riapri Vyro per accedere all'app.\n\nStiamo lavorando per risolvere questo problema.",
-        [{ text: 'OK', style: 'default' }]
-      );
+      // Se la sessione non è disponibile, chiudere e riaprire l'app completa il login
     } catch (error) {
       const msg = error instanceof Error ? error.message : 'Errore sconosciuto';
       Alert.alert('Errore Google', msg);
@@ -310,6 +303,9 @@ export default function AuthScreen() {
                 </>
               )}
             </TouchableOpacity>
+            <Text style={styles.googleNote}>
+              Dopo aver scelto l'account Google, chiudi e riapri Vyro per completare l'accesso.
+            </Text>
           </View>
 
           {/* Divisore */}
@@ -429,6 +425,14 @@ const styles = StyleSheet.create({
   appleBtn: {
     height: 50,
     width: '100%',
+  },
+  googleNote: {
+    fontSize: 11,
+    color: Colors.dark.textMuted,
+    textAlign: 'center',
+    marginTop: 6,
+    paddingHorizontal: 8,
+    lineHeight: 16,
   },
   guestBtn: {
     backgroundColor: Colors.dark.surface,

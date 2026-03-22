@@ -4,6 +4,7 @@ import { AuthProvider, useAuth } from '@/context/AuthContext';
 import { RestTimerProvider } from '@/context/RestTimerContext';
 import { UserPreferencesProvider } from '@/context/UserPreferencesContext';
 import { initDatabase } from '@/database';
+import { initHealthKit } from '@/lib/healthkit';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Stack, useRouter, useSegments } from 'expo-router';
 import { useEffect, useState } from 'react';
@@ -100,9 +101,10 @@ export default function RootLayout() {
   const [dbReady, setDbReady] = useState(false);
 
   useEffect(() => {
-    initDatabase()
-      .catch((e) => console.error('Errore DB:', e))
-      .finally(() => setDbReady(true));
+    Promise.all([
+      initDatabase().catch((e) => console.error('Errore DB:', e)),
+      initHealthKit().catch(() => {}), // Richiede permesso HealthKit all'avvio
+    ]).finally(() => setDbReady(true));
   }, []);
 
   if (!dbReady) {
