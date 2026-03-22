@@ -1,7 +1,7 @@
 import { Platform } from 'react-native';
 import AppleHealthKit, {
-    HealthInputOptions,
-    HealthKitPermissions,
+  HealthInputOptions,
+  HealthKitPermissions,
 } from 'react-native-health';
 
 const PERMISSIONS: HealthKitPermissions = {
@@ -16,24 +16,32 @@ const PERMISSIONS: HealthKitPermissions = {
 };
 
 export type DailyHealthData = {
-  date: string; // YYYY-MM-DD
+  date: string;
   steps: number;
   distanceKm: number;
   caloriesBurned: number;
 };
 
+let healthKitInitialized = false;
+
 export async function initHealthKit(): Promise<boolean> {
   if (Platform.OS !== 'ios') return false;
 
   return new Promise((resolve) => {
-    AppleHealthKit.initHealthKit(PERMISSIONS, (error) => {
-      resolve(!error);
+    AppleHealthKit.initHealthKit(PERMISSIONS, (error: string) => {
+      if (error) {
+        console.log('HealthKit init error:', error);
+        resolve(false);
+      } else {
+        healthKitInitialized = true;
+        resolve(true);
+      }
     });
   });
 }
 
 export async function getHealthDataLast30Days(): Promise<DailyHealthData[]> {
-  if (Platform.OS !== 'ios') return [];
+  if (Platform.OS !== 'ios' || !healthKitInitialized) return [];
 
   const endDate = new Date();
   const startDate = new Date();
@@ -52,7 +60,6 @@ export async function getHealthDataLast30Days(): Promise<DailyHealthData[]> {
     getDailyCalories(options),
   ]);
 
-  // Costruisce array dei 30 giorni
   const result: DailyHealthData[] = [];
   for (let i = 0; i < 30; i++) {
     const d = new Date(startDate);
@@ -71,12 +78,12 @@ export async function getHealthDataLast30Days(): Promise<DailyHealthData[]> {
 
 function getDailySteps(options: HealthInputOptions): Promise<Record<string, number>> {
   return new Promise((resolve) => {
-    AppleHealthKit.getDailyStepCountSamples(options, (err, results) => {
+    AppleHealthKit.getDailyStepCountSamples(options, (err: string, results: any[]) => {
       if (err || !results) { resolve({}); return; }
       const map: Record<string, number> = {};
       for (const r of results) {
         const key = new Date(r.startDate).toISOString().slice(0, 10);
-        map[key] = (map[key] ?? 0) + (r.value ?? 0);
+        map[key] = (map[key] ?? 0) + Math.round(r.value ?? 0);
       }
       resolve(map);
     });
@@ -85,12 +92,13 @@ function getDailySteps(options: HealthInputOptions): Promise<Record<string, numb
 
 function getDailyDistance(options: HealthInputOptions): Promise<Record<string, number>> {
   return new Promise((resolve) => {
-    AppleHealthKit.getDailyDistanceWalkingRunningSamples(options, (err, results) => {
+    AppleHealthKit.getDistanceWalkingRunning(options, (err: string, results: any) => {
       if (err || !results) { resolve({}); return; }
       const map: Record<string, number> = {};
-      for (const r of results) {
+      const list = Array.isArray(results) ? results : [results];
+      for (const r of list) {
+        if (!r?.startDate) continue;
         const key = new Date(r.startDate).toISOString().slice(0, 10);
-        // HealthKit restituisce in metri, convertiamo in km
         map[key] = Math.round(((map[key] ?? 0) + (r.value ?? 0) / 1000) * 100) / 100;
       }
       resolve(map);
@@ -100,10 +108,11 @@ function getDailyDistance(options: HealthInputOptions): Promise<Record<string, n
 
 function getDailyCalories(options: HealthInputOptions): Promise<Record<string, number>> {
   return new Promise((resolve) => {
-    AppleHealthKit.getActiveEnergyBurned(options, (err, results) => {
+    AppleHealthKit.getActiveEnergyBurned(options, (err: string, results: any[]) => {
       if (err || !results) { resolve({}); return; }
       const map: Record<string, number> = {};
       for (const r of results) {
+        if (!r?.startDate) continue;
         const key = new Date(r.startDate).toISOString().slice(0, 10);
         map[key] = Math.round((map[key] ?? 0) + (r.value ?? 0));
       }

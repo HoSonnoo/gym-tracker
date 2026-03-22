@@ -127,10 +127,17 @@ export default function AuthScreen() {
         redirectUrl
       );
 
-      // Mostra sempre il messaggio dopo che il browser si chiude
+      // Controlla prima se la sessione è già disponibile
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session) {
+        setShouldNavigate(true);
+        return;
+      }
+
+      // Sessione non disponibile — mostra messaggio e naviga quando l'utente preme OK
       Alert.alert(
         '✅ Accesso effettuato',
-        "Il tuo account Google è stato collegato correttamente.\n\nPer un problema temporaneo, chiudi e riapri Vyro per accedere all'app.\n\nStiamo già lavorando alla soluzione.",
+        "Il tuo account Google è stato collegato correttamente.\n\nChiudi e riapri Vyro per accedere all'app.\n\nStiamo lavorando per risolvere questo problema.",
         [{ text: 'OK', style: 'default' }]
       );
     } catch (error) {
