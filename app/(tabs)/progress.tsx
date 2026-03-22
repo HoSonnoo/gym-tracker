@@ -789,7 +789,14 @@ function ActivitySection() {
   const [permissionDenied, setPermissionDenied] = useState(false);
 
   React.useEffect(() => {
+    // Timeout di sicurezza — se HealthKit non risponde entro 8s, mostra errore
+    const timeout = setTimeout(() => {
+      setPermissionDenied(true);
+      setLoading(false);
+    }, 8000);
+
     initHealthKit().then((granted) => {
+      clearTimeout(timeout);
       if (!granted) {
         setPermissionDenied(true);
         setLoading(false);
@@ -799,6 +806,10 @@ function ActivitySection() {
         .then(setHealthData)
         .catch(() => setHealthData([]))
         .finally(() => setLoading(false));
+    }).catch(() => {
+      clearTimeout(timeout);
+      setPermissionDenied(true);
+      setLoading(false);
     });
   }, []);
 

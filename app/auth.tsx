@@ -127,23 +127,7 @@ export default function AuthScreen() {
         redirectUrl
       );
 
-      // Gestisci il callback URL se disponibile
-      if (result.type === 'success' && result.url) {
-        const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(result.url);
-        if (!exchangeError) {
-          setShouldNavigate(true);
-          return;
-        }
-      }
-
-      // Controlla sessione una volta sola
-      const { data: { session } } = await supabase.auth.getSession();
-      if (session) {
-        setShouldNavigate(true);
-        return;
-      }
-
-      // Mostra subito il messaggio all'utente
+      // Mostra sempre il messaggio dopo che il browser si chiude
       Alert.alert(
         '✅ Accesso effettuato',
         "Il tuo account Google è stato collegato correttamente.\n\nPer un problema temporaneo, chiudi e riapri Vyro per accedere all'app.\n\nStiamo già lavorando alla soluzione.",
