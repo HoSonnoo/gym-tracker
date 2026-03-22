@@ -136,21 +136,17 @@ export default function AuthScreen() {
         }
       }
 
-      // Polling sessione per max 10 secondi (il token potrebbe arrivare con ritardo)
-      for (let i = 0; i < 20; i++) {
-        await new Promise(resolve => setTimeout(resolve, 500));
-        const { data: { session } } = await supabase.auth.getSession();
-        if (session) {
-          setShouldNavigate(true);
-          return;
-        }
+      // Controlla sessione una volta sola
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session) {
+        setShouldNavigate(true);
+        return;
       }
 
-      // Se dopo 10 secondi la sessione non è ancora disponibile,
-      // informa l'utente che il login è avvenuto ma serve riavviare l'app
+      // Mostra subito il messaggio all'utente
       Alert.alert(
         '✅ Accesso effettuato',
-        'Il tuo account Google è stato collegato correttamente.\n\nPer un problema temporaneo, chiudi e riapri Vyro per accedere.\n\nStiamo già lavorando alla soluzione.',
+        "Il tuo account Google è stato collegato correttamente.\n\nPer un problema temporaneo, chiudi e riapri Vyro per accedere all'app.\n\nStiamo già lavorando alla soluzione.",
         [{ text: 'OK', style: 'default' }]
       );
     } catch (error) {

@@ -61,10 +61,11 @@ const PRIMARY = '#7e47ff';
 const ANTHROPIC_API_KEY = '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';
 
 const MEAL_TYPES = [
-  { key: 'colazione', label: 'Colazione', emoji: '☀️' },
-  { key: 'pranzo',    label: 'Pranzo',    emoji: '🍽️' },
-  { key: 'cena',      label: 'Cena',      emoji: '🌙' },
-  { key: 'spuntino',  label: 'Spuntini',  emoji: '🍎' },
+  { key: 'integrazione', label: 'Integrazione', emoji: '💊' },
+  { key: 'colazione',    label: 'Colazione',     emoji: '☀️' },
+  { key: 'pranzo',       label: 'Pranzo',        emoji: '🍽️' },
+  { key: 'cena',         label: 'Cena',          emoji: '🌙' },
+  { key: 'spuntino',     label: 'Spuntini',      emoji: '🍎' },
 ] as const;
 
 type MealType = typeof MEAL_TYPES[number]['key'];
@@ -700,7 +701,7 @@ function DiarioSection({ date, onDateChange }: DiarioProps) {
 
   const logsByMeal = useMemo(() => {
     const map: Record<MealType, NutritionLog[]> = {
-      colazione: [], pranzo: [], cena: [], spuntino: [],
+      integrazione: [], colazione: [], pranzo: [], cena: [], spuntino: [],
     };
     for (const log of logs) {
       if (log.meal_type in map) {
@@ -1840,11 +1841,11 @@ function PianoSection() {
               meal_type: meal.meal_type,
               food_item_id: null,
               food_name: entry.food_name,
-              grams: entry.grams,
-              kcal: entry.kcal,
-              protein: entry.protein,
-              carbs: entry.carbs,
-              fat: entry.fat,
+              grams: entry.grams ?? 0,
+              kcal: entry.kcal ?? null,
+              protein: entry.protein ?? null,
+              carbs: entry.carbs ?? null,
+              fat: entry.fat ?? null,
             });
           }
         }
@@ -2013,7 +2014,7 @@ function PianoSection() {
                     <Text style={importStyles.dayLabel}>{day.label}</Text>
                     {day.meals.map((meal, mealIdx) => meal.entries.length > 0 ? (
                       <View key={mealIdx} style={importStyles.mealGroup}>
-                        <Text style={importStyles.mealLabel}>{{ colazione: 'Colazione', pranzo: 'Pranzo', cena: 'Cena', spuntino: 'Spuntini' }[meal.meal_type] ?? meal.meal_type}</Text>
+                        <Text style={importStyles.mealLabel}>{{ integrazione: 'Integrazione', colazione: 'Colazione', pranzo: 'Pranzo', cena: 'Cena', spuntino: 'Spuntini' }[meal.meal_type] ?? meal.meal_type}</Text>
                         {meal.entries.map((entry, entryIdx) => (
                           <View key={entryIdx} style={importStyles.entryRow}>
                             <View style={importStyles.entryMain}>
@@ -2124,10 +2125,13 @@ function PianoSection() {
                   <View style={pianoStyles.dayContent}>
                     {MEAL_TYPES.map((meal) => {
                       const mealEntries = mealGroups[meal.key] ?? [];
+                      const isEmpty = mealEntries.length === 0;
                       return (
                         <View key={meal.key} style={pianoStyles.mealGroup}>
                           <View style={pianoStyles.mealGroupHeader}>
-                            <Text style={pianoStyles.mealGroupTitle}>{meal.emoji} {meal.label}</Text>
+                            <Text style={[pianoStyles.mealGroupTitle, isEmpty && pianoStyles.mealGroupTitleEmpty]}>
+                              {meal.emoji} {meal.label}
+                            </Text>
                             <TouchableOpacity
                               style={pianoStyles.addEntryBtn}
                               onPress={() => setShowAddEntryModal({ dayId: day.id, mealType: meal.key })}
@@ -2248,7 +2252,7 @@ function PianoSection() {
                   <Text style={importStyles.dayLabel}>{day.label}</Text>
                   {day.meals.map((meal, mealIdx) => meal.entries.length > 0 ? (
                     <View key={mealIdx} style={importStyles.mealGroup}>
-                      <Text style={importStyles.mealLabel}>{{ colazione: 'Colazione', pranzo: 'Pranzo', cena: 'Cena', spuntino: 'Spuntini' }[meal.meal_type] ?? meal.meal_type}</Text>
+                      <Text style={importStyles.mealLabel}>{{ integrazione: 'Integrazione', colazione: 'Colazione', pranzo: 'Pranzo', cena: 'Cena', spuntino: 'Spuntini' }[meal.meal_type] ?? meal.meal_type}</Text>
                       {meal.entries.map((entry, entryIdx) => (
                         <View key={entryIdx} style={importStyles.entryRow}>
                           <View style={importStyles.entryMain}>
@@ -2306,7 +2310,7 @@ type ImportedEntry = {
 };
 
 type ImportedMeal = {
-  meal_type: 'colazione' | 'pranzo' | 'cena' | 'spuntino';
+  meal_type: 'integrazione' | 'colazione' | 'pranzo' | 'cena' | 'spuntino';
   entries: ImportedEntry[];
 };
 
@@ -2334,7 +2338,7 @@ Il JSON deve seguire esattamente questa struttura:
       "label": "Lunedì" oppure "Giorno 1" ecc.,
       "meals": [
         {
-          "meal_type": "colazione" oppure "pranzo" oppure "cena" oppure "spuntino",
+          "meal_type": "integrazione" oppure "colazione" oppure "pranzo" oppure "cena" oppure "spuntino",
           "entries": [
             {
               "food_name": "nome alimento",
@@ -2454,7 +2458,7 @@ function ImportPDFModal({ visible, onClose, onImported, autoStart = false }: {
     setEditingPlan(plan);
   };
 
-  const mealLabel = (t: string) => ({ colazione: 'Colazione', pranzo: 'Pranzo', cena: 'Cena', spuntino: 'Spuntini' }[t] ?? t);
+  const mealLabel = (t: string) => ({ integrazione: 'Integrazione', colazione: 'Colazione', pranzo: 'Pranzo', cena: 'Cena', spuntino: 'Spuntini' }[t] ?? t);
 
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
@@ -2753,11 +2757,11 @@ function NewPlanModal({ visible, onClose, onSaved }: { visible: boolean; onClose
               meal_type: meal.meal_type,
               food_item_id: null,
               food_name: entry.food_name,
-              grams: entry.grams,
-              kcal: entry.kcal,
-              protein: entry.protein,
-              carbs: entry.carbs,
-              fat: entry.fat,
+              grams: entry.grams ?? 0,
+              kcal: entry.kcal ?? null,
+              protein: entry.protein ?? null,
+              carbs: entry.carbs ?? null,
+              fat: entry.fat ?? null,
             });
           }
         }
@@ -3021,6 +3025,7 @@ const pianoStyles = StyleSheet.create({
   mealGroup: { gap: 8, paddingTop: 14 },
   mealGroupHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   mealGroupTitle: { fontSize: 14, fontWeight: '700', color: Colors.dark.text },
+  mealGroupTitleEmpty: { color: Colors.dark.textMuted, textDecorationLine: 'line-through' },
   addEntryBtn: { backgroundColor: 'rgba(126,71,255,0.14)', borderRadius: 8, borderWidth: 1, borderColor: PRIMARY, paddingHorizontal: 10, paddingVertical: 4 },
   addEntryBtnText: { color: Colors.dark.primarySoft, fontSize: 12, fontWeight: '700' },
   emptyMealText: { fontSize: 12, color: Colors.dark.textMuted, fontStyle: 'italic' },

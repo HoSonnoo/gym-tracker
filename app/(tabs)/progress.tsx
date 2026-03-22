@@ -12,6 +12,7 @@ import {
   type ExerciseWeightHistory,
 } from '@/database';
 import { useGuestLimits } from '@/hooks/use-guest-limits';
+import { getHealthDataLast30Days, initHealthKit, type DailyHealthData } from '@/lib/healthkit';
 import { useFocusEffect } from '@react-navigation/native';
 import React, { useCallback, useState } from 'react';
 import {
@@ -62,7 +63,7 @@ function groupBySession(history: ExerciseWeightHistory[]): SessionGroup[] {
 
 // ─── Segmented Control ────────────────────────────────────────────────────────
 
-type TabKey = 'pr' | 'volume' | 'frequency' | 'peso';
+type TabKey = 'pr' | 'volume' | 'frequency' | 'peso' | 'attivita';
 
 function SegmentedControl({ active, onChange }: { active: TabKey; onChange: (key: TabKey) => void }) {
   const tabs: { key: TabKey; label: string }[] = [
@@ -70,6 +71,7 @@ function SegmentedControl({ active, onChange }: { active: TabKey; onChange: (key
     { key: 'volume', label: 'Volume' },
     { key: 'frequency', label: 'Frequenza' },
     { key: 'peso', label: 'Peso' },
+    { key: 'attivita', label: 'Attività' },
   ];
   return (
     <View style={segStyles.container}>
@@ -93,7 +95,7 @@ const segStyles = StyleSheet.create({
   container: { flexDirection: 'row', backgroundColor: Colors.dark.surface, borderRadius: 14, borderWidth: 1, borderColor: Colors.dark.border, padding: 4, gap: 4 },
   tab: { flex: 1, paddingVertical: 10, borderRadius: 10, alignItems: 'center' },
   tabActive: { backgroundColor: PRIMARY },
-  label: { fontSize: 13, fontWeight: '700', color: Colors.dark.textMuted },
+  label: { fontSize: 11, fontWeight: '700', color: Colors.dark.textMuted },
   labelActive: { color: '#fff' },
 });
 
@@ -703,6 +705,199 @@ const weightStyles = StyleSheet.create({
   historyWeightLatest: { color: PRIMARY },
 });
 
+// ─── Activity Chart ──────────────────────────────────────────────────────────
+
+function ActivityChart({ data, valueKey, color }: {
+  data: DailyHealthData[];
+  valueKey: keyof DailyHealthData;
+  color: string;
+}) {
+  const values = data.map((d) => Number(d[valueKey]));
+  const maxVal = Math.max(...values, 1);
+  const CHART_H = 120;
+  const PAD_LEFT = 44;
+  const PAD_RIGHT = 12;
+  const PAD_TOP = 10;
+  const PAD_BOTTOM = 28;
+  const POINT_W = Math.max((SCREEN_W - 40 - PAD_LEFT - PAD_RIGHT) / data.length, 8);
+  const chartW = PAD_LEFT + PAD_RIGHT + POINT_W * data.length;
+  const plotH = CHART_H - PAD_TOP - PAD_BOTTOM;
+
+  const toX = (i: number) => PAD_LEFT + i * POINT_W + POINT_W / 2;
+  const toY = (v: number) => PAD_TOP + plotH - (v / maxVal) * plotH;
+
+  const pathD = data.map((d, i) => {
+    const v = Number(d[valueKey]);
+    return `${i === 0 ? 'M' : 'L'} ${toX(i)} ${toY(v)}`;
+  }).join(' ');
+
+  const yLabels = [0, Math.round(maxVal / 2), Math.round(maxVal)];
+
+  return (
+    <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+      <Svg width={chartW} height={CHART_H}>
+        {yLabels.map((val, i) => {
+          const y = toY(val);
+          return (
+            <React.Fragment key={i}>
+              <Line x1={PAD_LEFT} y1={y} x2={chartW - PAD_RIGHT} y2={y}
+                stroke={Colors.dark.border} strokeWidth={1} strokeDasharray="3 3" />
+              <SvgText x={PAD_LEFT - 4} y={y + 4} textAnchor="end" fontSize={9} fill={Colors.dark.textMuted}>
+                {val >= 1000 ? `${(val/1000).toFixed(1)}k` : val}
+              </SvgText>
+            </React.Fragment>
+          );
+        })}
+        {data.length > 1 && (
+          <Path d={pathD} stroke={color} strokeWidth={2} fill="none"
+            strokeLinejoin="round" strokeLinecap="round" />
+        )}
+        {data.map((d, i) => {
+          const v = Number(d[valueKey]);
+          const cx = toX(i);
+          const cy = toY(v);
+          const isLast = i === data.length - 1;
+          const dateStr = d.date.slice(5); // MM-DD
+          return (
+            <React.Fragment key={d.date}>
+              {i % 5 === 0 && (
+                <SvgText x={cx} y={CHART_H - 4} textAnchor="middle" fontSize={8} fill={Colors.dark.textMuted}>
+                  {dateStr}
+                </SvgText>
+              )}
+              {isLast ? (
+                <>
+                  <Circle cx={cx} cy={cy} r={6} fill={color} opacity={0.2} />
+                  <Circle cx={cx} cy={cy} r={4} fill={color} />
+                </>
+              ) : v > 0 ? (
+                <Circle cx={cx} cy={cy} r={3} fill={Colors.dark.surface} stroke={color} strokeWidth={1.5} />
+              ) : null}
+            </React.Fragment>
+          );
+        })}
+      </Svg>
+    </ScrollView>
+  );
+}
+
+// ─── Activity Section ─────────────────────────────────────────────────────────
+
+function ActivitySection() {
+  const [healthData, setHealthData] = useState<DailyHealthData[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [permissionDenied, setPermissionDenied] = useState(false);
+
+  React.useEffect(() => {
+    initHealthKit().then((granted) => {
+      if (!granted) {
+        setPermissionDenied(true);
+        setLoading(false);
+        return;
+      }
+      getHealthDataLast30Days()
+        .then(setHealthData)
+        .catch(() => setHealthData([]))
+        .finally(() => setLoading(false));
+    });
+  }, []);
+
+  const today = healthData[healthData.length - 1];
+  const avgSteps = healthData.length > 0
+    ? Math.round(healthData.reduce((s, d) => s + d.steps, 0) / healthData.filter(d => d.steps > 0).length || 0)
+    : 0;
+
+  if (loading) {
+    return (
+      <View style={styles.loadingBox}>
+        <ActivityIndicator size="large" color={PRIMARY} />
+      </View>
+    );
+  }
+
+  if (permissionDenied) {
+    return (
+      <View style={styles.emptyCard}>
+        <Text style={styles.emptyTitle}>🏃 Accesso negato</Text>
+        <Text style={styles.emptyText}>
+          Vai su Impostazioni → Privacy → Salute → Vyro e abilita l'accesso per vedere i tuoi dati di attività.
+        </Text>
+      </View>
+    );
+  }
+
+  return (
+    <View style={styles.list}>
+      {/* Stat cards oggi */}
+      <View style={activityStyles.statsRow}>
+        <View style={activityStyles.statCard}>
+          <Text style={activityStyles.statEmoji}>👟</Text>
+          <Text style={activityStyles.statLabel}>Passi oggi</Text>
+          <Text style={activityStyles.statValue}>{(today?.steps ?? 0).toLocaleString('it-IT')}</Text>
+          <Text style={activityStyles.statSub}>media {avgSteps.toLocaleString('it-IT')}/g</Text>
+        </View>
+        <View style={activityStyles.statCard}>
+          <Text style={activityStyles.statEmoji}>📍</Text>
+          <Text style={activityStyles.statLabel}>Distanza oggi</Text>
+          <Text style={activityStyles.statValue}>{(today?.distanceKm ?? 0).toFixed(2)} km</Text>
+          <Text style={activityStyles.statSub}>ultimi 30 giorni</Text>
+        </View>
+        <View style={activityStyles.statCard}>
+          <Text style={activityStyles.statEmoji}>🔥</Text>
+          <Text style={activityStyles.statLabel}>Calorie oggi</Text>
+          <Text style={activityStyles.statValue}>{Math.round(today?.caloriesBurned ?? 0)}</Text>
+          <Text style={activityStyles.statSub}>kcal attive</Text>
+        </View>
+      </View>
+
+      {/* Grafico passi */}
+      <View style={activityStyles.chartCard}>
+        <Text style={activityStyles.chartTitle}>👟 Passi — ultimi 30 giorni</Text>
+        <ActivityChart data={healthData} valueKey="steps" color={PRIMARY} />
+      </View>
+
+      {/* Grafico distanza */}
+      <View style={activityStyles.chartCard}>
+        <Text style={activityStyles.chartTitle}>📍 Distanza (km) — ultimi 30 giorni</Text>
+        <ActivityChart data={healthData} valueKey="distanceKm" color={Colors.dark.success} />
+      </View>
+
+      {/* Grafico calorie */}
+      <View style={activityStyles.chartCard}>
+        <Text style={activityStyles.chartTitle}>🔥 Calorie attive — ultimi 30 giorni</Text>
+        <ActivityChart data={healthData} valueKey="caloriesBurned" color={Colors.dark.danger} />
+      </View>
+    </View>
+  );
+}
+
+const activityStyles = StyleSheet.create({
+  statsRow: { flexDirection: 'row', gap: 10 },
+  statCard: {
+    flex: 1,
+    backgroundColor: Colors.dark.surface,
+    borderRadius: 16,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: Colors.dark.border,
+    alignItems: 'center',
+    gap: 3,
+  },
+  statEmoji: { fontSize: 20, marginBottom: 2 },
+  statLabel: { fontSize: 10, fontWeight: '700', color: Colors.dark.textMuted, textAlign: 'center' },
+  statValue: { fontSize: 15, fontWeight: '800', color: Colors.dark.text, textAlign: 'center' },
+  statSub: { fontSize: 9, color: Colors.dark.textMuted, textAlign: 'center' },
+  chartCard: {
+    backgroundColor: Colors.dark.surface,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: Colors.dark.border,
+    padding: 16,
+    gap: 12,
+  },
+  chartTitle: { fontSize: 13, fontWeight: '700', color: Colors.dark.text },
+});
+
 // ─── Screen ───────────────────────────────────────────────────────────────────
 
 export default function ProgressScreen() {
@@ -770,6 +965,7 @@ export default function ProgressScreen() {
               {activeTab === 'volume' && <VolumeSection volumes={volumes} unit={preferences.unit} onSelectExercise={setSelectedExercise} />}
               {activeTab === 'frequency' && <FrequencySection data={frequency} weeklyGoal={preferences.weeklyGoal} />}
               {activeTab === 'peso' && <WeightSection logs={weightLogs} unit={preferences.unit} />}
+              {activeTab === 'attivita' && <ActivitySection />}
             </>
           )}
         </>
