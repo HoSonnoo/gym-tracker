@@ -191,7 +191,51 @@ export async function initDatabase() {
     );
   `);
 
-  // ─── Migrazioni ────────────────────────────────────────────────────────────
+  // ─── Nuove tabelle (aggiunta incrementale) ──────────────────────────────────
+  try {
+    await database.execAsync(`
+      CREATE TABLE IF NOT EXISTS recipes (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        title TEXT NOT NULL,
+        description TEXT,
+        servings INTEGER NOT NULL DEFAULT 1,
+        kcal REAL,
+        protein REAL,
+        carbs REAL,
+        fat REAL,
+        ingredients TEXT,
+        instructions TEXT,
+        source TEXT NOT NULL DEFAULT 'manual',
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE TABLE IF NOT EXISTS recipe_ingredients (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        recipe_id INTEGER NOT NULL,
+        food_name TEXT NOT NULL,
+        grams REAL NOT NULL,
+        kcal REAL,
+        protein REAL,
+        carbs REAL,
+        fat REAL,
+        FOREIGN KEY (recipe_id) REFERENCES recipes(id) ON DELETE CASCADE
+      );
+
+      CREATE TABLE IF NOT EXISTS meal_plan_active_days (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        meal_plan_id INTEGER NOT NULL,
+        meal_plan_day_id INTEGER NOT NULL,
+        weekday INTEGER NOT NULL,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (meal_plan_id) REFERENCES meal_plans(id) ON DELETE CASCADE,
+        FOREIGN KEY (meal_plan_day_id) REFERENCES meal_plan_days(id) ON DELETE CASCADE
+      );
+    `);
+  } catch {
+    // Tabelle già esistenti, ignorato
+  }
+
+    // ─── Migrazioni ────────────────────────────────────────────────────────────
   // v1.1: aggiunge colonna phase a body_weight_logs
   try {
     await database.execAsync(`ALTER TABLE body_weight_logs ADD COLUMN phase TEXT`);
@@ -2038,4 +2082,124 @@ export async function exportAllDataCSV(): Promise<string> {
   }
 
   return sections.join('\n');
+}
+
+// ─── Ricette ──────────────────────────────────────────────────────────────────
+
+export type Recipe = {
+  id: number;
+  title: string;
+  description: string | null;
+  servings: number;
+  kcal: number | null;
+  protein: number | null;
+  carbs: number | null;
+  fat: number | null;
+  ingredients: string | null; // JSON serializzato
+  instructions: string | null;
+  source: 'manual' | 'pdf';
+  created_at: string;
+};
+
+export type RecipeIngredient = {
+  id: number;
+  recipe_id: number;
+  food_name: string;
+  grams: number;
+  kcal: number | null;
+  protein: number | null;
+  carbs: number | null;
+  fat: number | null;
+};
+
+export async function getRecipes(): Promise<Recipe[]> {
+  const database = await getDb();
+  return database.getAllAsync<Recipe>(`SELECT * FROM recipes ORDER BY created_at DESC`);
+}
+
+export async function addRecipe(recipe: {
+  title: string;
+  description: string | null;
+  servings: number;
+  kcal: number | null;
+  protein: number | null;
+  carbs: number | null;
+  fat: number | null;
+  ingredients: string | null;
+  instructions: string | null;
+  source: 'manual' | 'pdf';
+}): Promise<number> {
+  const database = await getDb();
+  const result = await database.runAsync(
+    `INSERT INTO recipes (title, description, servings, kcal, protein, carbs, fat, ingredients, instructions, source)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [recipe.title, recipe.description, recipe.servings, recipe.kcal, recipe.protein,
+     recipe.carbs, recipe.fat, recipe.ingredients, recipe.instructions, recipe.source]
+  );
+  return Number(result.lastInsertRowId);
+}
+
+export async function deleteRecipe(id: number): Promise<void> {
+  const database = await getDb();
+  await database.runAsync(`DELETE FROM recipes WHERE id = ?`, [id]);
+}
+
+// ─── Piano giornaliero attivo ─────────────────────────────────────────────────
+
+export type MealPlanActiveDay = {
+  id: number;
+  meal_plan_id: number;
+  meal_plan_day_id: number;
+  weekday: number; // 0=Dom, 1=Lun, 2=Mar, 3=Mer, 4=Gio, 5=Ven, 6=Sab
+  created_at: string;
+};
+
+export async function setMealPlanActiveDays(
+  mealPlanId: number,
+  assignments: { dayId: number; weekdays: number[] }[]
+): Promise<void> {
+  const database = await getDb();
+  await database.withTransactionAsync(async () => {
+    await database.runAsync(
+      `DELETE FROM meal_plan_active_days WHERE meal_plan_id = ?`,
+      [mealPlanId]
+    );
+    for (const a of assignments) {
+      for (const weekday of a.weekdays) {
+        await database.runAsync(
+          `INSERT INTO meal_plan_active_days (meal_plan_id, meal_plan_day_id, weekday) VALUES (?, ?, ?)`,
+          [mealPlanId, a.dayId, weekday]
+        );
+      }
+    }
+  });
+}
+
+export async function getActivePlanEntriesForToday(): Promise<{
+  entries: MealPlanEntry[];
+  totals: { kcal: number; protein: number; carbs: number; fat: number };
+}> {
+  const database = await getDb();
+  const today = new Date();
+  const weekday = today.getDay(); // 0=Dom..6=Sab
+
+  const rows = await database.getAllAsync<MealPlanEntry>(`
+    SELECT mpe.*
+    FROM meal_plan_entries mpe
+    INNER JOIN meal_plan_active_days mpad ON mpad.meal_plan_day_id = mpe.meal_plan_day_id
+    WHERE mpad.weekday = ?
+    ORDER BY mpe.meal_type ASC, mpe.created_at ASC
+  `, [weekday]);
+
+  const totals = rows.reduce(
+    (acc, e) => ({
+      kcal: acc.kcal + (e.kcal ?? 0),
+      protein: acc.protein + (e.protein ?? 0),
+      carbs: acc.carbs + (e.carbs ?? 0),
+      fat: acc.fat + (e.fat ?? 0),
+    }),
+    { kcal: 0, protein: 0, carbs: 0, fat: 0 }
+  );
+
+  return { entries: rows, totals };
 }

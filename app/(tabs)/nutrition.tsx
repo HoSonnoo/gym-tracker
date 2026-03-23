@@ -5,20 +5,24 @@ import {
   addMealPlanDay,
   addMealPlanEntry,
   addNutritionLog,
+  addRecipe,
   addWaterLog,
   deleteBodyWeightLog,
   deleteMealPlan,
   deleteMealPlanDay,
   deleteMealPlanEntry,
-  deleteNutritionLog,
+  deleteRecipe,
+  getActivePlanEntriesForToday,
   getBodyWeightLogs,
   getFoodItems,
   getMealPlanDays,
   getMealPlanEntries,
   getMealPlans,
   getNutritionLogsByDate,
+  getRecipes,
   getWaterLogByDate,
   resetWaterLog,
+  setMealPlanActiveDays,
   updateMealPlanEntry,
   upsertBodyWeightLog,
   type BodyWeightLog,
@@ -27,6 +31,7 @@ import {
   type MealPlanDay,
   type MealPlanEntry,
   type NutritionLog,
+  type Recipe
 } from '@/database';
 import { useFocusEffect } from '@react-navigation/native';
 import * as DocumentPicker from 'expo-document-picker';
@@ -53,6 +58,7 @@ import Animated, {
   withSpring,
   withTiming,
 } from 'react-native-reanimated';
+import Svg, { Path } from 'react-native-svg';
 
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -69,7 +75,7 @@ const MEAL_TYPES = [
 ] as const;
 
 type MealType = typeof MEAL_TYPES[number]['key'];
-type SectionKey = 'diario' | 'catalogo' | 'piano' | 'corpo';
+type SectionKey = 'diario' | 'catalogo' | 'piano' | 'corpo' | 'ricette';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -121,6 +127,7 @@ function SegmentedControl({
   const tabs: { key: SectionKey; label: string }[] = [
     { key: 'diario',   label: 'Diario' },
     { key: 'piano',    label: 'Piano' },
+    { key: 'ricette',  label: 'Ricette' },
     { key: 'corpo',    label: 'Corpo' },
     { key: 'catalogo', label: 'Catalogo' },
   ];
@@ -162,7 +169,7 @@ const segStyles = StyleSheet.create({
     backgroundColor: PRIMARY,
   },
   label: {
-    fontSize: 12,
+    fontSize: 10,
     fontWeight: '700',
     color: Colors.dark.textMuted,
   },
@@ -668,16 +675,93 @@ type DiarioProps = {
   onDateChange: (iso: string) => void;
 };
 
+// Grafico torta SVG semplice
+function PieChart({ protein, carbs, fat }: { protein: number; carbs: number; fat: number }) {
+  const total = protein + carbs + fat;
+  if (total === 0) return null;
+
+  const size = 140;
+  const cx = size / 2;
+  const cy = size / 2;
+  const r = 54;
+  const innerR = 32;
+
+  const slices = [
+    { value: protein, color: '#60a5fa', label: 'P' },
+    { value: carbs,   color: '#fbbf24', label: 'C' },
+    { value: fat,     color: '#f87171', label: 'G' },
+  ];
+
+  let currentAngle = -Math.PI / 2;
+  const paths: { d: string; color: string }[] = [];
+
+  for (const slice of slices) {
+    const angle = (slice.value / total) * 2 * Math.PI;
+    const endAngle = currentAngle + angle;
+    const x1 = cx + r * Math.cos(currentAngle);
+    const y1 = cy + r * Math.sin(currentAngle);
+    const x2 = cx + r * Math.cos(endAngle);
+    const y2 = cy + r * Math.sin(endAngle);
+    const ix1 = cx + innerR * Math.cos(currentAngle);
+    const iy1 = cy + innerR * Math.sin(currentAngle);
+    const ix2 = cx + innerR * Math.cos(endAngle);
+    const iy2 = cy + innerR * Math.sin(endAngle);
+    const large = angle > Math.PI ? 1 : 0;
+    paths.push({
+      d: `M ${x1} ${y1} A ${r} ${r} 0 ${large} 1 ${x2} ${y2} L ${ix2} ${iy2} A ${innerR} ${innerR} 0 ${large} 0 ${ix1} ${iy1} Z`,
+      color: slice.color,
+    });
+    currentAngle = endAngle;
+  }
+
+  return (
+    <Svg width={size} height={size}>
+      {paths.map((p, i) => (
+        <Path key={i} d={p.d} fill={p.color} />
+      ))}
+    </Svg>
+  );
+}
+
+function MacroProgressBar({ label, value, target, color }: { label: string; value: number; target: number; color: string }) {
+  const pct = target > 0 ? Math.min(value / target, 1) : 0;
+  const remaining = Math.max(target - value, 0);
+  return (
+    <View style={diarioStyles.progressRow}>
+      <View style={diarioStyles.progressHeader}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+          <View style={[diarioStyles.progressDot, { backgroundColor: color }]} />
+          <Text style={diarioStyles.progressLabel}>{label}</Text>
+        </View>
+        <Text style={diarioStyles.progressValues}>
+          <Text style={{ color }}>{Math.round(value)}</Text>
+          {target > 0 && <Text style={diarioStyles.progressTarget}> / {Math.round(target)}g</Text>}
+        </Text>
+      </View>
+      <View style={diarioStyles.progressTrack}>
+        <View style={[diarioStyles.progressFill, { width: `${pct * 100}%` as any, backgroundColor: color }]} />
+      </View>
+      {target > 0 && remaining > 0 && (
+        <Text style={diarioStyles.progressRemaining}>Mancano {Math.round(remaining)}g</Text>
+      )}
+    </View>
+  );
+}
+
 function DiarioSection({ date, onDateChange }: DiarioProps) {
   const [logs, setLogs] = useState<NutritionLog[]>([]);
+  const [planTotals, setPlanTotals] = useState<{ kcal: number; protein: number; carbs: number; fat: number } | null>(null);
   const [loading, setLoading] = useState(true);
-  const [addModalMeal, setAddModalMeal] = useState<MealType | null>(null);
 
   const loadLogs = useCallback(async () => {
     setLoading(true);
     try {
-      const data = await getNutritionLogsByDate(date);
+      const [data, planData] = await Promise.all([
+        getNutritionLogsByDate(date),
+        getActivePlanEntriesForToday(),
+      ]);
       setLogs(data);
+      setPlanTotals(planData.totals.kcal > 0 ? planData.totals : null);
     } catch {
       Alert.alert('Errore', 'Impossibile caricare il diario.');
     } finally {
@@ -699,51 +783,13 @@ function DiarioSection({ date, onDateChange }: DiarioProps) {
     );
   }, [logs]);
 
-  const logsByMeal = useMemo(() => {
-    const map: Record<MealType, NutritionLog[]> = {
-      integrazione: [], colazione: [], pranzo: [], cena: [], spuntino: [],
-    };
-    for (const log of logs) {
-      if (log.meal_type in map) {
-        map[log.meal_type as MealType].push(log);
-      }
-    }
-    return map;
-  }, [logs]);
-
-  const handleDelete = (log: NutritionLog) => {
-    Alert.alert(
-      'Rimuovi alimento',
-      `Vuoi rimuovere "${log.food_name}" dal diario?`,
-      [
-        { text: 'Annulla', style: 'cancel' },
-        {
-          text: 'Rimuovi',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              await deleteNutritionLog(log.id);
-              await loadLogs();
-            } catch {
-              Alert.alert('Errore', 'Impossibile rimuovere l\'alimento.');
-            }
-          },
-        },
-      ]
-    );
-  };
-
   const isFuture = date > todayISO();
 
   return (
     <>
       {/* Date navigator */}
       <View style={diarioStyles.dateNav}>
-        <TouchableOpacity
-          style={diarioStyles.dateArrow}
-          onPress={() => onDateChange(shiftDate(date, -1))}
-          activeOpacity={0.8}
-        >
+        <TouchableOpacity style={diarioStyles.dateArrow} onPress={() => onDateChange(shiftDate(date, -1))} activeOpacity={0.8}>
           <Text style={diarioStyles.dateArrowText}>‹</Text>
         </TouchableOpacity>
         <Text style={diarioStyles.dateLabel}>{formatDateDisplay(date)}</Text>
@@ -758,73 +804,57 @@ function DiarioSection({ date, onDateChange }: DiarioProps) {
       </View>
 
       {loading ? (
-        <View style={diarioStyles.loadingBox}>
-          <ActivityIndicator color={PRIMARY} />
-        </View>
+        <View style={diarioStyles.loadingBox}><ActivityIndicator color={PRIMARY} /></View>
       ) : (
-        <>
-          <MacroSummaryCard totals={totals} />
-
-          {MEAL_TYPES.map((meal) => {
-            const mealLogs = logsByMeal[meal.key];
-            const mealKcal = mealLogs.reduce((s, l) => s + (l.kcal ?? 0), 0);
-
-            return (
-              <View key={meal.key} style={diarioStyles.mealCard}>
-                <View style={diarioStyles.mealHeader}>
-                  <View style={diarioStyles.mealTitleRow}>
-                    <Text style={diarioStyles.mealEmoji}>{meal.emoji}</Text>
-                    <Text style={diarioStyles.mealTitle}>{meal.label}</Text>
-                    {mealLogs.length > 0 && (
-                      <Text style={diarioStyles.mealKcal}>{Math.round(mealKcal)} kcal</Text>
-                    )}
-                  </View>
-                  <TouchableOpacity
-                    style={diarioStyles.addToMealBtn}
-                    onPress={() => setAddModalMeal(meal.key)}
-                    activeOpacity={0.8}
-                  >
-                    <Text style={diarioStyles.addToMealBtnText}>+ Aggiungi</Text>
-                  </TouchableOpacity>
-                </View>
-
-                {mealLogs.length === 0 ? (
-                  <Text style={diarioStyles.emptyMealText}>Nessun alimento registrato</Text>
-                ) : (
-                  <View style={diarioStyles.logList}>
-                    {mealLogs.map((log) => (
-                      <View key={log.id} style={diarioStyles.logRow}>
-                        <View style={diarioStyles.logInfo}>
-                          <Text style={diarioStyles.logName}>{log.food_name}</Text>
-                          <Text style={diarioStyles.logMacros}>
-                            {log.grams}g · {roundMacro(log.kcal)} kcal · P {roundMacro(log.protein)}g · C {roundMacro(log.carbs)}g · G {roundMacro(log.fat)}g
-                          </Text>
-                        </View>
-                        <TouchableOpacity
-                          style={diarioStyles.deleteBtn}
-                          onPress={() => handleDelete(log)}
-                          activeOpacity={0.8}
-                        >
-                          <Text style={diarioStyles.deleteBtnText}>✕</Text>
-                        </TouchableOpacity>
-                      </View>
-                    ))}
-                  </View>
+        <View style={diarioStyles.content}>
+          {/* Grafico torta + kcal */}
+          <View style={diarioStyles.chartCard}>
+            <View style={diarioStyles.chartRow}>
+              <PieChart protein={totals.protein} carbs={totals.carbs} fat={totals.fat} />
+              <View style={diarioStyles.kcalBox}>
+                <Text style={diarioStyles.kcalValue}>{Math.round(totals.kcal)}</Text>
+                <Text style={diarioStyles.kcalUnit}>kcal</Text>
+                {planTotals && (
+                  <Text style={diarioStyles.kcalTarget}>
+                    / {Math.round(planTotals.kcal)} target
+                  </Text>
+                )}
+                {planTotals && totals.kcal < planTotals.kcal && (
+                  <Text style={diarioStyles.kcalRemaining}>
+                    -{Math.round(planTotals.kcal - totals.kcal)} kcal
+                  </Text>
                 )}
               </View>
-            );
-          })}
-        </>
-      )}
+            </View>
 
-      {addModalMeal && (
-        <AddToMealModal
-          visible={!!addModalMeal}
-          mealType={addModalMeal}
-          date={date}
-          onClose={() => setAddModalMeal(null)}
-          onAdded={loadLogs}
-        />
+            {/* Barre macro */}
+            <View style={diarioStyles.barsContainer}>
+              <MacroProgressBar label="Proteine" value={totals.protein} target={planTotals?.protein ?? 0} color="#60a5fa" />
+              <MacroProgressBar label="Carboidrati" value={totals.carbs} target={planTotals?.carbs ?? 0} color="#fbbf24" />
+              <MacroProgressBar label="Grassi" value={totals.fat} target={planTotals?.fat ?? 0} color="#f87171" />
+            </View>
+
+            {/* Legenda */}
+            <View style={diarioStyles.legend}>
+              {[
+                { label: 'Proteine', color: '#60a5fa' },
+                { label: 'Carbo', color: '#fbbf24' },
+                { label: 'Grassi', color: '#f87171' },
+              ].map((item) => (
+                <View key={item.label} style={diarioStyles.legendItem}>
+                  <View style={[diarioStyles.legendDot, { backgroundColor: item.color }]} />
+                  <Text style={diarioStyles.legendLabel}>{item.label}</Text>
+                </View>
+              ))}
+            </View>
+
+            {!planTotals && (
+              <Text style={diarioStyles.noPlanHint}>
+                💡 Collega un piano alimentare per vedere gli obiettivi giornalieri
+              </Text>
+            )}
+          </View>
+        </View>
       )}
     </>
   );
@@ -838,23 +868,31 @@ const diarioStyles = StyleSheet.create({
   dateArrowTextDisabled: { color: Colors.dark.textMuted },
   dateLabel: { fontSize: 18, fontWeight: '800', color: Colors.dark.text },
   loadingBox: { paddingTop: 60, alignItems: 'center' },
-  mealCard: { backgroundColor: Colors.dark.surface, borderRadius: 18, padding: 16, borderWidth: 1, borderColor: Colors.dark.border, marginBottom: 12 },
-  mealHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 },
-  mealTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  mealEmoji: { fontSize: 18 },
-  mealTitle: { fontSize: 16, fontWeight: '800', color: Colors.dark.text },
-  mealKcal: { fontSize: 13, color: Colors.dark.textMuted, fontWeight: '600' },
-  addToMealBtn: { backgroundColor: 'rgba(126,71,255,0.14)', borderRadius: 10, borderWidth: 1, borderColor: Colors.dark.primary, paddingHorizontal: 12, paddingVertical: 6 },
-  addToMealBtnText: { color: Colors.dark.primarySoft, fontSize: 13, fontWeight: '700' },
-  emptyMealText: { fontSize: 13, color: Colors.dark.textMuted, fontStyle: 'italic' },
-  logList: { gap: 8 },
-  logRow: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: '#101015', borderRadius: 12, padding: 12, borderWidth: 1, borderColor: Colors.dark.border },
-  logInfo: { flex: 1 },
-  logName: { fontSize: 14, fontWeight: '700', color: Colors.dark.text, marginBottom: 3 },
-  logMacros: { fontSize: 12, color: Colors.dark.textMuted },
-  deleteBtn: { width: 28, height: 28, backgroundColor: 'rgba(239,68,68,0.12)', borderRadius: 8, borderWidth: 1, borderColor: Colors.dark.danger, alignItems: 'center', justifyContent: 'center' },
-  deleteBtnText: { color: Colors.dark.danger, fontSize: 13, fontWeight: '800' },
+  content: { gap: 16 },
+  chartCard: { backgroundColor: Colors.dark.surface, borderRadius: 18, padding: 20, borderWidth: 1, borderColor: 'rgba(126,71,255,0.35)', gap: 16 },
+  chartRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-around' },
+  kcalBox: { alignItems: 'center', gap: 2 },
+  kcalValue: { fontSize: 42, fontWeight: '900', color: Colors.dark.text },
+  kcalUnit: { fontSize: 15, color: Colors.dark.textMuted, fontWeight: '600' },
+  kcalTarget: { fontSize: 12, color: Colors.dark.textMuted, marginTop: 4 },
+  kcalRemaining: { fontSize: 13, color: Colors.dark.success, fontWeight: '700' },
+  barsContainer: { gap: 12 },
+  progressRow: { gap: 4 },
+  progressHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  progressDot: { width: 8, height: 8, borderRadius: 4 },
+  progressLabel: { fontSize: 13, fontWeight: '600', color: Colors.dark.text },
+  progressValues: { fontSize: 13, fontWeight: '700', color: Colors.dark.text },
+  progressTarget: { color: Colors.dark.textMuted, fontWeight: '400' },
+  progressTrack: { height: 6, backgroundColor: '#2a2a35', borderRadius: 6, overflow: 'hidden' },
+  progressFill: { height: '100%' as any, borderRadius: 6 },
+  progressRemaining: { fontSize: 11, color: Colors.dark.textMuted, textAlign: 'right' },
+  legend: { flexDirection: 'row', justifyContent: 'center', gap: 16 },
+  legendItem: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+  legendDot: { width: 8, height: 8, borderRadius: 4 },
+  legendLabel: { fontSize: 12, color: Colors.dark.textMuted, fontWeight: '600' },
+  noPlanHint: { fontSize: 12, color: Colors.dark.textMuted, textAlign: 'center', fontStyle: 'italic' },
 });
+
 
 // ─── Catalogo Section ─────────────────────────────────────────────────────────
 
@@ -1362,6 +1400,241 @@ const bottleStyles = StyleSheet.create({
     color: Colors.dark.textMuted,
   },
 });
+
+// ─── Ricette Section ──────────────────────────────────────────────────────────
+
+function RicetteSection() {
+  const [recipes, setRecipes] = useState<Recipe[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [showNewModal, setShowNewModal] = useState(false);
+  const [expandedId, setExpandedId] = useState<number | null>(null);
+
+  const loadRecipes = useCallback(async () => {
+    setLoading(true);
+    const data = await getRecipes().catch(() => []);
+    setRecipes(data);
+    setLoading(false);
+  }, []);
+
+  useFocusEffect(useCallback(() => { loadRecipes(); }, [loadRecipes]));
+
+  const handleDelete = (recipe: Recipe) => {
+    Alert.alert('Elimina ricetta', `Vuoi eliminare "${recipe.title}"?`, [
+      { text: 'Annulla', style: 'cancel' },
+      { text: 'Elimina', style: 'destructive', onPress: async () => {
+        await deleteRecipe(recipe.id);
+        await loadRecipes();
+      }},
+    ]);
+  };
+
+  if (loading) return <View style={{ paddingTop: 60, alignItems: 'center' }}><ActivityIndicator color={PRIMARY} /></View>;
+
+  return (
+    <View style={ricetteStyles.container}>
+      <TouchableOpacity style={ricetteStyles.addBtn} onPress={() => setShowNewModal(true)} activeOpacity={0.85}>
+        <Text style={ricetteStyles.addBtnText}>+ Crea ricetta</Text>
+      </TouchableOpacity>
+
+      {recipes.length === 0 ? (
+        <View style={ricetteStyles.emptyBox}>
+          <Text style={ricetteStyles.emptyEmoji}>🍳</Text>
+          <Text style={ricetteStyles.emptyTitle}>Nessuna ricetta</Text>
+          <Text style={ricetteStyles.emptyText}>Crea le tue ricette manualmente o importale da PDF.</Text>
+        </View>
+      ) : (
+        <View style={ricetteStyles.list}>
+          {recipes.map((recipe) => {
+            const isExpanded = expandedId === recipe.id;
+            const ingredients = recipe.ingredients ? JSON.parse(recipe.ingredients) : [];
+            return (
+              <View key={recipe.id} style={ricetteStyles.card}>
+                <TouchableOpacity
+                  style={ricetteStyles.cardHeader}
+                  onPress={() => setExpandedId(isExpanded ? null : recipe.id)}
+                  activeOpacity={0.8}
+                >
+                  <View style={ricetteStyles.cardHeaderLeft}>
+                    <Text style={ricetteStyles.cardTitle}>{recipe.title}</Text>
+                    <Text style={ricetteStyles.cardMacros}>
+                      {Math.round(recipe.kcal ?? 0)} kcal · P {Math.round(recipe.protein ?? 0)}g · C {Math.round(recipe.carbs ?? 0)}g · G {Math.round(recipe.fat ?? 0)}g
+                    </Text>
+                  </View>
+                  <View style={ricetteStyles.cardHeaderRight}>
+                    <TouchableOpacity onPress={() => handleDelete(recipe)} activeOpacity={0.8} style={ricetteStyles.deleteBtn}>
+                      <Text style={ricetteStyles.deleteBtnText}>✕</Text>
+                    </TouchableOpacity>
+                    <Text style={ricetteStyles.chevron}>{isExpanded ? '▲' : '▼'}</Text>
+                  </View>
+                </TouchableOpacity>
+
+                {isExpanded && (
+                  <View style={ricetteStyles.cardBody}>
+                    {recipe.description ? <Text style={ricetteStyles.description}>{recipe.description}</Text> : null}
+                    {ingredients.length > 0 && (
+                      <>
+                        <Text style={ricetteStyles.sectionTitle}>🥗 Ingredienti ({recipe.servings} porzioni)</Text>
+                        {ingredients.map((ing: any, i: number) => (
+                          <Text key={i} style={ricetteStyles.ingredient}>• {ing.name} — {ing.grams}g</Text>
+                        ))}
+                      </>
+                    )}
+                    {recipe.instructions ? (
+                      <>
+                        <Text style={ricetteStyles.sectionTitle}>📝 Procedimento</Text>
+                        <Text style={ricetteStyles.instructions}>{recipe.instructions}</Text>
+                      </>
+                    ) : null}
+                  </View>
+                )}
+              </View>
+            );
+          })}
+        </View>
+      )}
+
+      {showNewModal && (
+        <NewRecipeModal
+          visible={showNewModal}
+          onClose={() => setShowNewModal(false)}
+          onSaved={() => { setShowNewModal(false); loadRecipes(); }}
+        />
+      )}
+    </View>
+  );
+}
+
+function NewRecipeModal({ visible, onClose, onSaved }: { visible: boolean; onClose: () => void; onSaved: () => void }) {
+  const [title, setTitle] = useState('');
+  const [description, setDescription] = useState('');
+  const [servings, setServings] = useState('1');
+  const [instructions, setInstructions] = useState('');
+  const [ingredients, setIngredients] = useState<{ name: string; grams: string }[]>([{ name: '', grams: '' }]);
+  const [saving, setSaving] = useState(false);
+
+  const totalMacros = useMemo(() => {
+    return { kcal: 0, protein: 0, carbs: 0, fat: 0 };
+  }, [ingredients]);
+
+  const handleSave = async () => {
+    if (!title.trim()) { Alert.alert('Titolo mancante', 'Inserisci il nome della ricetta.'); return; }
+    try {
+      setSaving(true);
+      const parsedIngredients = ingredients
+        .filter((i) => i.name.trim() && parseFloat(i.grams) > 0)
+        .map((i) => ({ name: i.name.trim(), grams: parseFloat(i.grams) }));
+
+      await addRecipe({
+        title: title.trim(),
+        description: description.trim() || null,
+        servings: parseInt(servings) || 1,
+        kcal: null,
+        protein: null,
+        carbs: null,
+        fat: null,
+        ingredients: parsedIngredients.length > 0 ? JSON.stringify(parsedIngredients) : null,
+        instructions: instructions.trim() || null,
+        source: 'manual',
+      });
+      onSaved();
+    } catch {
+      Alert.alert('Errore', 'Impossibile salvare la ricetta.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
+      <View style={ricetteStyles.modalContainer}>
+        <View style={ricetteStyles.modalHeader}>
+          <Text style={ricetteStyles.modalTitle}>Nuova ricetta</Text>
+          <TouchableOpacity onPress={onClose} style={ricetteStyles.modalCloseBtn} activeOpacity={0.8}>
+            <Text style={ricetteStyles.modalCloseBtnText}>Annulla</Text>
+          </TouchableOpacity>
+        </View>
+        <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 20, gap: 16 }} keyboardShouldPersistTaps="handled">
+          <View style={ricetteStyles.inputGroup}>
+            <Text style={ricetteStyles.inputLabel}>Nome ricetta *</Text>
+            <TextInput style={ricetteStyles.input} value={title} onChangeText={setTitle} placeholder="Es. Pasta al pomodoro" placeholderTextColor={Colors.dark.textMuted} />
+          </View>
+          <View style={ricetteStyles.inputGroup}>
+            <Text style={ricetteStyles.inputLabel}>Descrizione</Text>
+            <TextInput style={[ricetteStyles.input, { height: 80 }]} value={description} onChangeText={setDescription} placeholder="Breve descrizione..." placeholderTextColor={Colors.dark.textMuted} multiline />
+          </View>
+          <View style={ricetteStyles.inputGroup}>
+            <Text style={ricetteStyles.inputLabel}>Porzioni</Text>
+            <TextInput style={ricetteStyles.input} value={servings} onChangeText={setServings} keyboardType="number-pad" placeholder="1" placeholderTextColor={Colors.dark.textMuted} />
+          </View>
+          <View style={ricetteStyles.inputGroup}>
+            <Text style={ricetteStyles.inputLabel}>Ingredienti</Text>
+            {ingredients.map((ing, i) => (
+              <View key={i} style={ricetteStyles.ingredientRow}>
+                <TextInput style={[ricetteStyles.input, { flex: 2 }]} value={ing.name} onChangeText={(v) => { const n = [...ingredients]; n[i].name = v; setIngredients(n); }} placeholder="Alimento" placeholderTextColor={Colors.dark.textMuted} />
+                <TextInput style={[ricetteStyles.input, { flex: 1 }]} value={ing.grams} onChangeText={(v) => { const n = [...ingredients]; n[i].grams = v; setIngredients(n); }} placeholder="g" keyboardType="decimal-pad" placeholderTextColor={Colors.dark.textMuted} />
+                {ingredients.length > 1 && (
+                  <TouchableOpacity onPress={() => setIngredients(ingredients.filter((_, j) => j !== i))} style={ricetteStyles.removeIngBtn}>
+                    <Text style={{ color: Colors.dark.danger, fontSize: 16 }}>✕</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            ))}
+            <TouchableOpacity onPress={() => setIngredients([...ingredients, { name: '', grams: '' }])} style={ricetteStyles.addIngBtn}>
+              <Text style={ricetteStyles.addIngBtnText}>+ Aggiungi ingrediente</Text>
+            </TouchableOpacity>
+          </View>
+          <View style={ricetteStyles.inputGroup}>
+            <Text style={ricetteStyles.inputLabel}>Procedimento</Text>
+            <TextInput style={[ricetteStyles.input, { height: 120 }]} value={instructions} onChangeText={setInstructions} placeholder="Descrivi i passaggi..." placeholderTextColor={Colors.dark.textMuted} multiline />
+          </View>
+          <TouchableOpacity style={[ricetteStyles.saveBtn, saving && { opacity: 0.6 }]} onPress={handleSave} disabled={saving} activeOpacity={0.85}>
+            <Text style={ricetteStyles.saveBtnText}>{saving ? 'Salvataggio...' : 'Salva ricetta'}</Text>
+          </TouchableOpacity>
+        </ScrollView>
+      </View>
+    </Modal>
+  );
+}
+
+const ricetteStyles = StyleSheet.create({
+  container: { gap: 16 },
+  addBtn: { backgroundColor: 'rgba(126,71,255,0.12)', borderRadius: 14, paddingVertical: 14, alignItems: 'center', borderWidth: 1, borderColor: PRIMARY },
+  addBtnText: { color: PRIMARY, fontSize: 15, fontWeight: '700' },
+  emptyBox: { alignItems: 'center', gap: 8, paddingVertical: 40 },
+  emptyEmoji: { fontSize: 48 },
+  emptyTitle: { fontSize: 18, fontWeight: '700', color: Colors.dark.text },
+  emptyText: { fontSize: 14, color: Colors.dark.textMuted, textAlign: 'center' },
+  list: { gap: 12 },
+  card: { backgroundColor: Colors.dark.surface, borderRadius: 18, borderWidth: 1, borderColor: Colors.dark.border, overflow: 'hidden' },
+  cardHeader: { flexDirection: 'row', alignItems: 'center', padding: 16, justifyContent: 'space-between' },
+  cardHeaderLeft: { flex: 1, gap: 4 },
+  cardHeaderRight: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  cardTitle: { fontSize: 16, fontWeight: '700', color: Colors.dark.text },
+  cardMacros: { fontSize: 12, color: Colors.dark.textMuted },
+  deleteBtn: { width: 28, height: 28, backgroundColor: 'rgba(239,68,68,0.12)', borderRadius: 8, borderWidth: 1, borderColor: Colors.dark.danger, alignItems: 'center', justifyContent: 'center' },
+  deleteBtnText: { color: Colors.dark.danger, fontSize: 13, fontWeight: '800' },
+  chevron: { fontSize: 14, color: Colors.dark.textMuted },
+  cardBody: { padding: 16, paddingTop: 0, gap: 10, borderTopWidth: 1, borderTopColor: Colors.dark.border },
+  description: { fontSize: 14, color: Colors.dark.textMuted, lineHeight: 20 },
+  sectionTitle: { fontSize: 13, fontWeight: '700', color: Colors.dark.text, marginTop: 4 },
+  ingredient: { fontSize: 13, color: Colors.dark.textMuted },
+  instructions: { fontSize: 13, color: Colors.dark.textMuted, lineHeight: 20 },
+  modalContainer: { flex: 1, backgroundColor: Colors.dark.background },
+  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 20, borderBottomWidth: 1, borderBottomColor: Colors.dark.border },
+  modalTitle: { fontSize: 18, fontWeight: '700', color: Colors.dark.text },
+  modalCloseBtn: { paddingHorizontal: 14, paddingVertical: 8, backgroundColor: Colors.dark.surfaceSoft, borderRadius: 10, borderWidth: 1, borderColor: Colors.dark.border },
+  modalCloseBtnText: { color: Colors.dark.text, fontSize: 14, fontWeight: '600' },
+  inputGroup: { gap: 6 },
+  inputLabel: { fontSize: 13, fontWeight: '600', color: Colors.dark.textMuted },
+  input: { backgroundColor: Colors.dark.surface, borderWidth: 1, borderColor: Colors.dark.border, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, fontSize: 15, color: Colors.dark.text },
+  ingredientRow: { flexDirection: 'row', gap: 8, alignItems: 'center', marginBottom: 6 },
+  removeIngBtn: { width: 32, height: 32, alignItems: 'center', justifyContent: 'center' },
+  addIngBtn: { marginTop: 4, paddingVertical: 8, alignItems: 'center', borderRadius: 10, borderWidth: 1, borderColor: Colors.dark.border, backgroundColor: Colors.dark.surfaceSoft },
+  addIngBtnText: { color: PRIMARY, fontSize: 13, fontWeight: '700' },
+  saveBtn: { backgroundColor: PRIMARY, borderRadius: 14, paddingVertical: 16, alignItems: 'center', marginTop: 8 },
+  saveBtnText: { color: '#fff', fontSize: 16, fontWeight: '800' },
+});
+
 // ─── Corpo Section ────────────────────────────────────────────────────────────
 
 const WATER_QUICK_OPTIONS = [150, 250, 330, 500];
@@ -1744,6 +2017,7 @@ function PianoSection() {
   const [importError, setImportError] = useState('');
   const [importedPlan, setImportedPlan] = useState<ImportedPlan | null>(null);
   const [showAddEntryModal, setShowAddEntryModal] = useState<{ dayId: number; mealType: string } | null>(null);
+  const [showDayAssignModal, setShowDayAssignModal] = useState<{ planId: number } | null>(null);
 
   const handlePickAndImportPDF = async () => {
     try {
@@ -1853,6 +2127,8 @@ function PianoSection() {
       setImportStep('idle');
       setImportedPlan(null);
       await loadPlans();
+      // Apri modal per assegnare i giorni della settimana
+      setShowDayAssignModal({ planId });
     } catch (e: any) {
       Alert.alert('Errore', e?.message ?? `Impossibile salvare il piano.`);
     }
@@ -2292,9 +2568,135 @@ function PianoSection() {
           onAdded={async () => { if (activePlanId) await loadPlanDetails(activePlanId); }}
         />
       )}
+
+      {showDayAssignModal && (
+        <DayAssignModal
+          visible={!!showDayAssignModal}
+          planId={showDayAssignModal.planId}
+          onClose={() => setShowDayAssignModal(null)}
+          onSaved={() => setShowDayAssignModal(null)}
+        />
+      )}
     </>
   );
 }
+
+// ─── Day Assign Modal ─────────────────────────────────────────────────────────
+
+const WEEKDAYS = ['Dom', 'Lun', 'Mar', 'Mer', 'Gio', 'Ven', 'Sab'];
+
+function DayAssignModal({ visible, planId, onClose, onSaved }: {
+  visible: boolean;
+  planId: number;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [days, setDays] = useState<MealPlanDay[]>([]);
+  const [assignments, setAssignments] = useState<Record<number, number[]>>({});
+  const [saving, setSaving] = useState(false);
+
+  React.useEffect(() => {
+    if (!visible) return;
+    getMealPlanDays(planId).then((d) => {
+      setDays(d);
+      const init: Record<number, number[]> = {};
+      d.forEach((day) => { init[day.id] = []; });
+      setAssignments(init);
+    });
+  }, [visible, planId]);
+
+  const toggleWeekday = (dayId: number, weekday: number) => {
+    setAssignments((prev) => {
+      const curr = prev[dayId] ?? [];
+      const next = curr.includes(weekday)
+        ? curr.filter((w) => w !== weekday)
+        : [...curr, weekday];
+      return { ...prev, [dayId]: next };
+    });
+  };
+
+  const handleSave = async () => {
+    try {
+      setSaving(true);
+      const assignList = Object.entries(assignments).map(([dayId, weekdays]) => ({
+        dayId: parseInt(dayId),
+        weekdays,
+      }));
+      await setMealPlanActiveDays(planId, assignList);
+      onSaved();
+    } catch {
+      Alert.alert('Errore', 'Impossibile salvare la configurazione.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
+      <View style={dayAssignStyles.container}>
+        <View style={dayAssignStyles.header}>
+          <Text style={dayAssignStyles.title}>Collega giorni al calendario</Text>
+          <TouchableOpacity onPress={onClose} style={dayAssignStyles.skipBtn} activeOpacity={0.8}>
+            <Text style={dayAssignStyles.skipBtnText}>Salta</Text>
+          </TouchableOpacity>
+        </View>
+        <Text style={dayAssignStyles.subtitle}>
+          Seleziona a quali giorni della settimana corrisponde ogni giorno del piano. Gli alimenti fleggati appariranno nel Diario come obiettivo giornaliero.
+        </Text>
+        <ScrollView contentContainerStyle={{ padding: 20, gap: 16 }}>
+          {days.map((day) => (
+            <View key={day.id} style={dayAssignStyles.dayCard}>
+              <Text style={dayAssignStyles.dayLabel}>{day.label}</Text>
+              <View style={dayAssignStyles.weekdayRow}>
+                {WEEKDAYS.map((wd, i) => {
+                  const selected = (assignments[day.id] ?? []).includes(i);
+                  return (
+                    <TouchableOpacity
+                      key={i}
+                      style={[dayAssignStyles.wdBtn, selected && dayAssignStyles.wdBtnActive]}
+                      onPress={() => toggleWeekday(day.id, i)}
+                      activeOpacity={0.8}
+                    >
+                      <Text style={[dayAssignStyles.wdBtnText, selected && dayAssignStyles.wdBtnTextActive]}>
+                        {wd}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            </View>
+          ))}
+          <TouchableOpacity
+            style={[dayAssignStyles.saveBtn, saving && { opacity: 0.6 }]}
+            onPress={handleSave}
+            disabled={saving}
+            activeOpacity={0.85}
+          >
+            <Text style={dayAssignStyles.saveBtnText}>{saving ? 'Salvataggio...' : 'Salva configurazione'}</Text>
+          </TouchableOpacity>
+        </ScrollView>
+      </View>
+    </Modal>
+  );
+}
+
+const dayAssignStyles = StyleSheet.create({
+  container: { flex: 1, backgroundColor: Colors.dark.background },
+  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 20, borderBottomWidth: 1, borderBottomColor: Colors.dark.border },
+  title: { fontSize: 18, fontWeight: '700', color: Colors.dark.text, flex: 1 },
+  skipBtn: { paddingHorizontal: 14, paddingVertical: 8, backgroundColor: Colors.dark.surfaceSoft, borderRadius: 10, borderWidth: 1, borderColor: Colors.dark.border },
+  skipBtnText: { color: Colors.dark.textMuted, fontSize: 14, fontWeight: '600' },
+  subtitle: { fontSize: 13, color: Colors.dark.textMuted, padding: 20, paddingTop: 16, paddingBottom: 0, lineHeight: 18 },
+  dayCard: { backgroundColor: Colors.dark.surface, borderRadius: 16, padding: 16, borderWidth: 1, borderColor: Colors.dark.border, gap: 12 },
+  dayLabel: { fontSize: 15, fontWeight: '700', color: Colors.dark.text },
+  weekdayRow: { flexDirection: 'row', gap: 6, flexWrap: 'wrap' },
+  wdBtn: { paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10, borderWidth: 1, borderColor: Colors.dark.border, backgroundColor: Colors.dark.surfaceSoft },
+  wdBtnActive: { borderColor: PRIMARY, backgroundColor: 'rgba(126,71,255,0.15)' },
+  wdBtnText: { fontSize: 12, fontWeight: '700', color: Colors.dark.textMuted },
+  wdBtnTextActive: { color: PRIMARY },
+  saveBtn: { backgroundColor: PRIMARY, borderRadius: 14, paddingVertical: 16, alignItems: 'center', marginTop: 8 },
+  saveBtnText: { color: '#fff', fontSize: 16, fontWeight: '800' },
+});
 
 // ─── New Plan Modal ───────────────────────────────────────────────────────────
 
@@ -3076,6 +3478,9 @@ export default function NutritionScreen() {
           )}
           {section === 'piano' && (
             <PianoSection />
+          )}
+          {section === 'ricette' && (
+            <RicetteSection />
           )}
           {section === 'corpo' && (
             <CorpoSection />
