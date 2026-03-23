@@ -33,6 +33,7 @@ import {
   type NutritionLog,
   type Recipe
 } from '@/database';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useFocusEffect } from '@react-navigation/native';
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system/legacy';
@@ -750,18 +751,24 @@ function MacroProgressBar({ label, value, target, color }: { label: string; valu
 
 function DiarioSection({ date, onDateChange }: DiarioProps) {
   const [logs, setLogs] = useState<NutritionLog[]>([]);
-  const [planTotals, setPlanTotals] = useState<{ kcal: number; protein: number; carbs: number; fat: number } | null>(null);
+  const [remainingTotals, setRemainingTotals] = useState<{ kcal: number; protein: number; carbs: number; fat: number } | null>(null);
   const [loading, setLoading] = useState(true);
+  const COMPLETED_KEY = '@vyro:piano_completed';
 
   const loadLogs = useCallback(async () => {
     setLoading(true);
     try {
+      // Leggi completedEntries da AsyncStorage
+      const stored = await AsyncStorage.getItem(COMPLETED_KEY).catch(() => null);
+      const completedIds: number[] = stored ? JSON.parse(stored) : [];
+
       const [data, planData] = await Promise.all([
         getNutritionLogsByDate(date),
-        getActivePlanEntriesForToday(),
+        getActivePlanEntriesForToday(completedIds),
       ]);
       setLogs(data);
-      setPlanTotals(planData.totals.kcal > 0 ? planData.totals : null);
+      // Usa i macro degli alimenti NON ancora consumati come obiettivo rimanente
+      setRemainingTotals(planData.remainingTotals.kcal > 0 ? planData.remainingTotals : null);
     } catch {
       Alert.alert('Errore', 'Impossibile caricare il diario.');
     } finally {
@@ -814,14 +821,14 @@ function DiarioSection({ date, onDateChange }: DiarioProps) {
               <View style={diarioStyles.kcalBox}>
                 <Text style={diarioStyles.kcalValue}>{Math.round(totals.kcal)}</Text>
                 <Text style={diarioStyles.kcalUnit}>kcal</Text>
-                {planTotals && (
+                {remainingTotals && (
                   <Text style={diarioStyles.kcalTarget}>
-                    / {Math.round(planTotals.kcal)} target
+                    da consumare
                   </Text>
                 )}
-                {planTotals && totals.kcal < planTotals.kcal && (
+                {remainingTotals && (
                   <Text style={diarioStyles.kcalRemaining}>
-                    -{Math.round(planTotals.kcal - totals.kcal)} kcal
+                    {Math.round(remainingTotals.kcal)} kcal
                   </Text>
                 )}
               </View>
@@ -829,9 +836,9 @@ function DiarioSection({ date, onDateChange }: DiarioProps) {
 
             {/* Barre macro */}
             <View style={diarioStyles.barsContainer}>
-              <MacroProgressBar label="Proteine" value={totals.protein} target={planTotals?.protein ?? 0} color="#60a5fa" />
-              <MacroProgressBar label="Carboidrati" value={totals.carbs} target={planTotals?.carbs ?? 0} color="#fbbf24" />
-              <MacroProgressBar label="Grassi" value={totals.fat} target={planTotals?.fat ?? 0} color="#f87171" />
+              <MacroProgressBar label="Proteine" value={totals.protein} target={remainingTotals?.protein ?? 0} color="#60a5fa" />
+              <MacroProgressBar label="Carboidrati" value={totals.carbs} target={remainingTotals?.carbs ?? 0} color="#fbbf24" />
+              <MacroProgressBar label="Grassi" value={totals.fat} target={remainingTotals?.fat ?? 0} color="#f87171" />
             </View>
 
             {/* Legenda */}
@@ -848,7 +855,7 @@ function DiarioSection({ date, onDateChange }: DiarioProps) {
               ))}
             </View>
 
-            {!planTotals && (
+            {!remainingTotals && (
               <Text style={diarioStyles.noPlanHint}>
                 💡 Collega un piano alimentare per vedere gli obiettivi giornalieri
               </Text>
@@ -2007,6 +2014,19 @@ function PianoSection() {
   const [days, setDays] = useState<MealPlanDay[]>([]);
   const [entriesByDay, setEntriesByDay] = useState<Record<number, MealPlanEntry[]>>({});
   const [completedEntries, setCompletedEntries] = useState<Set<number>>(new Set());
+  const COMPLETED_KEY = '@vyro:piano_completed';
+
+  // Carica completedEntries da AsyncStorage al mount
+  React.useEffect(() => {
+    AsyncStorage.getItem(COMPLETED_KEY).then((val) => {
+      if (val) {
+        try {
+          const arr = JSON.parse(val) as number[];
+          setCompletedEntries(new Set(arr));
+        } catch {}
+      }
+    });
+  }, []);
   const [expandedDay, setExpandedDay] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -2226,6 +2246,8 @@ function PianoSection() {
     setCompletedEntries((prev) => {
       const next = new Set(prev);
       next.has(entryId) ? next.delete(entryId) : next.add(entryId);
+      // Persisti in AsyncStorage
+      AsyncStorage.setItem(COMPLETED_KEY, JSON.stringify([...next])).catch(() => {});
       return next;
     });
   };
@@ -2647,17 +2669,20 @@ function DayAssignModal({ visible, planId, onClose, onSaved }: {
           {days.map((day) => (
             <View key={day.id} style={dayAssignStyles.dayCard}>
               <Text style={dayAssignStyles.dayLabel}>{day.label}</Text>
-              <View style={dayAssignStyles.weekdayRow}>
+              <View style={dayAssignStyles.weekdayList}>
                 {WEEKDAYS.map((wd, i) => {
                   const selected = (assignments[day.id] ?? []).includes(i);
                   return (
                     <TouchableOpacity
                       key={i}
-                      style={[dayAssignStyles.wdBtn, selected && dayAssignStyles.wdBtnActive]}
+                      style={dayAssignStyles.weekdayRow}
                       onPress={() => toggleWeekday(day.id, i)}
                       activeOpacity={0.8}
                     >
-                      <Text style={[dayAssignStyles.wdBtnText, selected && dayAssignStyles.wdBtnTextActive]}>
+                      <View style={[dayAssignStyles.checkbox, selected && dayAssignStyles.checkboxChecked]}>
+                        {selected && <Text style={dayAssignStyles.checkboxTick}>✓</Text>}
+                      </View>
+                      <Text style={[dayAssignStyles.weekdayLabel, selected && dayAssignStyles.weekdayLabelActive]}>
                         {wd}
                       </Text>
                     </TouchableOpacity>
@@ -2687,13 +2712,15 @@ const dayAssignStyles = StyleSheet.create({
   skipBtn: { paddingHorizontal: 14, paddingVertical: 8, backgroundColor: Colors.dark.surfaceSoft, borderRadius: 10, borderWidth: 1, borderColor: Colors.dark.border },
   skipBtnText: { color: Colors.dark.textMuted, fontSize: 14, fontWeight: '600' },
   subtitle: { fontSize: 13, color: Colors.dark.textMuted, padding: 20, paddingTop: 16, paddingBottom: 0, lineHeight: 18 },
-  dayCard: { backgroundColor: Colors.dark.surface, borderRadius: 16, padding: 16, borderWidth: 1, borderColor: Colors.dark.border, gap: 12 },
-  dayLabel: { fontSize: 15, fontWeight: '700', color: Colors.dark.text },
-  weekdayRow: { flexDirection: 'row', gap: 6, flexWrap: 'wrap' },
-  wdBtn: { paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10, borderWidth: 1, borderColor: Colors.dark.border, backgroundColor: Colors.dark.surfaceSoft },
-  wdBtnActive: { borderColor: PRIMARY, backgroundColor: 'rgba(126,71,255,0.15)' },
-  wdBtnText: { fontSize: 12, fontWeight: '700', color: Colors.dark.textMuted },
-  wdBtnTextActive: { color: PRIMARY },
+  dayCard: { backgroundColor: Colors.dark.surface, borderRadius: 16, padding: 16, borderWidth: 1, borderColor: Colors.dark.border, gap: 8 },
+  dayLabel: { fontSize: 15, fontWeight: '700', color: Colors.dark.text, marginBottom: 4 },
+  weekdayList: { gap: 4 },
+  weekdayRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 8, paddingHorizontal: 4, borderRadius: 10 },
+  checkbox: { width: 22, height: 22, borderRadius: 6, borderWidth: 2, borderColor: Colors.dark.border, backgroundColor: Colors.dark.surfaceSoft, alignItems: 'center', justifyContent: 'center' },
+  checkboxChecked: { backgroundColor: PRIMARY, borderColor: PRIMARY },
+  checkboxTick: { color: '#fff', fontSize: 13, fontWeight: '800' },
+  weekdayLabel: { fontSize: 14, fontWeight: '600', color: Colors.dark.textMuted },
+  weekdayLabelActive: { color: Colors.dark.text, fontWeight: '700' },
   saveBtn: { backgroundColor: PRIMARY, borderRadius: 14, paddingVertical: 16, alignItems: 'center', marginTop: 8 },
   saveBtnText: { color: '#fff', fontSize: 16, fontWeight: '800' },
 });

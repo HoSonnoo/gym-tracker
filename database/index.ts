@@ -2175,9 +2175,10 @@ export async function setMealPlanActiveDays(
   });
 }
 
-export async function getActivePlanEntriesForToday(): Promise<{
+export async function getActivePlanEntriesForToday(completedIds?: number[]): Promise<{
   entries: MealPlanEntry[];
   totals: { kcal: number; protein: number; carbs: number; fat: number };
+  remainingTotals: { kcal: number; protein: number; carbs: number; fat: number };
 }> {
   const database = await getDb();
   const today = new Date();
@@ -2191,6 +2192,8 @@ export async function getActivePlanEntriesForToday(): Promise<{
     ORDER BY mpe.meal_type ASC, mpe.created_at ASC
   `, [weekday]);
 
+  const completed = new Set(completedIds ?? []);
+
   const totals = rows.reduce(
     (acc, e) => ({
       kcal: acc.kcal + (e.kcal ?? 0),
@@ -2201,5 +2204,18 @@ export async function getActivePlanEntriesForToday(): Promise<{
     { kcal: 0, protein: 0, carbs: 0, fat: 0 }
   );
 
-  return { entries: rows, totals };
+  // Macro solo degli alimenti NON ancora consumati
+  const remainingTotals = rows
+    .filter((e) => !completed.has(e.id))
+    .reduce(
+      (acc, e) => ({
+        kcal: acc.kcal + (e.kcal ?? 0),
+        protein: acc.protein + (e.protein ?? 0),
+        carbs: acc.carbs + (e.carbs ?? 0),
+        fat: acc.fat + (e.fat ?? 0),
+      }),
+      { kcal: 0, protein: 0, carbs: 0, fat: 0 }
+    );
+
+  return { entries: rows, totals, remainingTotals };
 }
