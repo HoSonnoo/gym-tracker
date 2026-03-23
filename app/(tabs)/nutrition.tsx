@@ -751,6 +751,7 @@ function MacroProgressBar({ label, value, target, color }: { label: string; valu
 
 function DiarioSection({ date, onDateChange }: DiarioProps) {
   const [logs, setLogs] = useState<NutritionLog[]>([]);
+  const [consumedTotals, setConsumedTotals] = useState<{ kcal: number; protein: number; carbs: number; fat: number } | null>(null);
   const [remainingTotals, setRemainingTotals] = useState<{ kcal: number; protein: number; carbs: number; fat: number } | null>(null);
   const [loading, setLoading] = useState(true);
   const COMPLETED_KEY = '@vyro:piano_completed';
@@ -758,7 +759,6 @@ function DiarioSection({ date, onDateChange }: DiarioProps) {
   const loadLogs = useCallback(async () => {
     setLoading(true);
     try {
-      // Leggi completedEntries da AsyncStorage
       const stored = await AsyncStorage.getItem(COMPLETED_KEY).catch(() => null);
       const completedIds: number[] = stored ? JSON.parse(stored) : [];
 
@@ -767,7 +767,8 @@ function DiarioSection({ date, onDateChange }: DiarioProps) {
         getActivePlanEntriesForToday(completedIds),
       ]);
       setLogs(data);
-      // Usa i macro degli alimenti NON ancora consumati come obiettivo rimanente
+      // Mostra consumed anche se kcal=0 (es. solo integratori) purché ci siano voci spuntate
+      setConsumedTotals(completedIds.length > 0 ? planData.consumedTotals : null);
       setRemainingTotals(planData.remainingTotals.kcal > 0 ? planData.remainingTotals : null);
     } catch {
       Alert.alert('Errore', 'Impossibile caricare il diario.');
@@ -817,28 +818,27 @@ function DiarioSection({ date, onDateChange }: DiarioProps) {
           {/* Grafico torta + kcal */}
           <View style={diarioStyles.chartCard}>
             <View style={diarioStyles.chartRow}>
-              <PieChart protein={totals.protein} carbs={totals.carbs} fat={totals.fat} />
+              <PieChart
+                protein={consumedTotals?.protein ?? 0}
+                carbs={consumedTotals?.carbs ?? 0}
+                fat={consumedTotals?.fat ?? 0}
+              />
               <View style={diarioStyles.kcalBox}>
-                <Text style={diarioStyles.kcalValue}>{Math.round(totals.kcal)}</Text>
-                <Text style={diarioStyles.kcalUnit}>kcal</Text>
+                <Text style={diarioStyles.kcalValue}>{Math.round(consumedTotals?.kcal ?? 0)}</Text>
+                <Text style={diarioStyles.kcalUnit}>kcal assunte</Text>
                 {remainingTotals && (
                   <Text style={diarioStyles.kcalTarget}>
-                    da consumare
-                  </Text>
-                )}
-                {remainingTotals && (
-                  <Text style={diarioStyles.kcalRemaining}>
-                    {Math.round(remainingTotals.kcal)} kcal
+                    ancora {Math.round(remainingTotals.kcal)} kcal
                   </Text>
                 )}
               </View>
             </View>
 
-            {/* Barre macro */}
+            {/* Barre macro — consumed vs remaining */}
             <View style={diarioStyles.barsContainer}>
-              <MacroProgressBar label="Proteine" value={totals.protein} target={remainingTotals?.protein ?? 0} color="#60a5fa" />
-              <MacroProgressBar label="Carboidrati" value={totals.carbs} target={remainingTotals?.carbs ?? 0} color="#fbbf24" />
-              <MacroProgressBar label="Grassi" value={totals.fat} target={remainingTotals?.fat ?? 0} color="#f87171" />
+              <MacroProgressBar label="Proteine" value={consumedTotals?.protein ?? 0} target={(consumedTotals?.protein ?? 0) + (remainingTotals?.protein ?? 0)} color="#60a5fa" />
+              <MacroProgressBar label="Carboidrati" value={consumedTotals?.carbs ?? 0} target={(consumedTotals?.carbs ?? 0) + (remainingTotals?.carbs ?? 0)} color="#fbbf24" />
+              <MacroProgressBar label="Grassi" value={consumedTotals?.fat ?? 0} target={(consumedTotals?.fat ?? 0) + (remainingTotals?.fat ?? 0)} color="#f87171" />
             </View>
 
             {/* Legenda */}
@@ -855,7 +855,7 @@ function DiarioSection({ date, onDateChange }: DiarioProps) {
               ))}
             </View>
 
-            {!remainingTotals && (
+            {!remainingTotals && !consumedTotals && (
               <Text style={diarioStyles.noPlanHint}>
                 💡 Collega un piano alimentare per vedere gli obiettivi giornalieri
               </Text>
