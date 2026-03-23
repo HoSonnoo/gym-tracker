@@ -15,7 +15,7 @@ import {
 } from 'react-native';
 
 const PRIMARY = '#7e47ff';
-const ANTHROPIC_API_KEY = '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';
+const ANTHROPIC_API_KEY = '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';
 
 const SYSTEM_PROMPT = `Sei Vyro Assistant, l'assistente AI integrato nell'app VYRO — un tracker di allenamento e nutrizione.
 
