@@ -1,3 +1,4 @@
+import ChatBot from '@/components/ChatBot';
 import { Colors } from '@/constants/Colors';
 import { Ionicons } from '@expo/vector-icons';
 import { Tabs, useRouter } from 'expo-router';
@@ -18,6 +19,7 @@ function SettingsButton() {
 
 export default function TabsLayout() {
   return (
+    <>
     <Tabs
       screenOptions={{
         headerTitleAlign: 'center',
@@ -92,5 +94,7 @@ export default function TabsLayout() {
         }}
       />
     </Tabs>
+      <ChatBot />
+    </>
   );
 }

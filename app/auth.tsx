@@ -3,8 +3,8 @@ import { useAuth } from '@/context/AuthContext';
 import { supabase } from '@/lib/supabase';
 import * as AppleAuthentication from 'expo-apple-authentication';
 import * as AuthSession from 'expo-auth-session';
-import { useRouter } from 'expo-router';
 import * as WebBrowser from 'expo-web-browser';
+import { useRouter } from 'expo-router';
 import React, { useState } from 'react';
 import {
   ActivityIndicator,
@@ -127,12 +127,30 @@ export default function AuthScreen() {
         redirectUrl
       );
 
-      // Controlla la sessione — potrebbe essere già disponibile
-      const { data: { session } } = await supabase.auth.getSession();
-      if (session) {
-        setShouldNavigate(true);
+      // Breve poll (3 tentativi × 800ms) per dare tempo a Supabase di salvare la sessione
+      let navigated = false;
+      for (let i = 0; i < 3; i++) {
+        await new Promise(r => setTimeout(r, 800));
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session) {
+          setShouldNavigate(true);
+          navigated = true;
+          break;
+        }
       }
-      // Se la sessione non è disponibile, chiudere e riaprire l'app completa il login
+
+      // Se non ha navigato, mostra il messaggio informativo
+      if (!navigated) {
+        Alert.alert(
+          '✅ Accesso effettuato',
+          "Il tuo account Google è stato collegato correttamente.
+
+Chiudi e riapri Vyro per accedere all'app.
+
+Stiamo lavorando per eliminare questo passaggio.",
+          [{ text: 'OK' }]
+        );
+      }
     } catch (error) {
       const msg = error instanceof Error ? error.message : 'Errore sconosciuto';
       Alert.alert('Errore Google', msg);
