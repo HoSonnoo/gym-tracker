@@ -80,21 +80,32 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     const timeout = setTimeout(() => setLoading(false), 5000);
 
-    supabase.auth.getSession().then(async ({ data: { session: s } }) => {
-      clearTimeout(timeout);
-      setSession(s);
-      if (s?.user) {
-        const profile = await fetchProfile(s.user);
-        setUser(profile);
-        setIsGuest(false);
+    // Prima prova getSession, poi refreshSession per recuperare token salvati
+    const initSession = async () => {
+      try {
+        let { data: { session: s } } = await supabase.auth.getSession();
+
+        // Se non c'è sessione, prova a fare refresh (recupera token da storage)
+        if (!s) {
+          const { data: refreshData } = await supabase.auth.refreshSession();
+          s = refreshData.session;
+        }
+
+        clearTimeout(timeout);
+        setSession(s);
+        if (s?.user) {
+          const profile = await fetchProfile(s.user);
+          setUser(profile);
+          setIsGuest(false);
+        }
+      } catch {
+        clearTimeout(timeout);
+      } finally {
+        initialLoadDone.current = true;
+        setLoading(false);
       }
-      initialLoadDone.current = true;
-      setLoading(false);
-    }).catch(() => {
-      clearTimeout(timeout);
-      initialLoadDone.current = true;
-      setLoading(false);
-    });
+    };
+    initSession();
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, s) => {
       setSession(s);
