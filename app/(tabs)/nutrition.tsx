@@ -1,3 +1,4 @@
+import NutritionGuide, { NUTRITION_GUIDE_KEY } from '@/components/NutritionGuide';
 import { Colors } from '@/constants/Colors';
 import {
   addFoodItem,
@@ -3486,6 +3487,16 @@ const pianoStyles = StyleSheet.create({
 export default function NutritionScreen() {
   const [section, setSection] = useState<SectionKey>('diario');
   const [currentDate, setCurrentDate] = useState(todayISO());
+  const [guideShown, setGuideShown] = useState<boolean | null>(null);
+
+  React.useEffect(() => {
+    AsyncStorage.getItem(NUTRITION_GUIDE_KEY).then((val) => {
+      setGuideShown(!!val);
+    });
+  }, []);
+
+  if (guideShown === null) return null; // loading
+  if (!guideShown) return <NutritionGuide onDone={() => setGuideShown(true)} />;
 
   return (
     <View style={styles.safeArea}>

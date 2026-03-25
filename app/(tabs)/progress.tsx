@@ -1,3 +1,4 @@
+import ProgressGuide, { PROGRESS_GUIDE_KEY } from '@/components/ProgressGuide';
 import { Colors } from '@/constants/Colors';
 import { formatWeight, useUserPreferences } from '@/context/UserPreferencesContext';
 import {
@@ -13,6 +14,7 @@ import {
 } from '@/database';
 import { useGuestLimits } from '@/hooks/use-guest-limits';
 import { getHealthDataLast30Days, initHealthKit, type DailyHealthData } from '@/lib/healthkit';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useFocusEffect } from '@react-navigation/native';
 import React, { useCallback, useState } from 'react';
 import {
@@ -914,6 +916,17 @@ const activityStyles = StyleSheet.create({
 export default function ProgressScreen() {
   const { preferences } = useUserPreferences();
   const [activeTab, setActiveTab] = useState<TabKey>('pr');
+  const [guideShown, setGuideShown] = useState<boolean | null>(null);
+
+  React.useEffect(() => {
+    AsyncStorage.getItem(PROGRESS_GUIDE_KEY).then((val) => {
+      setGuideShown(!!val);
+    });
+  }, []);
+
+  if (guideShown === null) return null;
+  if (!guideShown) return <ProgressGuide onDone={() => setGuideShown(true)} />;
+
   const [loading, setLoading] = useState(true);
   const [selectedExercise, setSelectedExercise] = useState<string | null>(null);
 
