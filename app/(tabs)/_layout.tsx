@@ -1,100 +1,149 @@
-import ChatBot from '@/components/ChatBot';
+import { ONBOARDING_KEY } from '@/app/onboarding';
 import { Colors } from '@/constants/Colors';
-import { Ionicons } from '@expo/vector-icons';
-import { Tabs, useRouter } from 'expo-router';
-import { Text, TouchableOpacity } from 'react-native';
+import { AuthProvider, useAuth } from '@/context/AuthContext';
+import { RestTimerProvider } from '@/context/RestTimerContext';
+import { UserPreferencesProvider } from '@/context/UserPreferencesContext';
+import { initDatabase } from '@/database';
+import { initHealthKit } from '@/lib/healthkit';
+import { supabase } from '@/lib/supabase';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as Linking from 'expo-linking';
+import { Stack, useRouter, useSegments } from 'expo-router';
+import { useEffect, useState } from 'react';
+import { ActivityIndicator, View } from 'react-native';
 
-function SettingsButton() {
+function AppNavigator() {
+  const { user, loading, isGuest, justLoggedIn, clearJustLoggedIn } = useAuth();
   const router = useRouter();
+  const segments = useSegments();
+  const [onboardingChecked, setOnboardingChecked] = useState(false);
+
+  // Gestisce il deep link di callback OAuth Google quando l'app si riapre
+  useEffect(() => {
+    const handleUrl = async (url: string) => {
+      if (url && (url.includes('access_token') || url.includes('code='))) {
+        try {
+          await supabase.auth.exchangeCodeForSession(url);
+        } catch {}
+      }
+    };
+
+    // Controlla se l'app è stata aperta da un URL
+    Linking.getInitialURL().then((url) => {
+      if (url) handleUrl(url);
+    });
+
+    // Ascolta futuri deep link
+    const sub = Linking.addEventListener('url', ({ url }) => handleUrl(url));
+    return () => sub.remove();
+  }, []);
+
+  // Gestisce il redirect dopo un nuovo login (es. Google OAuth)
+  useEffect(() => {
+    if (!justLoggedIn || !user) return;
+    clearJustLoggedIn();
+
+    AsyncStorage.getItem(ONBOARDING_KEY).then((val) => {
+      if (!val) {
+        router.replace('/onboarding');
+      } else {
+        router.replace('/(tabs)');
+      }
+    });
+  }, [justLoggedIn, user]);
+
+  // Gestisce redirect auth/guest
+  useEffect(() => {
+    if (loading) return;
+
+    const inAuthScreen = segments[0] === 'auth';
+    const inOnboarding = segments[0] === 'onboarding';
+    const isAuthenticated = !!user || isGuest;
+
+    if (!isAuthenticated && !inAuthScreen) {
+      router.replace('/auth');
+      return;
+    }
+
+    if (isAuthenticated && inAuthScreen) {
+      if (!isGuest && user) {
+        AsyncStorage.getItem(ONBOARDING_KEY).then((val) => {
+          if (!val) {
+            router.replace('/onboarding');
+          } else {
+            router.replace('/(tabs)');
+          }
+        });
+      } else {
+        router.replace('/(tabs)');
+      }
+      return;
+    }
+
+    // Controlla onboarding al primo accesso
+    if (isAuthenticated && !isGuest && user && !inOnboarding && !onboardingChecked) {
+      setOnboardingChecked(true);
+      AsyncStorage.getItem(ONBOARDING_KEY).then((val) => {
+        if (!val) {
+          router.replace('/onboarding');
+        }
+      });
+    }
+  }, [user, isGuest, loading, segments]);
+
+  if (loading) {
+    return (
+      <View style={{ flex: 1, backgroundColor: Colors.dark.background, justifyContent: 'center', alignItems: 'center' }}>
+        <ActivityIndicator size="large" color={Colors.dark.primary} />
+      </View>
+    );
+  }
+
   return (
-    <TouchableOpacity
-      onPress={() => router.push('/settings')}
-      style={{ marginRight: 16, padding: 4 }}
-      activeOpacity={0.7}
-    >
-      <Ionicons name="settings-outline" size={22} color={Colors.dark.textMuted} />
-    </TouchableOpacity>
+    <Stack screenOptions={{ headerShown: false }}>
+      <Stack.Screen name="(tabs)" />
+      <Stack.Screen name="auth" options={{ headerShown: false }} />
+      <Stack.Screen name="onboarding" options={{ headerShown: false, gestureEnabled: false }} />
+      <Stack.Screen name="exercises" />
+      <Stack.Screen name="template/[id]" />
+      <Stack.Screen name="template/exercise/[id]" />
+      <Stack.Screen
+        name="template/exercise/set/[id]"
+        options={{ presentation: 'modal' }}
+      />
+      <Stack.Screen
+        name="settings"
+        options={{ presentation: 'modal', headerShown: false }}
+      />
+    </Stack>
   );
 }
 
-export default function TabsLayout() {
+export default function RootLayout() {
+  const [dbReady, setDbReady] = useState(false);
+
+  useEffect(() => {
+    Promise.all([
+      initDatabase().catch((e) => console.error('Errore DB:', e)),
+      initHealthKit().catch(() => {}), // Richiede permesso HealthKit all'avvio
+    ]).finally(() => setDbReady(true));
+  }, []);
+
+  if (!dbReady) {
+    return (
+      <View style={{ flex: 1, backgroundColor: Colors.dark.background, justifyContent: 'center', alignItems: 'center' }}>
+        <ActivityIndicator size="large" color={Colors.dark.primary} />
+      </View>
+    );
+  }
+
   return (
-    <>
-    <Tabs
-      screenOptions={{
-        headerTitleAlign: 'center',
-        headerStyle: { backgroundColor: Colors.dark.background },
-        headerTitleStyle: { color: Colors.dark.text, fontWeight: '700' },
-        headerShadowVisible: false,
-        headerRight: () => <SettingsButton />,
-        sceneStyle: { backgroundColor: Colors.dark.background },
-        tabBarStyle: {
-          backgroundColor: Colors.dark.surface,
-          borderTopColor: Colors.dark.border,
-          height: 68,
-          paddingBottom: 10,
-          paddingTop: 8,
-        },
-        tabBarActiveTintColor: Colors.dark.tabIconSelected,
-        tabBarInactiveTintColor: Colors.dark.tabIconDefault,
-        tabBarLabel: ({ focused, color, children }) =>
-          focused ? (
-            <Text
-              numberOfLines={1}
-              style={{ fontSize: 10, fontWeight: '700', color, letterSpacing: -0.3 }}
-            >
-              {children}
-            </Text>
-          ) : null,
-      }}
-    >
-      <Tabs.Screen
-        name="index"
-        options={{
-          title: '',
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="today-outline" size={size} color={color} />
-          ),
-        }}
-      />
-      <Tabs.Screen
-        name="workouts"
-        options={{
-          title: '',
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="barbell-outline" size={size} color={color} />
-          ),
-        }}
-      />
-      <Tabs.Screen
-        name="nutrition"
-        options={{
-          title: '',
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="nutrition-outline" size={size} color={color} />
-          ),
-        }}
-      />
-      <Tabs.Screen
-        name="calendar"
-        options={{
-          title: '',
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="calendar-outline" size={size} color={color} />
-          ),
-        }}
-      />
-      <Tabs.Screen
-        name="progress"
-        options={{
-          title: '',
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="stats-chart-outline" size={size} color={color} />
-          ),
-        }}
-      />
-    </Tabs>
-      <ChatBot />
-    </>
+    <AuthProvider>
+      <UserPreferencesProvider>
+        <RestTimerProvider>
+          <AppNavigator />
+        </RestTimerProvider>
+      </UserPreferencesProvider>
+    </AuthProvider>
   );
 }

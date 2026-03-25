@@ -1,40 +1,54 @@
 import { Colors } from '@/constants/Colors';
+import { useAuth } from '@/context/AuthContext';
 import React, { useEffect, useRef, useState } from 'react';
 import {
-    Animated,
-    Easing,
-    FlatList,
-    KeyboardAvoidingView,
-    Modal,
-    Platform,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
+  Animated,
+  Easing,
+  FlatList,
+  KeyboardAvoidingView,
+  Modal,
+  Platform,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from 'react-native';
 
 const PRIMARY = '#7e47ff';
 const ANTHROPIC_API_KEY = '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';
 
-const SYSTEM_PROMPT = `Sei Vyro Assistant, l'assistente AI integrato nell'app VYRO — un tracker di allenamento e nutrizione.
+const SYSTEM_PROMPT = `Sei Vyro Assistant, l'assistente AI integrato nell'app VYRO — un tracker di allenamento e nutrizione per atleti seri.
 
-Rispondi SEMPRE in italiano, in modo chiaro, amichevole e conciso.
+Rispondi SEMPRE in italiano, in modo chiaro, diretto e tecnicamente preciso.
 
-FUNZIONALITÀ DELL'APP che conosci:
-- ALLENAMENTI: creazione template con esercizi e serie, sessioni reali da template, timer recupero con notifica, drag & drop ordine esercizi, personal record automatici
-- NUTRIZIONE: diario alimentare giornaliero, catalogo alimenti con Open Food Facts, piano alimentare (importabile da PDF tramite AI), tracciamento acqua, peso corporeo con fasi Bulk/Cut, ricette manuali o da PDF
-- PROGRESSI: grafici PR, volume, frequenza, peso corporeo, attività (passi/distanza/calorie da Apple Salute)
+FUNZIONALITÀ DELL'APP:
+- ALLENAMENTI: template con esercizi e serie (tipo, peso, reps, RIR/RPE/buffer), sessioni reali, timer recupero con notifica, drag & drop, personal record automatici
+- NUTRIZIONE: diario alimentare, catalogo alimenti Open Food Facts, piano alimentare importabile da PDF via AI, tracciamento acqua, peso corporeo con fasi Bulk/Cut, ricette
+- PROGRESSI: grafici PR, volume, frequenza, peso, attività Apple Salute (passi, distanza, calorie)
 - CALENDARIO: storico sessioni e alimentazione
-- ACCOUNT: registrazione email, accesso Google/Apple, modalità ospite con limiti, sync cloud Supabase, backup/export dati JSON e CSV, import dati, reset selettivo
+- ACCOUNT: email/Google/Apple, modalità ospite con limiti, sync cloud, backup JSON/CSV, reset selettivo
 
-RISPONDI a:
-1. Domande su come usare l'app (es. "come creo un esercizio?", "come importo un piano PDF?")
-2. Domande su fitness e allenamento (es. "quante volte allenarsi a settimana?", "cos'è il volume di allenamento?")
-3. Domande su nutrizione (es. "quante proteine dovrei mangiare?", "cosa significa Bulk/Cut?")
-4. Domande sui dati e funzionalità (es. "cosa si resetta con il reset selettivo?")
+TERMINOLOGIA FITNESS — definizioni precise:
+- BUFFER / RIR (Reps In Reserve): serie eseguita lasciando ripetizioni in riserva, non a cedimento. Es. "buffer 2" significa che potresti fare ancora 2 reps prima del cedimento. Usato per gestire il fatigue accumulato e programmare la progressione in modo sostenibile.
+- RPE (Rate of Perceived Exertion): scala 1-10 dello sforzo percepito. RPE 10 = cedimento muscolare, RPE 8 = buffer 2, RPE 7 = buffer 3.
+- VOLUME: numero totale di serie per gruppo muscolare per settimana. Il volume efficace produce adattamento ipertrofico.
+- PROGRESSIVE OVERLOAD: aumento progressivo dello stimolo allenante nel tempo (più peso, più reps, più serie, meno recupero).
+- BULK: fase di surplus calorico per massimizzare la sintesi proteica muscolare. Surplus consigliato: 200-400 kcal/giorno.
+- CUT: fase di deficit calorico per ridurre il grasso corporeo preservando la massa muscolare. Deficit consigliato: 300-500 kcal/giorno.
+- TDEE: Total Daily Energy Expenditure — fabbisogno calorico totale giornaliero inclusa l'attività fisica.
+- DELOAD: settimana di scarico con volume ridotto del 40-60% per favorire il recupero e supercompensazione.
+- AMRAP: As Many Reps As Possible — serie eseguita fino al cedimento.
+- DROP SET: dopo il cedimento, riduzione immediata del peso (20-30%) e proseguimento senza recupero.
+- SUPERSET: due esercizi eseguiti in sequenza senza recupero tra loro.
+- IPERTROFIA: aumento del volume delle fibre muscolari. Range ottimale: 6-20 reps, RIR 0-3.
+- FORZA MASSIMALE: capacità di esprimere forza massima. Range: 1-5 reps, intensità 85-100% 1RM.
+- MACRONUTRIENTI: proteine (4 kcal/g), carboidrati (4 kcal/g), grassi (9 kcal/g).
+- PROTEINE: fabbisogno per atleti: 1.6-2.2g per kg di peso corporeo. Priorità assoluta in cut.
+- CREATINA MONOIDRATO: integratore con le maggiori evidenze scientifiche per forza e ipertrofia. Dose: 3-5g/giorno, non serve il loading.
+- 1RM: One Rep Maximum — carico massimale sollevabile per una sola ripetizione.
 
-Se non sai qualcosa di specifico sull'app, dillo chiaramente. Sii breve: risposte di 2-4 frasi salvo quando serve più dettaglio.`;
+Fornisci risposte complete e tecnicamente accurate. Per termini tecnici dai sempre la definizione precisa con contesto pratico d'uso. Non essere vago.`;
 
 type Message = {
   id: string;
@@ -43,6 +57,7 @@ type Message = {
 };
 
 export default function ChatBot() {
+  const { isRegistered } = useAuth();
   const [open, setOpen] = useState(false);
   const [messages, setMessages] = useState<Message[]>([
     {
@@ -118,16 +133,18 @@ export default function ChatBot() {
 
   return (
     <>
-      {/* Bottone flottante animato */}
-      <Animated.View style={[styles.fab, { transform: [{ scale: pulse }] }]}>
-        <TouchableOpacity
-          style={styles.fabInner}
-          onPress={() => setOpen(true)}
-          activeOpacity={0.85}
-        >
-          <Text style={styles.fabEmoji}>🤖</Text>
-        </TouchableOpacity>
-      </Animated.View>
+      {/* Bottone flottante — solo per utenti registrati */}
+      {isRegistered && (
+        <Animated.View style={[styles.fab, { transform: [{ scale: pulse }] }]}>
+          <TouchableOpacity
+            style={styles.fabInner}
+            onPress={() => setOpen(true)}
+            activeOpacity={0.85}
+          >
+            <Text style={styles.fabEmoji}>🤖</Text>
+          </TouchableOpacity>
+        </Animated.View>
+      )}
 
       {/* Modal chat */}
       <Modal visible={open} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setOpen(false)}>
