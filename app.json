@@ -11,7 +11,7 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.hosonno.gymtracker",
-      "buildNumber": "22",
+      "buildNumber": "23",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
         "UIFileSharingEnabled": true,
@@ -23,8 +23,8 @@
             ]
           }
         ],
-        "NSHealthShareUsageDescription": "Vyro legge i tuoi passi, distanza e calorie dall'app Salute per mostrarti i progressi di attivit\u00e0.",
-        "NSHealthUpdateUsageDescription": "Vyro pu\u00f2 scrivere dati sull'app Salute."
+        "NSHealthShareUsageDescription": "Vyro legge i tuoi passi, distanza e calorie dall'app Salute per mostrarti i progressi di attività.",
+        "NSHealthUpdateUsageDescription": "Vyro può scrivere dati sull'app Salute."
       },
       "entitlements": {
         "com.apple.developer.healthkit": true,
@@ -73,8 +73,8 @@
       [
         "react-native-health",
         {
-          "NSHealthShareUsageDescription": "Vyro legge i tuoi passi, distanza e calorie dall'app Salute per mostrarti i progressi di attivit\u00e0.",
-          "NSHealthUpdateUsageDescription": "Vyro pu\u00f2 scrivere dati sull'app Salute."
+          "NSHealthShareUsageDescription": "Vyro legge i tuoi passi, distanza e calorie dall'app Salute per mostrarti i progressi di attività.",
+          "NSHealthUpdateUsageDescription": "Vyro può scrivere dati sull'app Salute."
         }
       ]
     ],
