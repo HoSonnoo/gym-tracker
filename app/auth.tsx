@@ -139,14 +139,7 @@ export default function AuthScreen() {
         }
       }
 
-      // Se non ha navigato, mostra il messaggio informativo
-      if (!navigated) {
-        Alert.alert(
-          '\u2705 Accesso effettuato',
-          `Il tuo account Google \u00e8 stato collegato correttamente.\n\nChiudi e riapri Vyro per accedere all\u2019app.\n\nStiamo lavorando per eliminare questo passaggio.`,
-          [{ text: 'OK' }]
-        );
-      }
+      // Il login è avvenuto — se non navigato, il testo sotto il bottone informa l'utente
     } catch (error) {
       const msg = error instanceof Error ? error.message : 'Errore sconosciuto';
       Alert.alert('Errore Google', msg);
@@ -317,9 +310,12 @@ export default function AuthScreen() {
                 </>
               )}
             </TouchableOpacity>
-            <Text style={styles.googleNote}>
-              Dopo aver scelto l'account Google, chiudi e riapri Vyro per completare l'accesso.
-            </Text>
+            <View style={styles.googleNoteBox}>
+              <Text style={styles.googleNoteIcon}>ℹ️</Text>
+              <Text style={styles.googleNote}>
+                Dopo aver scelto l'account Google, chiudi e riapri Vyro per completare l'accesso.
+              </Text>
+            </View>
           </View>
 
           {/* Divisore */}
@@ -440,13 +436,26 @@ const styles = StyleSheet.create({
     height: 50,
     width: '100%',
   },
+  googleNoteBox: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+    backgroundColor: 'rgba(126,71,255,0.08)',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(126,71,255,0.25)',
+    padding: 12,
+    marginTop: 10,
+  },
+  googleNoteIcon: {
+    fontSize: 14,
+    marginTop: 1,
+  },
   googleNote: {
-    fontSize: 11,
-    color: Colors.dark.textMuted,
-    textAlign: 'center',
-    marginTop: 6,
-    paddingHorizontal: 8,
-    lineHeight: 16,
+    flex: 1,
+    fontSize: 13,
+    color: Colors.dark.text,
+    lineHeight: 18,
   },
   guestBtn: {
     backgroundColor: Colors.dark.surface,
