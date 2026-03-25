@@ -5,7 +5,9 @@ import { RestTimerProvider } from '@/context/RestTimerContext';
 import { UserPreferencesProvider } from '@/context/UserPreferencesContext';
 import { initDatabase } from '@/database';
 import { initHealthKit } from '@/lib/healthkit';
+import { supabase } from '@/lib/supabase';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as Linking from 'expo-linking';
 import { Stack, useRouter, useSegments } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, View } from 'react-native';
@@ -15,6 +17,26 @@ function AppNavigator() {
   const router = useRouter();
   const segments = useSegments();
   const [onboardingChecked, setOnboardingChecked] = useState(false);
+
+  // Gestisce il deep link di callback OAuth Google quando l'app si riapre
+  useEffect(() => {
+    const handleUrl = async (url: string) => {
+      if (url && (url.includes('access_token') || url.includes('code='))) {
+        try {
+          await supabase.auth.exchangeCodeForSession(url);
+        } catch {}
+      }
+    };
+
+    // Controlla se l'app è stata aperta da un URL
+    Linking.getInitialURL().then((url) => {
+      if (url) handleUrl(url);
+    });
+
+    // Ascolta futuri deep link
+    const sub = Linking.addEventListener('url', ({ url }) => handleUrl(url));
+    return () => sub.remove();
+  }, []);
 
   // Gestisce il redirect dopo un nuovo login (es. Google OAuth)
   useEffect(() => {
