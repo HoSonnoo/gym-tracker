@@ -3,8 +3,8 @@ import { useAuth } from '@/context/AuthContext';
 import { supabase } from '@/lib/supabase';
 import * as AppleAuthentication from 'expo-apple-authentication';
 import * as AuthSession from 'expo-auth-session';
-import * as WebBrowser from 'expo-web-browser';
 import { useRouter } from 'expo-router';
+import * as WebBrowser from 'expo-web-browser';
 import React, { useState } from 'react';
 import {
   ActivityIndicator,
@@ -142,12 +142,8 @@ export default function AuthScreen() {
       // Se non ha navigato, mostra il messaggio informativo
       if (!navigated) {
         Alert.alert(
-          '✅ Accesso effettuato',
-          "Il tuo account Google è stato collegato correttamente.
-
-Chiudi e riapri Vyro per accedere all'app.
-
-Stiamo lavorando per eliminare questo passaggio.",
+          '\u2705 Accesso effettuato',
+          `Il tuo account Google \u00e8 stato collegato correttamente.\n\nChiudi e riapri Vyro per accedere all\u2019app.\n\nStiamo lavorando per eliminare questo passaggio.`,
           [{ text: 'OK' }]
         );
       }
