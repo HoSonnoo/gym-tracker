@@ -761,14 +761,23 @@ function DiarioSection({ date, onDateChange }: DiarioProps) {
     setLoading(true);
     try {
       const stored = await AsyncStorage.getItem(COMPLETED_KEY).catch(() => null);
-      const completedIds: number[] = stored ? JSON.parse(stored) : [];
+      const storedIds: number[] = stored ? JSON.parse(stored) : [];
+
+      // Carica prima il piano per ottenere gli entry IDs validi
+      const planDataInit = await getActivePlanEntriesForToday([]);
+      const validEntryIds = new Set(planDataInit.entries.map((e: any) => e.id));
+
+      // Filtra: mantieni solo gli ID spuntati che esistono ancora nel piano
+      const completedIds = storedIds.filter((id) => validEntryIds.has(id));
+      if (completedIds.length !== storedIds.length) {
+        await AsyncStorage.setItem(COMPLETED_KEY, JSON.stringify(completedIds)).catch(() => {});
+      }
 
       const [data, planData] = await Promise.all([
         getNutritionLogsByDate(date),
         getActivePlanEntriesForToday(completedIds),
       ]);
       setLogs(data);
-      // Mostra consumed anche se kcal=0 (es. solo integratori) purché ci siano voci spuntate
       setConsumedTotals(completedIds.length > 0 ? planData.consumedTotals : null);
       setRemainingTotals(planData.remainingTotals.kcal > 0 ? planData.remainingTotals : null);
     } catch {
@@ -2606,7 +2615,7 @@ function PianoSection() {
 
 // ─── Day Assign Modal ─────────────────────────────────────────────────────────
 
-const WEEKDAYS = ['Dom', 'Lun', 'Mar', 'Mer', 'Gio', 'Ven', 'Sab'];
+const WEEKDAYS = ['Lun', 'Mar', 'Mer', 'Gio', 'Ven', 'Sab', 'Dom'];
 
 function DayAssignModal({ visible, planId, onClose, onSaved }: {
   visible: boolean;
@@ -3073,7 +3082,7 @@ function EditEntryModal({ entry, onClose, onSaved }: {
     }
     try {
       setSaving(true);
-      await updateMealPlanEntry(entry.id, g, parseField(kcal), parseField(protein), parseField(carbs), parseField(fat));
+      await updateMealPlanEntry(entry.id, foodName.trim() || entry.food_name, g, parseField(kcal), parseField(protein), parseField(carbs), parseField(fat));
       onSaved();
     } catch {
       Alert.alert('Errore', `Impossibile salvare le modifiche.`);

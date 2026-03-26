@@ -2,11 +2,11 @@ import { Colors } from '@/constants/Colors';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import React, { useState } from 'react';
 import {
-    Pressable,
-    ScrollView,
-    StyleSheet,
-    Text,
-    View,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
 } from 'react-native';
 
 const PRIMARY = '#7e47ff';
@@ -21,7 +21,7 @@ const STEPS = [
   {
     emoji: '📋',
     title: 'Piano alimentare',
-    description: 'Crea un piano settimanale manualmente oppure importa direttamente il PDF del tuo nutrizionista — Claude lo legge e lo struttura automaticamente.',
+    description: 'Crea un piano settimanale manualmente oppure importa direttamente il PDF del tuo nutrizionista — Vyro lo legge e lo struttura automaticamente.',
   },
   {
     emoji: '🍳',
