@@ -1,12 +1,12 @@
 import { Colors } from '@/constants/Colors';
-import { useGuestLimits } from '@/hooks/use-guest-limits';
 import {
   addExercise,
   deleteExercise,
-  updateExercise,
   Exercise,
   getExercises,
+  updateExercise,
 } from '@/database';
+import { useGuestLimits } from '@/hooks/use-guest-limits';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useState } from 'react';
 import {
@@ -14,8 +14,8 @@ import {
   FlatList,
   Pressable,
   StyleSheet,
-  TextInput,
   Text,
+  TextInput,
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -75,7 +75,7 @@ export default function ExercisesScreen() {
       setRenamingExercise(null);
       await loadExercises();
     } catch {
-      Alert.alert('Errore', 'Impossibile rinominare l'esercizio.');
+      Alert.alert('Errore', `Impossibile rinominare l’esercizio.`);
     }
   };
 
