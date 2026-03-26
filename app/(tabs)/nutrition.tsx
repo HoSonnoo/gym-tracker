@@ -2615,7 +2615,7 @@ function PianoSection() {
 
 // ─── Day Assign Modal ─────────────────────────────────────────────────────────
 
-const WEEKDAYS = ['Lun', 'Mar', 'Mer', 'Gio', 'Ven', 'Sab', 'Dom'];
+const WEEKDAYS = ['Dom', 'Lun', 'Mar', 'Mer', 'Gio', 'Ven', 'Sab'];
 
 function DayAssignModal({ visible, planId, onClose, onSaved }: {
   visible: boolean;
@@ -3498,14 +3498,41 @@ export default function NutritionScreen() {
   const [currentDate, setCurrentDate] = useState(todayISO());
   const [guideShown, setGuideShown] = useState<boolean | null>(null);
 
-  React.useEffect(() => {
-    AsyncStorage.getItem(NUTRITION_GUIDE_KEY).then((val) => {
-      setGuideShown(!!val);
-    });
+  const [guidePhase, setGuidePhase] = useState<'empty' | 'has_catalog' | 'ready'>('empty');
+
+  const checkShouldShowGuide = useCallback(async () => {
+    try {
+      const seen = await AsyncStorage.getItem(NUTRITION_GUIDE_KEY);
+      if (seen) { setGuideShown(true); return; }
+
+      const [logs, plans, foods] = await Promise.all([
+        getNutritionLogsByDate(todayISO()),
+        getMealPlans(),
+        getFoodItems(),
+      ]);
+
+      const hasLogs = logs.length > 0 || plans.length > 0;
+      const hasFoods = foods.length > 0;
+
+      if (hasLogs) {
+        await AsyncStorage.setItem(NUTRITION_GUIDE_KEY, 'true');
+        setGuideShown(true);
+      } else if (hasFoods) {
+        setGuidePhase('has_catalog');
+        setGuideShown(false);
+      } else {
+        setGuidePhase('empty');
+        setGuideShown(false);
+      }
+    } catch {
+      setGuideShown(true);
+    }
   }, []);
 
-  if (guideShown === null) return null; // loading
-  if (!guideShown) return <NutritionGuide onDone={() => setGuideShown(true)} />;
+  useFocusEffect(useCallback(() => { checkShouldShowGuide(); }, [checkShouldShowGuide]));
+
+  if (guideShown === null) return null;
+  if (!guideShown) return <NutritionGuide phase={guidePhase} onDone={() => setGuideShown(true)} />;
 
   return (
     <View style={styles.safeArea}>

@@ -1,11 +1,12 @@
 import { Colors } from '@/constants/Colors';
+import { useGuestLimits } from '@/hooks/use-guest-limits';
 import {
   addExercise,
   deleteExercise,
+  updateExercise,
   Exercise,
   getExercises,
 } from '@/database';
-import { useGuestLimits } from '@/hooks/use-guest-limits';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useState } from 'react';
 import {
@@ -13,6 +14,7 @@ import {
   FlatList,
   Pressable,
   StyleSheet,
+  TextInput,
   Text,
   TextInput,
   View,
@@ -27,6 +29,8 @@ export default function ExercisesScreen() {
   const [name, setName] = useState('');
   const [category, setCategory] = useState('');
   const [isSaving, setIsSaving] = useState(false);
+  const [renamingExercise, setRenamingExercise] = useState<Exercise | null>(null);
+  const [renameValue, setRenameValue] = useState('');
 
   const loadExercises = useCallback(async () => {
     try {
@@ -55,6 +59,26 @@ export default function ExercisesScreen() {
       setIsSaving(false);
     }
   }, [name, category, loadExercises]);
+
+  const handleRenameExercise = (exercise: Exercise) => {
+    setRenameValue(exercise.name);
+    setRenamingExercise(exercise);
+  };
+
+  const handleConfirmRename = async () => {
+    if (!renamingExercise || !renameValue.trim()) return;
+    if (renameValue.trim() === renamingExercise.name) {
+      setRenamingExercise(null);
+      return;
+    }
+    try {
+      await updateExercise(renamingExercise.id, renameValue.trim());
+      setRenamingExercise(null);
+      await loadExercises();
+    } catch {
+      Alert.alert('Errore', 'Impossibile rinominare l'esercizio.');
+    }
+  };
 
   const handleDeleteExercise = useCallback(
     (exercise: Exercise) => {
@@ -141,6 +165,30 @@ export default function ExercisesScreen() {
           </Text>
         </View>
 
+        {/* Modal rinomina esercizio */}
+        {renamingExercise && (
+          <View style={styles.renameModal}>
+            <Text style={styles.renameModalTitle}>Rinomina esercizio</Text>
+            <TextInput
+              value={renameValue}
+              onChangeText={setRenameValue}
+              style={styles.renameInput}
+              placeholder="Nuovo nome"
+              placeholderTextColor={Colors.dark.textMuted}
+              autoFocus
+              selectTextOnFocus
+            />
+            <View style={styles.renameModalActions}>
+              <Pressable style={styles.renameConfirmBtn} onPress={handleConfirmRename}>
+                <Text style={styles.renameConfirmBtnText}>Salva</Text>
+              </Pressable>
+              <Pressable style={styles.renameCancelBtn} onPress={() => setRenamingExercise(null)}>
+                <Text style={styles.renameCancelBtnText}>Annulla</Text>
+              </Pressable>
+            </View>
+          </View>
+        )}
+
         <FlatList
           data={exercises}
           keyExtractor={(item) => item.id.toString()}
@@ -156,12 +204,20 @@ export default function ExercisesScreen() {
                   </Text>
                 </View>
 
-                <Pressable
-                  style={styles.deleteButton}
-                  onPress={() => handleDeleteExercise(item)}
-                >
-                  <Text style={styles.deleteButtonText}>Elimina</Text>
-                </Pressable>
+                <View style={{ flexDirection: 'row', gap: 8 }}>
+                  <Pressable
+                    style={styles.renameButton}
+                    onPress={() => handleRenameExercise(item)}
+                  >
+                    <Text style={styles.renameButtonText}>Modifica</Text>
+                  </Pressable>
+                  <Pressable
+                    style={styles.deleteButton}
+                    onPress={() => handleDeleteExercise(item)}
+                  >
+                    <Text style={styles.deleteButtonText}>Elimina</Text>
+                  </Pressable>
+                </View>
               </View>
             </View>
           )}
@@ -307,6 +363,73 @@ const styles = StyleSheet.create({
   exerciseCategory: {
     fontSize: 14,
     color: Colors.dark.textMuted,
+  },
+  renameButton: {
+    backgroundColor: 'rgba(126,71,255,0.12)',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderWidth: 1,
+    borderColor: 'rgba(126,71,255,0.35)',
+  },
+  renameButtonText: {
+    color: '#7e47ff',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  renameModal: {
+    backgroundColor: Colors.dark.surface,
+    borderRadius: 16,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: Colors.dark.border,
+    marginBottom: 16,
+    gap: 12,
+  },
+  renameModalTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: Colors.dark.text,
+  },
+  renameInput: {
+    backgroundColor: Colors.dark.background,
+    borderWidth: 1,
+    borderColor: Colors.dark.border,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    fontSize: 15,
+    color: Colors.dark.text,
+  },
+  renameModalActions: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  renameConfirmBtn: {
+    flex: 1,
+    backgroundColor: '#7e47ff',
+    borderRadius: 10,
+    paddingVertical: 12,
+    alignItems: 'center',
+  },
+  renameConfirmBtnText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  renameCancelBtn: {
+    flex: 1,
+    backgroundColor: Colors.dark.surfaceSoft,
+    borderRadius: 10,
+    paddingVertical: 12,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: Colors.dark.border,
+  },
+  renameCancelBtnText: {
+    color: Colors.dark.textMuted,
+    fontSize: 14,
+    fontWeight: '700',
   },
   deleteButton: {
     backgroundColor: 'rgba(239, 68, 68, 0.14)',

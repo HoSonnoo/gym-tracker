@@ -1,6 +1,6 @@
 import { Colors } from '@/constants/Colors';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import React, { useState } from 'react';
+import { useRouter } from 'expo-router';
+import React from 'react';
 import {
   Pressable,
   ScrollView,
@@ -12,53 +12,16 @@ import {
 const PRIMARY = '#7e47ff';
 export const NUTRITION_GUIDE_KEY = '@vyro:nutrition_guide_seen';
 
-const STEPS = [
-  {
-    emoji: '📓',
-    title: 'Diario',
-    description: 'Ogni giorno trovi il tuo riepilogo macro con grafico a torta. Collega un piano alimentare per vedere gli obiettivi giornalieri e quanto ti manca.',
-  },
-  {
-    emoji: '📋',
-    title: 'Piano alimentare',
-    description: 'Crea un piano settimanale manualmente oppure importa direttamente il PDF del tuo nutrizionista — Vyro lo legge e lo struttura automaticamente.',
-  },
-  {
-    emoji: '🍳',
-    title: 'Ricette',
-    description: 'Salva le tue ricette preferite con ingredienti, procedimento e macro calcolati. Puoi anche importarle da PDF.',
-  },
-  {
-    emoji: '⚖️',
-    title: 'Corpo',
-    description: 'Registra il tuo peso corporeo nel tempo e tagga ogni misurazione con la fase attuale: Bulk o Cut.',
-  },
-  {
-    emoji: '🔍',
-    title: 'Catalogo',
-    description: 'Cerca milioni di alimenti tramite Open Food Facts o aggiungine di personalizzati. Tutti i macro vengono calcolati automaticamente.',
-  },
-];
+type GuidePhase = 'empty' | 'has_catalog' | 'ready';
 
-export default function NutritionGuide({ onDone }: { onDone: () => void }) {
-  const [step, setStep] = useState(0);
-
-  const handleNext = async () => {
-    if (step < STEPS.length - 1) {
-      setStep(step + 1);
-    } else {
-      await AsyncStorage.setItem(NUTRITION_GUIDE_KEY, 'true');
-      onDone();
-    }
-  };
-
-  const handleSkip = async () => {
-    await AsyncStorage.setItem(NUTRITION_GUIDE_KEY, 'true');
-    onDone();
-  };
-
-  const current = STEPS[step];
-  const isLast = step === STEPS.length - 1;
+export default function NutritionGuide({
+  phase,
+  onDone,
+}: {
+  phase: GuidePhase;
+  onDone: () => void;
+}) {
+  const router = useRouter();
 
   return (
     <ScrollView
@@ -73,60 +36,110 @@ export default function NutritionGuide({ onDone }: { onDone: () => void }) {
         <Text style={styles.welcomeEmoji}>🥗</Text>
         <Text style={styles.welcomeTitle}>Benvenuto in Alimentazione</Text>
         <Text style={styles.welcomeText}>
-          Traccia la tua nutrizione, gestisci piani alimentari e monitora il corpo. Scopri come funziona ogni sezione.
+          Traccia i tuoi pasti, gestisci piani alimentari e monitora il corpo.
+          Inizia aggiungendo i tuoi primi alimenti.
         </Text>
       </View>
 
-      {/* Step card attivo */}
-      <View style={styles.activeCard}>
-        <Text style={styles.activeEmoji}>{current.emoji}</Text>
-        <Text style={styles.activeTitle}>{current.title}</Text>
-        <Text style={styles.activeDescription}>{current.description}</Text>
-      </View>
-
-      {/* Dots */}
-      <View style={styles.dots}>
-        {STEPS.map((_, i) => (
-          <Pressable key={i} onPress={() => setStep(i)}>
-            <View style={[styles.dot, i === step && styles.dotActive]} />
-          </Pressable>
-        ))}
-      </View>
-
-      {/* Step list (tutti gli step come preview) */}
-      <View style={styles.stepList}>
-        {STEPS.map((s, i) => (
-          <Pressable key={i} onPress={() => setStep(i)} style={[styles.stepRow, i === step && styles.stepRowActive]}>
-            <View style={[styles.stepBadge, i < step && styles.stepBadgeDone, i === step && styles.stepBadgeCurrent]}>
-              <Text style={styles.stepBadgeText}>{i < step ? '✓' : s.emoji}</Text>
-            </View>
-            <Text style={[styles.stepLabel, i === step && styles.stepLabelActive]}>
-              {s.title}
+      {/* Step 1 — Catalogo */}
+      <View style={[
+        styles.stepCard,
+        phase !== 'empty' && styles.stepCardCompleted,
+      ]}>
+        <View style={styles.stepHeader}>
+          <View style={[
+            styles.stepBadge,
+            phase !== 'empty' && styles.stepBadgeDone,
+          ]}>
+            <Text style={styles.stepBadgeText}>
+              {phase !== 'empty' ? '✓' : '1'}
             </Text>
-          </Pressable>
-        ))}
+          </View>
+          <Text style={[
+            styles.stepTitle,
+            phase !== 'empty' && styles.stepTitleDone,
+          ]}>
+            Aggiungi alimenti al catalogo
+          </Text>
+        </View>
+        {phase === 'empty' && (
+          <>
+            <Text style={styles.stepText}>
+              Il catalogo è il tuo archivio personale di alimenti con i relativi macro.
+              Puoi aggiungerne manualmente o cercarli online tramite Open Food Facts.
+            </Text>
+            <Pressable
+              style={styles.stepButton}
+              onPress={onDone}
+            >
+              <Text style={styles.stepButtonText}>Vai al catalogo →</Text>
+            </Pressable>
+          </>
+        )}
       </View>
 
-      {/* Bottoni */}
-      <Pressable style={styles.nextBtn} onPress={handleNext}>
-        <Text style={styles.nextBtnText}>
-          {isLast ? 'Inizia →' : 'Avanti →'}
-        </Text>
-      </Pressable>
+      {/* Step 2 — Diario */}
+      <View style={[
+        styles.stepCard,
+        phase === 'empty' && styles.stepCardMuted,
+      ]}>
+        <View style={styles.stepHeader}>
+          <View style={[
+            styles.stepBadge,
+            phase === 'empty' && styles.stepBadgeMuted,
+          ]}>
+            <Text style={[
+              styles.stepBadgeText,
+              phase === 'empty' && styles.stepBadgeTextMuted,
+            ]}>2</Text>
+          </View>
+          <Text style={[
+            styles.stepTitle,
+            phase === 'empty' && { color: Colors.dark.textMuted },
+          ]}>
+            Registra i tuoi pasti
+          </Text>
+        </View>
+        {phase === 'has_catalog' && (
+          <>
+            <Text style={styles.stepText}>
+              Nel tab Diario puoi aggiungere gli alimenti ai tuoi pasti giornalieri
+              e vedere il riepilogo di calorie e macro.
+            </Text>
+            <Pressable style={styles.stepButton} onPress={onDone}>
+              <Text style={styles.stepButtonText}>Vai al diario →</Text>
+            </Pressable>
+          </>
+        )}
+        {phase === 'empty' && (
+          <Text style={styles.stepTextMuted}>
+            Disponibile dopo aver aggiunto almeno un alimento al catalogo.
+          </Text>
+        )}
+      </View>
 
-      {!isLast && (
-        <Pressable onPress={handleSkip} style={styles.skipBtn}>
-          <Text style={styles.skipBtnText}>Salta la guida</Text>
-        </Pressable>
-      )}
+      {/* Step 3 — Piano */}
+      <View style={[styles.stepCard, styles.stepCardMuted]}>
+        <View style={styles.stepHeader}>
+          <View style={[styles.stepBadge, styles.stepBadgeMuted]}>
+            <Text style={[styles.stepBadgeText, styles.stepBadgeTextMuted]}>3</Text>
+          </View>
+          <Text style={[styles.stepTitle, { color: Colors.dark.textMuted }]}>
+            Importa un piano alimentare
+          </Text>
+        </View>
+        <Text style={styles.stepTextMuted}>
+          Carica il PDF del tuo nutrizionista e Claude lo strutturerà automaticamente.
+        </Text>
+      </View>
     </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.dark.background },
-  content: { padding: 20, paddingBottom: 40, gap: 16 },
-  pageTitle: { fontSize: 30, fontWeight: '800', color: Colors.dark.text, marginBottom: 4 },
+  content: { padding: 20, paddingBottom: 40, gap: 14 },
+  pageTitle: { fontSize: 30, fontWeight: '800', color: Colors.dark.text },
   welcomeCard: {
     backgroundColor: 'rgba(126,71,255,0.1)',
     borderRadius: 20,
@@ -139,54 +152,43 @@ const styles = StyleSheet.create({
   welcomeEmoji: { fontSize: 40 },
   welcomeTitle: { fontSize: 20, fontWeight: '800', color: Colors.dark.text, textAlign: 'center' },
   welcomeText: { fontSize: 14, color: Colors.dark.textMuted, textAlign: 'center', lineHeight: 20 },
-  activeCard: {
+  stepCard: {
     backgroundColor: Colors.dark.surface,
     borderRadius: 18,
-    padding: 20,
-    borderWidth: 1,
-    borderColor: PRIMARY,
-    gap: 8,
-    alignItems: 'center',
-  },
-  activeEmoji: { fontSize: 44, marginBottom: 4 },
-  activeTitle: { fontSize: 22, fontWeight: '800', color: Colors.dark.text },
-  activeDescription: { fontSize: 14, color: Colors.dark.textMuted, textAlign: 'center', lineHeight: 20 },
-  dots: { flexDirection: 'row', justifyContent: 'center', gap: 8 },
-  dot: { width: 8, height: 8, borderRadius: 4, backgroundColor: Colors.dark.border },
-  dotActive: { width: 24, backgroundColor: PRIMARY },
-  stepList: { gap: 8 },
-  stepRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    padding: 14,
-    borderRadius: 14,
-    backgroundColor: Colors.dark.surface,
+    padding: 18,
     borderWidth: 1,
     borderColor: Colors.dark.border,
+    gap: 10,
   },
-  stepRowActive: { borderColor: PRIMARY, backgroundColor: 'rgba(126,71,255,0.08)' },
+  stepCardCompleted: {
+    borderColor: Colors.dark.success,
+    backgroundColor: 'rgba(34,197,94,0.04)',
+  },
+  stepCardMuted: { opacity: 0.6 },
+  stepHeader: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   stepBadge: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: Colors.dark.surfaceSoft,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: PRIMARY,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  stepBadgeDone: { backgroundColor: 'rgba(34,197,94,0.15)' },
-  stepBadgeCurrent: { backgroundColor: 'rgba(126,71,255,0.2)' },
-  stepBadgeText: { fontSize: 16 },
-  stepLabel: { fontSize: 15, fontWeight: '600', color: Colors.dark.textMuted },
-  stepLabelActive: { color: Colors.dark.text, fontWeight: '700' },
-  nextBtn: {
+  stepBadgeDone: { backgroundColor: Colors.dark.success },
+  stepBadgeMuted: { backgroundColor: Colors.dark.border },
+  stepBadgeText: { fontSize: 14, fontWeight: '800', color: '#fff' },
+  stepBadgeTextMuted: { color: Colors.dark.textMuted },
+  stepTitle: { fontSize: 16, fontWeight: '700', color: Colors.dark.text, flex: 1 },
+  stepTitleDone: { color: Colors.dark.success },
+  stepText: { fontSize: 14, color: Colors.dark.textMuted, lineHeight: 20 },
+  stepTextMuted: { fontSize: 13, color: Colors.dark.textMuted, fontStyle: 'italic' },
+  stepButton: {
     backgroundColor: PRIMARY,
-    borderRadius: 16,
-    paddingVertical: 16,
-    alignItems: 'center',
+    borderRadius: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    alignSelf: 'flex-start',
     marginTop: 4,
   },
-  nextBtnText: { color: '#fff', fontSize: 17, fontWeight: '800' },
-  skipBtn: { alignItems: 'center', paddingVertical: 8 },
-  skipBtnText: { color: Colors.dark.textMuted, fontSize: 14, fontWeight: '600' },
+  stepButtonText: { color: '#fff', fontSize: 14, fontWeight: '700' },
 });

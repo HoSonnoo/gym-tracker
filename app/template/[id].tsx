@@ -400,17 +400,37 @@ export default function TemplateDetailScreen() {
 
   const handleAddExerciseToTemplate = useCallback(
     async (exercise: Exercise) => {
-      try {
-        await addExerciseToTemplate(templateId, exercise.id);
-        await loadData();
-      } catch (error) {
-        const message = error instanceof Error
-          ? error.message
-          : 'Errore durante l\'aggiunta.';
-        Alert.alert('Impossibile aggiungere l\'esercizio', message);
+      const doAdd = async () => {
+        try {
+          await addExerciseToTemplate(templateId, exercise.id);
+          await loadData();
+        } catch (error) {
+          const message = error instanceof Error
+            ? error.message
+            : 'Errore durante l\'aggiunta.';
+          Alert.alert('Impossibile aggiungere l\'esercizio', message);
+        }
+      };
+
+      // Controlla se l'esercizio è già presente nel template
+      const alreadyPresent = templateExercises.some(
+        (te) => te.exercise_id === exercise.id
+      );
+
+      if (alreadyPresent) {
+        Alert.alert(
+          'Esercizio già presente',
+          `"${exercise.name}" è già nel template. Vuoi aggiungerlo di nuovo?`,
+          [
+            { text: 'Annulla', style: 'cancel' },
+            { text: 'Aggiungi', onPress: doAdd },
+          ]
+        );
+      } else {
+        await doAdd();
       }
     },
-    [templateId, loadData]
+    [templateId, loadData, templateExercises]
   );
 
   const handleRemoveExerciseFromTemplate = useCallback(

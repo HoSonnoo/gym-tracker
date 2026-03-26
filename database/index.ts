@@ -370,6 +370,14 @@ export async function addExercise(name: string, category: string | null) {
   }
 }
 
+export async function updateExercise(id: number, name: string): Promise<void> {
+  const database = await getDb();
+  await database.runAsync(
+    `UPDATE exercises SET name = ? WHERE id = ?`,
+    [name.trim(), id]
+  );
+}
+
 export async function deleteExercise(id: number) {
   const database = await getDb();
   await database.runAsync(`DELETE FROM exercises WHERE id = ?`, [id]);
