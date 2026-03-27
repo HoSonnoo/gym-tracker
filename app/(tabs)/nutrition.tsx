@@ -35,7 +35,6 @@ import {
   deleteRecipe,
   getActivePlanEntriesForToday,
   setMealPlanActiveDays,
-  getMealPlanDays,
   type Recipe,
   type MealPlanActiveDay,
 } from '@/database';
@@ -1592,7 +1591,7 @@ Se i valori nutrizionali non sono presenti usa null.` },
 
       {/* Import da PDF */}
       <Text style={ricetteStyles.importHint}>
-        Hai ricette in PDF? Importale automaticamente con Vyro.
+        Hai ricette in PDF? Importale automaticamente con Claude.
       </Text>
       {importStep === 'loading' ? (
         <View style={ricetteStyles.importLoading}>
@@ -2369,7 +2368,7 @@ function PianoSection() {
             <Text style={pianoStyles.createBtnText}>Crea piano</Text>
           </TouchableOpacity>
           <Text style={pianoStyles.importPDFHint}>
-            Hai già un piano del nutrizionista in PDF? Caricalo e Vyro lo importerà automaticamente.
+            Hai già un piano del nutrizionista in PDF? Caricalo e Claude lo importerà automaticamente.
           </Text>
           <TouchableOpacity style={pianoStyles.importPDFBtn} onPress={handlePickAndImportPDF} activeOpacity={0.85}>
             <Text style={pianoStyles.importPDFBtnText}>📄 Seleziona PDF</Text>
@@ -2595,7 +2594,7 @@ function PianoSection() {
         <Text style={pianoStyles.newPlanBottomBtnText}>+ Crea nuovo piano</Text>
       </TouchableOpacity>
       <Text style={pianoStyles.importPDFHint}>
-        Hai già un piano del nutrizionista in PDF? Caricalo e Vyro lo importerà automaticamente.
+        Hai già un piano del nutrizionista in PDF? Caricalo e Claude lo importerà automaticamente.
       </Text>
       <TouchableOpacity style={pianoStyles.importPDFBtn} onPress={handlePickAndImportPDF} activeOpacity={0.85}>
         <Text style={pianoStyles.importPDFBtnText}>📄 Seleziona PDF</Text>
@@ -3007,7 +3006,7 @@ function ImportPDFModal({ visible, onClose, onImported, autoStart = false }: {
             <Text style={importStyles.pickEmoji}>📄</Text>
             <Text style={importStyles.pickTitle}>Carica il tuo piano alimentare</Text>
             <Text style={importStyles.pickDesc}>
-              Seleziona un PDF (es. piano del nutrizionista). Vyro analizzerà il documento e compilerà automaticamente i giorni e i pasti.
+              Seleziona un PDF (es. piano del nutrizionista). Claude analizzerà il documento e compilerà automaticamente i giorni e i pasti.
             </Text>
             <TouchableOpacity style={importStyles.pickBtn} onPress={handlePickPDF} activeOpacity={0.85}>
               <Text style={importStyles.pickBtnText}>Seleziona PDF</Text>
