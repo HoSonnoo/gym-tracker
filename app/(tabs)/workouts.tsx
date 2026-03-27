@@ -450,7 +450,7 @@ const styles = StyleSheet.create({
   button: { backgroundColor: Colors.dark.primary, borderRadius: 14, paddingVertical: 14, alignItems: 'center', justifyContent: 'center', marginTop: 4 },
   buttonDisabled: { opacity: 0.6 },
   buttonText: { color: Colors.dark.text, fontSize: 15, fontWeight: '700' },
-  historicalButton: { marginHorizontal: 20, marginBottom: 4, backgroundColor: 'rgba(126,71,255,0.08)', borderRadius: 14, paddingVertical: 13, alignItems: 'center', borderWidth: 1, borderColor: 'rgba(126,71,255,0.3)' },
+  historicalButton: { marginHorizontal: 20, marginBottom: 14, backgroundColor: 'rgba(126,71,255,0.08)', borderRadius: 14, paddingVertical: 13, alignItems: 'center', borderWidth: 1, borderColor: 'rgba(126,71,255,0.3)' },
   historicalButtonText: { color: PRIMARY, fontSize: 14, fontWeight: '700' },
   secondaryButton: { marginHorizontal: 20, marginBottom: 18, backgroundColor: Colors.dark.surfaceSoft, borderRadius: 14, paddingVertical: 14, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: Colors.dark.border },
   secondaryButtonText: { color: Colors.dark.text, fontSize: 15, fontWeight: '700' },
