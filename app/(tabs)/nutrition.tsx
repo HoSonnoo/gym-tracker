@@ -1,29 +1,27 @@
-import NutritionGuide, { NUTRITION_GUIDE_KEY } from '@/components/NutritionGuide';
 import { Colors } from '@/constants/Colors';
+import Svg, { Path } from 'react-native-svg';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import NutritionGuide, { NUTRITION_GUIDE_KEY } from '@/components/NutritionGuide';
 import {
   addFoodItem,
   addMealPlan,
   addMealPlanDay,
   addMealPlanEntry,
   addNutritionLog,
-  addRecipe,
   addWaterLog,
   deleteBodyWeightLog,
   deleteMealPlan,
   deleteMealPlanDay,
   deleteMealPlanEntry,
-  deleteRecipe,
-  getActivePlanEntriesForToday,
+  deleteNutritionLog,
   getBodyWeightLogs,
   getFoodItems,
   getMealPlanDays,
   getMealPlanEntries,
   getMealPlans,
   getNutritionLogsByDate,
-  getRecipes,
   getWaterLogByDate,
   resetWaterLog,
-  setMealPlanActiveDays,
   updateMealPlanEntry,
   upsertBodyWeightLog,
   type BodyWeightLog,
@@ -32,9 +30,15 @@ import {
   type MealPlanDay,
   type MealPlanEntry,
   type NutritionLog,
-  type Recipe
+  getRecipes,
+  addRecipe,
+  deleteRecipe,
+  getActivePlanEntriesForToday,
+  setMealPlanActiveDays,
+  getMealPlanDays,
+  type Recipe,
+  type MealPlanActiveDay,
 } from '@/database';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useFocusEffect } from '@react-navigation/native';
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system/legacy';
@@ -60,7 +64,6 @@ import Animated, {
   withSpring,
   withTiming,
 } from 'react-native-reanimated';
-import Svg, { Path } from 'react-native-svg';
 
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -1425,6 +1428,8 @@ function RicetteSection() {
   const [loading, setLoading] = useState(true);
   const [showNewModal, setShowNewModal] = useState(false);
   const [expandedId, setExpandedId] = useState<number | null>(null);
+  const [importStep, setImportStep] = useState<'idle' | 'loading' | 'error'>('idle');
+  const [importError, setImportError] = useState('');
 
   const loadRecipes = useCallback(async () => {
     setLoading(true);
@@ -1443,6 +1448,73 @@ function RicetteSection() {
         await loadRecipes();
       }},
     ]);
+  };
+
+  const handleImportPDF = async () => {
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: '*/*',
+        copyToCacheDirectory: true,
+      });
+      if (result.canceled) return;
+      if (!result.assets || result.assets.length === 0) return;
+
+      setImportStep('loading');
+      const file = result.assets[0];
+      const base64 = await FileSystem.readAsStringAsync(file.uri, { encoding: 'base64' });
+
+      const response = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': ANTHROPIC_API_KEY,
+          'anthropic-version': '2023-06-01',
+        },
+        body: JSON.stringify({
+          model: 'claude-haiku-4-5-20251001',
+          max_tokens: 4000,
+          messages: [{
+            role: 'user',
+            content: [
+              { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: base64 } },
+              { type: 'text', text: `Analizza questo documento e estrai tutte le ricette presenti. Per ogni ricetta restituisci un oggetto JSON valido senza testo aggiuntivo, senza markdown, senza backtick. Se ci sono più ricette, restituisci un array JSON. Struttura per ogni ricetta:
+{"title":"nome ricetta","description":"descrizione breve o null","servings":4,"kcal":null,"protein":null,"carbs":null,"fat":null,"ingredients":[{"name":"ingrediente","grams":100}],"instructions":"procedimento o null"}
+Se i valori nutrizionali non sono presenti usa null.` },
+            ],
+          }],
+        }),
+      });
+
+      const data = await response.json();
+      const rawText = data?.content?.[0]?.text ?? '';
+      const cleaned = rawText.replace(/\`\`\`json|\`\`\`/g, '').trim();
+      const parsed = JSON.parse(cleaned);
+      const recipeList = Array.isArray(parsed) ? parsed : [parsed];
+
+      for (const r of recipeList) {
+        await addRecipe({
+          title: r.title ?? 'Ricetta importata',
+          description: r.description ?? null,
+          servings: r.servings ?? 1,
+          kcal: r.kcal ?? null,
+          protein: r.protein ?? null,
+          carbs: r.carbs ?? null,
+          fat: r.fat ?? null,
+          ingredients: r.ingredients?.length > 0 ? JSON.stringify(r.ingredients) : null,
+          instructions: r.instructions ?? null,
+          source: 'pdf',
+        });
+      }
+
+      await loadRecipes();
+      setImportStep('idle');
+      Alert.alert('Importazione completata', `${recipeList.length} ricetta${recipeList.length > 1 ? 'e' : ''} importata${recipeList.length > 1 ? 'e' : ''} con successo.`);
+    } catch (e: any) {
+      setImportError(e?.message ?? 'Errore durante l'importazione.');
+      setImportStep('error');
+      Alert.alert('Errore', 'Impossibile importare le ricette dal PDF.');
+      setImportStep('idle');
+    }
   };
 
   if (loading) return <View style={{ paddingTop: 60, alignItems: 'center' }}><ActivityIndicator color={PRIMARY} /></View>;
@@ -1516,6 +1588,21 @@ function RicetteSection() {
           onClose={() => setShowNewModal(false)}
           onSaved={() => { setShowNewModal(false); loadRecipes(); }}
         />
+      )}
+
+      {/* Import da PDF */}
+      <Text style={ricetteStyles.importHint}>
+        Hai ricette in PDF? Importale automaticamente con Vyro.
+      </Text>
+      {importStep === 'loading' ? (
+        <View style={ricetteStyles.importLoading}>
+          <ActivityIndicator color={PRIMARY} size="small" />
+          <Text style={ricetteStyles.importLoadingText}>Analisi in corso...</Text>
+        </View>
+      ) : (
+        <TouchableOpacity style={ricetteStyles.importBtn} onPress={handleImportPDF} activeOpacity={0.85}>
+          <Text style={ricetteStyles.importBtnText}>📄 Importa da PDF</Text>
+        </TouchableOpacity>
       )}
     </View>
   );
@@ -1650,6 +1737,11 @@ const ricetteStyles = StyleSheet.create({
   addIngBtnText: { color: PRIMARY, fontSize: 13, fontWeight: '700' },
   saveBtn: { backgroundColor: PRIMARY, borderRadius: 14, paddingVertical: 16, alignItems: 'center', marginTop: 8 },
   saveBtnText: { color: '#fff', fontSize: 16, fontWeight: '800' },
+  importHint: { fontSize: 13, color: Colors.dark.textMuted, textAlign: 'center', lineHeight: 18, marginTop: 16, paddingHorizontal: 8 },
+  importBtn: { marginTop: 8, backgroundColor: 'rgba(126,71,255,0.08)', borderRadius: 14, borderWidth: 1.5, borderColor: 'rgba(126,71,255,0.35)', borderStyle: 'dashed', paddingVertical: 14, paddingHorizontal: 24, alignItems: 'center' },
+  importBtnText: { color: PRIMARY, fontSize: 14, fontWeight: '700' },
+  importLoading: { marginTop: 8, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, paddingVertical: 14 },
+  importLoadingText: { color: Colors.dark.textMuted, fontSize: 14, fontWeight: '600' },
 });
 
 // ─── Corpo Section ────────────────────────────────────────────────────────────
@@ -2503,7 +2595,7 @@ function PianoSection() {
         <Text style={pianoStyles.newPlanBottomBtnText}>+ Crea nuovo piano</Text>
       </TouchableOpacity>
       <Text style={pianoStyles.importPDFHint}>
-        Hai già un piano del nutrizionista in PDF? Caricalo e Claude lo importerà automaticamente.
+        Hai già un piano del nutrizionista in PDF? Caricalo e Vyro lo importerà automaticamente.
       </Text>
       <TouchableOpacity style={pianoStyles.importPDFBtn} onPress={handlePickAndImportPDF} activeOpacity={0.85}>
         <Text style={pianoStyles.importPDFBtnText}>📄 Seleziona PDF</Text>
@@ -2915,7 +3007,7 @@ function ImportPDFModal({ visible, onClose, onImported, autoStart = false }: {
             <Text style={importStyles.pickEmoji}>📄</Text>
             <Text style={importStyles.pickTitle}>Carica il tuo piano alimentare</Text>
             <Text style={importStyles.pickDesc}>
-              Seleziona un PDF (es. piano del nutrizionista). Claude analizzerà il documento e compilerà automaticamente i giorni e i pasti.
+              Seleziona un PDF (es. piano del nutrizionista). Vyro analizzerà il documento e compilerà automaticamente i giorni e i pasti.
             </Text>
             <TouchableOpacity style={importStyles.pickBtn} onPress={handlePickPDF} activeOpacity={0.85}>
               <Text style={importStyles.pickBtnText}>Seleziona PDF</Text>
