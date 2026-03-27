@@ -391,6 +391,10 @@ const handleAddTemplate = useCallback(async () => {
         <Text style={styles.secondaryButtonText}>Gestisci esercizi</Text>
       </Pressable>
 
+      <Pressable style={styles.historicalButton} onPress={() => router.push('/log-historical')}>
+        <Text style={styles.historicalButtonText}>📝 Registra allenamento pregresso</Text>
+      </Pressable>
+
       <View style={styles.sectionHeader}>
         <Text style={styles.sectionTitle}>I tuoi template</Text>
         <Text style={styles.sectionDescription}>
@@ -446,6 +450,20 @@ const styles = StyleSheet.create({
   button: { backgroundColor: Colors.dark.primary, borderRadius: 14, paddingVertical: 14, alignItems: 'center', justifyContent: 'center', marginTop: 4 },
   buttonDisabled: { opacity: 0.6 },
   buttonText: { color: Colors.dark.text, fontSize: 15, fontWeight: '700' },
+  historicalButton: {
+    backgroundColor: 'rgba(126,71,255,0.08)',
+    borderRadius: 14,
+    paddingVertical: 13,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(126,71,255,0.3)',
+    marginBottom: 4,
+  },
+  historicalButtonText: {
+    color: PRIMARY,
+    fontSize: 14,
+    fontWeight: '700',
+  },
   secondaryButton: { marginHorizontal: 20, marginBottom: 18, backgroundColor: Colors.dark.surfaceSoft, borderRadius: 14, paddingVertical: 14, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: Colors.dark.border },
   secondaryButtonText: { color: Colors.dark.text, fontSize: 15, fontWeight: '700' },
   sectionHeader: { marginBottom: 16, paddingHorizontal: 20 },

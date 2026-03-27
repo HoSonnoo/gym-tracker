@@ -105,6 +105,7 @@ function AppNavigator() {
       <Stack.Screen name="auth" options={{ headerShown: false }} />
       <Stack.Screen name="onboarding" options={{ headerShown: false, gestureEnabled: false }} />
       <Stack.Screen name="exercises" />
+      <Stack.Screen name="log-historical" options={{ headerShown: false }} />
       <Stack.Screen name="template/[id]" />
       <Stack.Screen name="template/exercise/[id]" />
       <Stack.Screen

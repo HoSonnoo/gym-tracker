@@ -1657,6 +1657,75 @@ export async function deleteMealPlanEntry(id: number): Promise<void> {
   const database = await getDb();
   await database.runAsync(`DELETE FROM meal_plan_entries WHERE id = ?`, [id]);
 }
+
+// ─── Sessione storica (allenamento pregresso) ─────────────────────────────────
+
+export type HistoricalSet = {
+  exercise_name: string;
+  category: string | null;
+  sets: {
+    weight_kg: number | null;
+    reps: number | null;
+    set_type: 'warmup' | 'target';
+  }[];
+};
+
+export async function saveHistoricalSession(params: {
+  date: string; // YYYY-MM-DD
+  name: string;
+  notes: string | null;
+  templateId: number | null;
+  exercises: HistoricalSet[];
+}): Promise<number> {
+  const database = await getDb();
+
+  const startedAt = params.date + 'T09:00:00.000Z';
+  const completedAt = params.date + 'T10:00:00.000Z';
+
+  const result = await database.runAsync(
+    `INSERT INTO workout_sessions (template_id, name, notes, status, started_at, completed_at)
+     VALUES (?, ?, ?, 'completed', ?, ?)`,
+    [params.templateId, params.name, params.notes, startedAt, completedAt]
+  );
+  const sessionId = Number(result.lastInsertRowId);
+
+  for (let ei = 0; ei < params.exercises.length; ei++) {
+    const ex = params.exercises[ei];
+    // Trova l'exercise_id dal nome
+    const exerciseRow = await database.getFirstAsync<{ id: number }>(
+      `SELECT id FROM exercises WHERE name = ? LIMIT 1`, [ex.exercise_name]
+    );
+
+    const seResult = await database.runAsync(
+      `INSERT INTO workout_session_exercises
+       (session_id, template_exercise_id, exercise_id, exercise_name, category, exercise_order)
+       VALUES (?, NULL, ?, ?, ?, ?)`,
+      [sessionId, exerciseRow?.id ?? null, ex.exercise_name, ex.category, ei + 1]
+    );
+    const sessionExerciseId = Number(seResult.lastInsertRowId);
+
+    for (let si = 0; si < ex.sets.length; si++) {
+      const s = ex.sets[si];
+      await database.runAsync(
+        `INSERT INTO workout_session_sets
+         (session_exercise_id, template_set_id, set_order,
+          target_set_type, target_weight_kg, target_reps_min, target_reps_max,
+          target_rest_seconds, target_effort_type,
+          actual_weight_kg, actual_reps, actual_effort_type,
+          is_completed, completed_at)
+         VALUES (?, NULL, ?, ?, ?, ?, ?, NULL, 'none', ?, ?, 'none', 1, ?)`,
+        [
+          sessionExerciseId, si + 1,
+          s.set_type, s.weight_kg, s.reps, s.reps,
+          s.weight_kg, s.reps,
+          completedAt,
+        ]
+      );
+    }
+  }
+
+  return sessionId;
+}
 // ─── Export dati ──────────────────────────────────────────────────────────────
 
 export type ExportData = {
