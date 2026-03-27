@@ -1,27 +1,29 @@
-import { Colors } from '@/constants/Colors';
-import Svg, { Path } from 'react-native-svg';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import NutritionGuide, { NUTRITION_GUIDE_KEY } from '@/components/NutritionGuide';
+import { Colors } from '@/constants/Colors';
 import {
   addFoodItem,
   addMealPlan,
   addMealPlanDay,
   addMealPlanEntry,
   addNutritionLog,
+  addRecipe,
   addWaterLog,
   deleteBodyWeightLog,
   deleteMealPlan,
   deleteMealPlanDay,
   deleteMealPlanEntry,
-  deleteNutritionLog,
+  deleteRecipe,
+  getActivePlanEntriesForToday,
   getBodyWeightLogs,
   getFoodItems,
   getMealPlanDays,
   getMealPlanEntries,
   getMealPlans,
   getNutritionLogsByDate,
+  getRecipes,
   getWaterLogByDate,
   resetWaterLog,
+  setMealPlanActiveDays,
   updateMealPlanEntry,
   upsertBodyWeightLog,
   type BodyWeightLog,
@@ -30,14 +32,9 @@ import {
   type MealPlanDay,
   type MealPlanEntry,
   type NutritionLog,
-  getRecipes,
-  addRecipe,
-  deleteRecipe,
-  getActivePlanEntriesForToday,
-  setMealPlanActiveDays,
-  type Recipe,
-  type MealPlanActiveDay,
+  type Recipe
 } from '@/database';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useFocusEffect } from '@react-navigation/native';
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system/legacy';
@@ -63,6 +60,7 @@ import Animated, {
   withSpring,
   withTiming,
 } from 'react-native-reanimated';
+import Svg, { Path } from 'react-native-svg';
 
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -1509,7 +1507,7 @@ Se i valori nutrizionali non sono presenti usa null.` },
       setImportStep('idle');
       Alert.alert('Importazione completata', `${recipeList.length} ricetta${recipeList.length > 1 ? 'e' : ''} importata${recipeList.length > 1 ? 'e' : ''} con successo.`);
     } catch (e: any) {
-      setImportError(e?.message ?? 'Errore durante l'importazione.');
+      setImportError(e?.message ?? `Errore durante l’importazione.`);
       setImportStep('error');
       Alert.alert('Errore', 'Impossibile importare le ricette dal PDF.');
       setImportStep('idle');
@@ -1591,7 +1589,7 @@ Se i valori nutrizionali non sono presenti usa null.` },
 
       {/* Import da PDF */}
       <Text style={ricetteStyles.importHint}>
-        Hai ricette in PDF? Importale automaticamente con Claude.
+        Hai ricette in PDF? Importale automaticamente con Vyro.
       </Text>
       {importStep === 'loading' ? (
         <View style={ricetteStyles.importLoading}>
@@ -2368,7 +2366,7 @@ function PianoSection() {
             <Text style={pianoStyles.createBtnText}>Crea piano</Text>
           </TouchableOpacity>
           <Text style={pianoStyles.importPDFHint}>
-            Hai già un piano del nutrizionista in PDF? Caricalo e Claude lo importerà automaticamente.
+            Hai già un piano del nutrizionista in PDF? Caricalo e Vyro lo importerà automaticamente.
           </Text>
           <TouchableOpacity style={pianoStyles.importPDFBtn} onPress={handlePickAndImportPDF} activeOpacity={0.85}>
             <Text style={pianoStyles.importPDFBtnText}>📄 Seleziona PDF</Text>
@@ -2594,7 +2592,7 @@ function PianoSection() {
         <Text style={pianoStyles.newPlanBottomBtnText}>+ Crea nuovo piano</Text>
       </TouchableOpacity>
       <Text style={pianoStyles.importPDFHint}>
-        Hai già un piano del nutrizionista in PDF? Caricalo e Claude lo importerà automaticamente.
+        Hai già un piano del nutrizionista in PDF? Caricalo e Vyro lo importerà automaticamente.
       </Text>
       <TouchableOpacity style={pianoStyles.importPDFBtn} onPress={handlePickAndImportPDF} activeOpacity={0.85}>
         <Text style={pianoStyles.importPDFBtnText}>📄 Seleziona PDF</Text>
@@ -2706,7 +2704,7 @@ function PianoSection() {
 
 // ─── Day Assign Modal ─────────────────────────────────────────────────────────
 
-const WEEKDAYS = ['Dom', 'Lun', 'Mar', 'Mer', 'Gio', 'Ven', 'Sab'];
+const WEEKDAYS = ['Lun', 'Mar', 'Mer', 'Gio', 'Ven', 'Sab', 'Dom'];
 
 function DayAssignModal({ visible, planId, onClose, onSaved }: {
   visible: boolean;
@@ -3006,7 +3004,7 @@ function ImportPDFModal({ visible, onClose, onImported, autoStart = false }: {
             <Text style={importStyles.pickEmoji}>📄</Text>
             <Text style={importStyles.pickTitle}>Carica il tuo piano alimentare</Text>
             <Text style={importStyles.pickDesc}>
-              Seleziona un PDF (es. piano del nutrizionista). Claude analizzerà il documento e compilerà automaticamente i giorni e i pasti.
+              Seleziona un PDF (es. piano del nutrizionista). Vyro analizzerà il documento e compilerà automaticamente i giorni e i pasti.
             </Text>
             <TouchableOpacity style={importStyles.pickBtn} onPress={handlePickPDF} activeOpacity={0.85}>
               <Text style={importStyles.pickBtnText}>Seleziona PDF</Text>
