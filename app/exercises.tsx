@@ -12,6 +12,9 @@ import { useCallback, useState } from 'react';
 import {
   Alert,
   FlatList,
+  KeyboardAvoidingView,
+  Modal,
+  Platform,
   Pressable,
   StyleSheet,
   Text,
@@ -165,28 +168,38 @@ export default function ExercisesScreen() {
         </View>
 
         {/* Modal rinomina esercizio */}
-        {renamingExercise && (
-          <View style={styles.renameModal}>
-            <Text style={styles.renameModalTitle}>Rinomina esercizio</Text>
-            <TextInput
-              value={renameValue}
-              onChangeText={setRenameValue}
-              style={styles.renameInput}
-              placeholder="Nuovo nome"
-              placeholderTextColor={Colors.dark.textMuted}
-              autoFocus
-              selectTextOnFocus
-            />
-            <View style={styles.renameModalActions}>
-              <Pressable style={styles.renameConfirmBtn} onPress={handleConfirmRename}>
-                <Text style={styles.renameConfirmBtnText}>Salva</Text>
-              </Pressable>
-              <Pressable style={styles.renameCancelBtn} onPress={() => setRenamingExercise(null)}>
-                <Text style={styles.renameCancelBtnText}>Annulla</Text>
-              </Pressable>
+        <Modal
+          visible={!!renamingExercise}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setRenamingExercise(null)}
+        >
+          <KeyboardAvoidingView
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+            style={styles.renameOverlay}
+          >
+            <View style={styles.renameModal}>
+              <Text style={styles.renameModalTitle}>Rinomina esercizio</Text>
+              <TextInput
+                value={renameValue}
+                onChangeText={setRenameValue}
+                style={styles.renameInput}
+                placeholder="Nuovo nome"
+                placeholderTextColor={Colors.dark.textMuted}
+                autoFocus
+                selectTextOnFocus
+              />
+              <View style={styles.renameModalActions}>
+                <Pressable style={styles.renameConfirmBtn} onPress={handleConfirmRename}>
+                  <Text style={styles.renameConfirmBtnText}>Salva</Text>
+                </Pressable>
+                <Pressable style={styles.renameCancelBtn} onPress={() => setRenamingExercise(null)}>
+                  <Text style={styles.renameCancelBtnText}>Annulla</Text>
+                </Pressable>
+              </View>
             </View>
-          </View>
-        )}
+          </KeyboardAvoidingView>
+        </Modal>
 
         <FlatList
           data={exercises}
@@ -376,14 +389,19 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '700',
   },
+  renameOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    justifyContent: 'center',
+    padding: 24,
+  },
   renameModal: {
     backgroundColor: Colors.dark.surface,
-    borderRadius: 16,
-    padding: 16,
+    borderRadius: 20,
+    padding: 20,
     borderWidth: 1,
     borderColor: Colors.dark.border,
-    marginBottom: 16,
-    gap: 12,
+    gap: 14,
   },
   renameModalTitle: {
     fontSize: 15,

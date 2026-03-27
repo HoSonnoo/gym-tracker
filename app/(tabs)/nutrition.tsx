@@ -2277,7 +2277,7 @@ function PianoSection() {
             <Text style={pianoStyles.createBtnText}>Crea piano</Text>
           </TouchableOpacity>
           <Text style={pianoStyles.importPDFHint}>
-            Hai già un piano del nutrizionista in PDF? Caricalo e Claude lo importerà automaticamente.
+            Hai già un piano del nutrizionista in PDF? Caricalo e Vyro lo importerà automaticamente.
           </Text>
           <TouchableOpacity style={pianoStyles.importPDFBtn} onPress={handlePickAndImportPDF} activeOpacity={0.85}>
             <Text style={pianoStyles.importPDFBtnText}>📄 Seleziona PDF</Text>

@@ -617,7 +617,24 @@ export async function updateTemplateExerciseSet(
 
 export async function deleteTemplateExerciseSet(id: number) {
   const database = await getDb();
+  // Prima trova il template_exercise_id per rinumerare dopo la cancellazione
+  const row = await database.getFirstAsync<{ template_exercise_id: number }>(
+    `SELECT template_exercise_id FROM template_exercise_sets WHERE id = ?`, [id]
+  );
   await database.runAsync(`DELETE FROM template_exercise_sets WHERE id = ?`, [id]);
+  // Rinumera le serie rimanenti in ordine progressivo
+  if (row) {
+    const remaining = await database.getAllAsync<{ id: number }>(
+      `SELECT id FROM template_exercise_sets WHERE template_exercise_id = ? ORDER BY set_order ASC`,
+      [row.template_exercise_id]
+    );
+    for (let i = 0; i < remaining.length; i++) {
+      await database.runAsync(
+        `UPDATE template_exercise_sets SET set_order = ? WHERE id = ?`,
+        [i + 1, remaining[i].id]
+      );
+    }
+  }
 }
 
 export async function getTemplateExerciseSetById(
