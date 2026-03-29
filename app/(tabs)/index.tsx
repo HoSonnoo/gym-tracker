@@ -563,6 +563,17 @@ export default function TodayScreen() {
             unit={preferences.unit}
             onPress={handleOpenActiveSession}
           />
+
+          <TouchableOpacity
+            style={styles.cancelSessionBtn}
+            onPress={handleCancelSession}
+            disabled={cancellingSession}
+            activeOpacity={0.8}
+          >
+            <Text style={styles.cancelSessionBtnText}>
+              {cancellingSession ? 'Annullamento...' : '✕ Annulla allenamento'}
+            </Text>
+          </TouchableOpacity>
         </>
       )}
     </ScrollView>
@@ -579,6 +590,19 @@ const styles = StyleSheet.create({
   card: { backgroundColor: Colors.dark.surface, borderRadius: 18, padding: 18, borderWidth: 1, borderColor: Colors.dark.border },
   cardTitle: { fontSize: 18, fontWeight: '700', color: Colors.dark.text, marginBottom: 12 },
   cardText: { fontSize: 15, lineHeight: 22, color: Colors.dark.textMuted },
+  cancelSessionBtn: {
+    backgroundColor: 'rgba(239,68,68,0.08)',
+    borderRadius: 14,
+    paddingVertical: 13,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: Colors.dark.danger,
+  },
+  cancelSessionBtnText: {
+    color: Colors.dark.danger,
+    fontSize: 14,
+    fontWeight: '700',
+  },
   onboardingButton: {
     marginTop: 16,
     backgroundColor: PRIMARY,

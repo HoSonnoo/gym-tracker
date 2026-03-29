@@ -1,6 +1,7 @@
 import { Colors } from '@/constants/Colors';
 import { formatWeight, useUserPreferences } from '@/context/UserPreferencesContext';
 import {
+  deleteWorkoutSession,
   getCompletedWorkoutSessions,
   getWorkoutSessionDetail,
   type WorkoutSession,
@@ -69,11 +70,40 @@ type SessionDetailModalProps = {
   sessionId: number | null;
   unit: 'kg' | 'lbs';
   onClose: () => void;
+  onDeleted: () => void;
 };
 
-function SessionDetailModal({ sessionId, unit, onClose }: SessionDetailModalProps) {
+function SessionDetailModal({ sessionId, unit, onClose, onDeleted }: SessionDetailModalProps) {
   const [detail, setDetail] = useState<WorkoutSessionDetail | null>(null);
   const [loading, setLoading] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+
+  const handleDelete = () => {
+    if (!detail) return;
+    Alert.alert(
+      'Elimina allenamento',
+      `Vuoi eliminare "${detail.session.name}"? L'operazione è irreversibile.`,
+      [
+        { text: 'Annulla', style: 'cancel' },
+        {
+          text: 'Elimina',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              setDeleting(true);
+              await deleteWorkoutSession(detail.session.id);
+              onClose();
+              onDeleted();
+            } catch {
+              Alert.alert('Errore', 'Impossibile eliminare la sessione.');
+            } finally {
+              setDeleting(false);
+            }
+          },
+        },
+      ]
+    );
+  };
 
   React.useEffect(() => {
     if (sessionId === null) { setDetail(null); return; }
@@ -110,9 +140,19 @@ function SessionDetailModal({ sessionId, unit, onClose }: SessionDetailModalProp
                 <Text style={modalStyles.dateLabel}>{formatDateLabel(new Date(detail.session.started_at))}</Text>
                 <Text style={modalStyles.sessionName}>{detail.session.name}</Text>
               </View>
-              <TouchableOpacity onPress={onClose} style={modalStyles.closeButton} activeOpacity={0.8}>
-                <Text style={modalStyles.closeButtonText}>Chiudi</Text>
-              </TouchableOpacity>
+              <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
+                <TouchableOpacity
+                  onPress={handleDelete}
+                  style={modalStyles.deleteButton}
+                  disabled={deleting}
+                  activeOpacity={0.8}
+                >
+                  <Text style={modalStyles.deleteButtonText}>{deleting ? '...' : 'Elimina'}</Text>
+                </TouchableOpacity>
+                <TouchableOpacity onPress={onClose} style={modalStyles.closeButton} activeOpacity={0.8}>
+                  <Text style={modalStyles.closeButtonText}>Chiudi</Text>
+                </TouchableOpacity>
+              </View>
             </View>
 
             <View style={modalStyles.statsRow}>
@@ -200,6 +240,19 @@ const modalStyles = StyleSheet.create({
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 4 },
   dateLabel: { fontSize: 13, color: Colors.dark.textMuted, marginBottom: 4 },
   sessionName: { fontSize: 26, fontWeight: '800', color: Colors.dark.text },
+  deleteButton: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    backgroundColor: 'rgba(239,68,68,0.1)',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: Colors.dark.danger,
+  },
+  deleteButtonText: {
+    color: Colors.dark.danger,
+    fontSize: 13,
+    fontWeight: '700',
+  },
   closeButton: { backgroundColor: Colors.dark.surfaceSoft, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 8, borderWidth: 1, borderColor: Colors.dark.border },
   closeButtonText: { color: Colors.dark.text, fontSize: 14, fontWeight: '600' },
   statsRow: { flexDirection: 'row', gap: 10 },
@@ -360,17 +413,41 @@ export default function CalendarScreen() {
           {sessionsThisMonth.map((session) => {
             const d = new Date(session.completed_at ?? session.started_at);
             return (
-              <TouchableOpacity key={session.id} style={screenStyles.sessionRow} onPress={() => setSelectedSessionId(session.id)} activeOpacity={0.85}>
-                <View style={screenStyles.sessionDateBox}>
-                  <Text style={screenStyles.sessionDateDay}>{d.getDate()}</Text>
-                  <Text style={screenStyles.sessionDateMonth}>{MESI[d.getMonth()].slice(0, 3)}</Text>
-                </View>
-                <View style={screenStyles.sessionInfo}>
-                  <Text style={screenStyles.sessionName}>{session.name}</Text>
-                  <Text style={screenStyles.sessionMeta}>{formatTime(session.started_at)} · {formatDuration(session.started_at, session.completed_at)}</Text>
-                </View>
-                <Text style={screenStyles.sessionChevron}>›</Text>
-              </TouchableOpacity>
+              <View key={session.id} style={screenStyles.sessionRow}>
+                <TouchableOpacity style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 12 }} onPress={() => setSelectedSessionId(session.id)} activeOpacity={0.85}>
+                  <View style={screenStyles.sessionDateBox}>
+                    <Text style={screenStyles.sessionDateDay}>{d.getDate()}</Text>
+                    <Text style={screenStyles.sessionDateMonth}>{MESI[d.getMonth()].slice(0, 3)}</Text>
+                  </View>
+                  <View style={screenStyles.sessionInfo}>
+                    <Text style={screenStyles.sessionName}>{session.name}</Text>
+                    <Text style={screenStyles.sessionMeta}>{formatTime(session.started_at)} · {formatDuration(session.started_at, session.completed_at)}</Text>
+                  </View>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={screenStyles.deleteSessionBtn}
+                  onPress={() => {
+                    Alert.alert(
+                      'Elimina allenamento',
+                      `Vuoi eliminare "${session.name}"? L'operazione è irreversibile.`,
+                      [
+                        { text: 'Annulla', style: 'cancel' },
+                        { text: 'Elimina', style: 'destructive', onPress: async () => {
+                          try {
+                            await deleteWorkoutSession(session.id);
+                            loadSessions();
+                          } catch {
+                            Alert.alert('Errore', 'Impossibile eliminare la sessione.');
+                          }
+                        }},
+                      ]
+                    );
+                  }}
+                  activeOpacity={0.8}
+                >
+                  <Text style={screenStyles.deleteSessionBtnText}>✕</Text>
+                </TouchableOpacity>
+              </View>
             );
           })}
         </View>
@@ -380,6 +457,7 @@ export default function CalendarScreen() {
         sessionId={selectedSessionId}
         unit={preferences.unit}
         onClose={() => setSelectedSessionId(null)}
+        onDeleted={loadSessions}
       />
     </ScrollView>
   );
@@ -417,5 +495,21 @@ const screenStyles = StyleSheet.create({
   sessionInfo: { flex: 1 },
   sessionName: { fontSize: 15, fontWeight: '700', color: Colors.dark.text, marginBottom: 3 },
   sessionMeta: { fontSize: 13, color: Colors.dark.textMuted },
+  deleteSessionBtn: {
+    width: 32,
+    height: 32,
+    backgroundColor: 'rgba(239,68,68,0.12)',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#ef4444',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: 8,
+  },
+  deleteSessionBtnText: {
+    color: '#ef4444',
+    fontSize: 13,
+    fontWeight: '800',
+  },
   sessionChevron: { fontSize: 20, color: Colors.dark.textMuted, fontWeight: '300' },
 });

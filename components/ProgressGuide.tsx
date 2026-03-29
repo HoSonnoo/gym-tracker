@@ -2,11 +2,11 @@ import { Colors } from '@/constants/Colors';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import React, { useState } from 'react';
 import {
-    Pressable,
-    ScrollView,
-    StyleSheet,
-    Text,
-    View,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
 } from 'react-native';
 
 const PRIMARY = '#7e47ff';
@@ -43,18 +43,20 @@ const STEPS = [
 export default function ProgressGuide({ onDone }: { onDone: () => void }) {
   const [step, setStep] = useState(0);
 
-  const handleNext = async () => {
+  const handleNext = () => {
     if (step < STEPS.length - 1) {
       setStep(step + 1);
     } else {
-      await AsyncStorage.setItem(PROGRESS_GUIDE_KEY, 'true');
-      onDone();
+      AsyncStorage.setItem(PROGRESS_GUIDE_KEY, 'true').finally(() => {
+        onDone();
+      });
     }
   };
 
-  const handleSkip = async () => {
-    await AsyncStorage.setItem(PROGRESS_GUIDE_KEY, 'true');
-    onDone();
+  const handleSkip = () => {
+    AsyncStorage.setItem(PROGRESS_GUIDE_KEY, 'true').finally(() => {
+      onDone();
+    });
   };
 
   const current = STEPS[step];
