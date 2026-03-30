@@ -932,26 +932,22 @@ export default function ProgressScreen() {
   const { preferences } = useUserPreferences();
   const [activeTab, setActiveTab] = useState<TabKey>('pr');
   const [guideShown, setGuideShown] = useState<boolean | null>(null);
-
-  React.useEffect(() => {
-    AsyncStorage.getItem(PROGRESS_GUIDE_KEY).then((val) => {
-      setGuideShown(!!val);
-    });
-  }, []);
-
-  if (guideShown === null) return null;
-  if (!guideShown) return <ProgressGuide onDone={() => setGuideShown(true)} />;
-
   const [loading, setLoading] = useState(true);
   const [selectedExercise, setSelectedExercise] = useState<string | null>(null);
-
-  const { filterByHistoryLimit, isGuest, GUEST_LIMITS } = useGuestLimits();
   const [records, setRecords] = useState<ExercisePR[]>([]);
   const [volumes, setVolumes] = useState<ExerciseVolume[]>([]);
   const [frequency, setFrequency] = useState<{
     average_per_week: number; total_sessions: number; weeks_active: number; first_session_at: string | null;
   }>({ average_per_week: 0, total_sessions: 0, weeks_active: 0, first_session_at: null });
   const [weightLogs, setWeightLogs] = useState<BodyWeightLog[]>([]);
+
+  const { filterByHistoryLimit, isGuest, GUEST_LIMITS } = useGuestLimits();
+
+  React.useEffect(() => {
+    AsyncStorage.getItem(PROGRESS_GUIDE_KEY).then((val) => {
+      setGuideShown(!!val);
+    });
+  }, []);
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -979,6 +975,9 @@ export default function ProgressScreen() {
       setSelectedExercise(null);
     }, [loadData])
   );
+
+  if (guideShown === null) return null;
+  if (!guideShown) return <ProgressGuide onDone={() => setGuideShown(true)} />;
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
