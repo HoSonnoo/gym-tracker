@@ -564,16 +564,7 @@ export default function TodayScreen() {
             onPress={handleOpenActiveSession}
           />
 
-          <TouchableOpacity
-            style={styles.cancelSessionBtn}
-            onPress={handleCancelSession}
-            disabled={cancellingSession}
-            activeOpacity={0.8}
-          >
-            <Text style={styles.cancelSessionBtnText}>
-              {cancellingSession ? 'Annullamento...' : '✕ Annulla allenamento'}
-            </Text>
-          </TouchableOpacity>
+
         </>
       )}
     </ScrollView>

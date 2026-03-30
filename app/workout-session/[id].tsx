@@ -4,6 +4,7 @@ import { formatWeight, useUserPreferences } from '@/context/UserPreferencesConte
 import {
   addEmptySetToSessionExercise,
   addExerciseToSession,
+  cancelWorkoutSession,
   completeWorkoutSession,
   getExercises,
   getWorkoutSessionById,
@@ -671,6 +672,29 @@ export default function WorkoutSessionScreen() {
     await proceed();
   }, [session, remainingSetsCount, router]);
 
+  const handleCancelSession = () => {
+    Alert.alert(
+      'Annulla allenamento',
+      'Vuoi annullare questo allenamento? I dati inseriti andranno persi.',
+      [
+        { text: 'Continua ad allenarti', style: 'cancel' },
+        {
+          text: 'Annulla allenamento',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await cancelWorkoutSession(sessionId);
+              router.back();
+            } catch {
+              Alert.alert('Errore', 'Impossibile annullare la sessione.');
+            }
+          },
+        },
+      ]
+    );
+  };
+
+
   const handleAddFreeExercise = useCallback(
     async (exercise: Exercise) => {
       if (!session) return;
@@ -859,6 +883,14 @@ export default function WorkoutSessionScreen() {
               {finishingSession ? 'Chiusura allenamento...' : 'Completa allenamento'}
             </Text>
           </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.cancelSessionBtn}
+            onPress={handleCancelSession}
+            activeOpacity={0.8}
+          >
+            <Text style={styles.cancelSessionBtnText}>Annulla allenamento</Text>
+          </TouchableOpacity>
         </View>
 
         {/* Exercise list */}
@@ -1026,6 +1058,20 @@ const styles = StyleSheet.create({
   primaryButtonText: { color: '#ffffff', fontSize: 15, fontWeight: '800' },
   secondaryButton: { backgroundColor: 'transparent', borderRadius: 14, borderWidth: 1, borderColor: Colors.dark.border, paddingVertical: 14, alignItems: 'center', justifyContent: 'center' },
   secondaryButtonText: { color: Colors.dark.text, fontSize: 14, fontWeight: '700' },
+  cancelSessionBtn: {
+    marginTop: 8,
+    paddingVertical: 14,
+    alignItems: 'center',
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: Colors.dark.danger,
+    backgroundColor: 'rgba(239,68,68,0.06)',
+  },
+  cancelSessionBtnText: {
+    color: Colors.dark.danger,
+    fontSize: 15,
+    fontWeight: '700',
+  },
   finishButton: { backgroundColor: PRIMARY, borderRadius: 16, paddingVertical: 16, alignItems: 'center', justifyContent: 'center', marginTop: 18, marginBottom: 12 },
   finishButtonText: { color: '#ffffff', fontSize: 16, fontWeight: '800' },
   disabledButton: { opacity: 0.6 },

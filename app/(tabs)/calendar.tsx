@@ -429,7 +429,7 @@ export default function CalendarScreen() {
                   onPress={() => {
                     Alert.alert(
                       'Elimina allenamento',
-                      `Vuoi eliminare "${session.name}"? L'operazione è irreversibile.`,
+                      `Vuoi eliminare "${session.name}"? L’operazione è irreversibile.`,
                       [
                         { text: 'Annulla', style: 'cancel' },
                         { text: 'Elimina', style: 'destructive', onPress: async () => {

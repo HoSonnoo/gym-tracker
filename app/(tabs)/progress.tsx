@@ -791,28 +791,43 @@ function ActivitySection() {
   const [permissionDenied, setPermissionDenied] = useState(false);
 
   React.useEffect(() => {
-    // Timeout di sicurezza — se HealthKit non risponde entro 8s, mostra errore
+    let cancelled = false;
     const timeout = setTimeout(() => {
-      setPermissionDenied(true);
-      setLoading(false);
-    }, 8000);
-
-    initHealthKit().then((granted) => {
-      clearTimeout(timeout);
-      if (!granted) {
+      if (!cancelled) {
         setPermissionDenied(true);
         setLoading(false);
-        return;
       }
-      getHealthDataLast30Days()
-        .then(setHealthData)
-        .catch(() => setHealthData([]))
-        .finally(() => setLoading(false));
-    }).catch(() => {
-      clearTimeout(timeout);
-      setPermissionDenied(true);
-      setLoading(false);
-    });
+    }, 8000);
+
+    const run = async () => {
+      try {
+        const granted = await initHealthKit();
+        clearTimeout(timeout);
+        if (cancelled) return;
+        if (!granted) {
+          setPermissionDenied(true);
+          setLoading(false);
+          return;
+        }
+        try {
+          const data = await getHealthDataLast30Days();
+          if (!cancelled) setHealthData(data);
+        } catch {
+          if (!cancelled) setHealthData([]);
+        } finally {
+          if (!cancelled) setLoading(false);
+        }
+      } catch {
+        clearTimeout(timeout);
+        if (!cancelled) {
+          setPermissionDenied(true);
+          setLoading(false);
+        }
+      }
+    };
+
+    run();
+    return () => { cancelled = true; clearTimeout(timeout); };
   }, []);
 
   const today = healthData[healthData.length - 1];
