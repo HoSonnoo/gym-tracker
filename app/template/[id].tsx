@@ -616,7 +616,7 @@ export default function TemplateDetailScreen() {
               <View style={[styles.sectionHeader, { marginTop: 20 }]}>
                 <Text style={styles.sectionTitle}>Aggiungi dal catalogo</Text>
                 <Text style={styles.sectionDescription}>
-                  Tocca "Aggiungi" per inserire un esercizio nel template.
+                  Tocca “Aggiungi” per inserire un esercizio nel template.
                 </Text>
               </View>
             </>
@@ -643,7 +643,7 @@ export default function TemplateDetailScreen() {
             <View style={styles.emptyCard}>
               <Text style={styles.cardTitle}>Nessun esercizio disponibile</Text>
               <Text style={styles.cardText}>
-                Vai in "Gestisci esercizi" e crea qualche esercizio.
+                Vai in “Gestisci esercizi” e crea qualche esercizio.
               </Text>
             </View>
           }

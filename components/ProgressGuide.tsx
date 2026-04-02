@@ -75,7 +75,7 @@ export default function ProgressGuide({ onDone }: { onDone: () => void }) {
         <Text style={styles.welcomeEmoji}>📈</Text>
         <Text style={styles.welcomeTitle}>Benvenuto in Progressi</Text>
         <Text style={styles.welcomeText}>
-          Tieni d'occhio la tua crescita nel tempo — dai personal record al peso corporeo fino all'attività quotidiana.
+          Tieni d’occhio la tua crescita nel tempo — dai personal record al peso corporeo fino all’attività quotidiana.
         </Text>
       </View>
 

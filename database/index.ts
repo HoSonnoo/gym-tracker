@@ -977,6 +977,17 @@ export async function cancelWorkoutSession(sessionId: number) {
   );
 }
 
+export async function deleteWorkoutSession(sessionId: number) {
+  const database = await getDb();
+  await database.withTransactionAsync(async () => {
+    await database.runAsync(`DELETE FROM workout_session_sets WHERE session_exercise_id IN (
+      SELECT id FROM workout_session_exercises WHERE session_id = ?
+    )`, [sessionId]);
+    await database.runAsync(`DELETE FROM workout_session_exercises WHERE session_id = ?`, [sessionId]);
+    await database.runAsync(`DELETE FROM workout_sessions WHERE id = ?`, [sessionId]);
+  });
+}
+
 export async function getCompletedWorkoutSessions(): Promise<WorkoutSession[]> {
   const database = await getDb();
 

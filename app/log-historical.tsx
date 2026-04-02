@@ -201,7 +201,7 @@ export default function LogHistoricalScreen() {
         </View>
 
         <ScrollView contentContainerStyle={styles.choosePad}>
-          <Text style={styles.chooseTitle}>Come vuoi registrare l'allenamento?</Text>
+          <Text style={styles.chooseTitle}>Come vuoi registrare l’allenamento?</Text>
 
           <TouchableOpacity
             style={styles.modeCard}

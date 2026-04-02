@@ -840,7 +840,7 @@ export default function WorkoutSessionScreen() {
 
         <Text style={styles.pageTitle}>{session.name}</Text>
         <Text style={styles.pageSubtitle}>
-          Sessione attiva. Inserisci i dati reali e completa le serie durante l'allenamento.
+          Sessione attiva. Inserisci i dati reali e completa le serie durante l’allenamento.
         </Text>
 
         <RestTimerBanner />
@@ -869,7 +869,7 @@ export default function WorkoutSessionScreen() {
             </TouchableOpacity>
           ) : (
             <Text style={[styles.cardText, { color: Colors.dark.success, marginTop: 14 }]}>
-              ✓ Tutte le serie completate. Puoi chiudere l'allenamento.
+              ✓ Tutte le serie completate. Puoi chiudere l’allenamento.
             </Text>
           )}
 

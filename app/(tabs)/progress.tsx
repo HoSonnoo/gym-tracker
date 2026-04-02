@@ -848,7 +848,7 @@ function ActivitySection() {
       <View style={styles.emptyCard}>
         <Text style={styles.emptyTitle}>🏃 Accesso negato</Text>
         <Text style={styles.emptyText}>
-          Vai su Impostazioni → Privacy → Salute → Vyro e abilita l'accesso per vedere i tuoi dati di attività.
+          Vai su Impostazioni → Privacy → Salute → Vyro e abilita l’accesso per vedere i tuoi dati di attività.
         </Text>
       </View>
     );
@@ -941,7 +941,7 @@ export default function ProgressScreen() {
   }>({ average_per_week: 0, total_sessions: 0, weeks_active: 0, first_session_at: null });
   const [weightLogs, setWeightLogs] = useState<BodyWeightLog[]>([]);
 
-  const { filterByHistoryLimit, isGuest, GUEST_LIMITS } = useGuestLimits();
+  const { filterByHistoryLimit } = useGuestLimits();
 
   React.useEffect(() => {
     AsyncStorage.getItem(PROGRESS_GUIDE_KEY).then((val) => {
@@ -967,7 +967,7 @@ export default function ProgressScreen() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [filterByHistoryLimit]);
 
   useFocusEffect(
     useCallback(() => {

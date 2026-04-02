@@ -2161,7 +2161,6 @@ function PianoSection() {
 
   const processFile = async (file: { uri: string; name: string; mimeType?: string; size?: number }) => {
     try {
-
       const base64 = await FileSystem.readAsStringAsync(file.uri, {
         encoding: 'base64',
       });
@@ -2186,11 +2185,6 @@ function PianoSection() {
           }],
         }),
       });
-
-      if (!response.ok) {
-        const errBody = await response.text();
-        throw new Error(`API error ${response.status}: ${errBody.substring(0, 200)}`);
-      }
 
       const data = await response.json();
       const rawText = data.content?.find((b: any) => b.type === 'text')?.text ?? '';

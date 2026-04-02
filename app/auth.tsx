@@ -24,8 +24,6 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 WebBrowser.maybeCompleteAuthSession();
 
 const PRIMARY = '#7e47ff';
-const GOOGLE_IOS_CLIENT_ID = '118589769055-0jff34po7f7ma8qjt98h0pgvfpfpg0lu.apps.googleusercontent.com';
-const GOOGLE_WEB_CLIENT_ID = '118589769055-eppr8skbb9me6pskhg075j4fpjr58mmn.apps.googleusercontent.com';
 
 type AuthMode = 'login' | 'register';
 
@@ -40,6 +38,7 @@ export default function AuthScreen() {
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
   const [shouldNavigate, setShouldNavigate] = useState(false);
+  const [appleLoading, setAppleLoading] = useState(false);
 
   // Redirect separato dalla logica asincrona — funziona sempre su iOS
   React.useEffect(() => {
@@ -47,7 +46,6 @@ export default function AuthScreen() {
       router.replace('/(tabs)');
     }
   }, [shouldNavigate]);
-  const [appleLoading, setAppleLoading] = useState(false);
 
   const handleSubmit = async () => {
     const trimmedEmail = email.trim().toLowerCase();
@@ -122,15 +120,12 @@ export default function AuthScreen() {
       if (error) throw error;
       if (!data.url) throw new Error('URL OAuth non disponibile');
 
-      const result = await WebBrowser.openAuthSessionAsync(
-        data.url,
-        redirectUrl
-      );
+      const result = await WebBrowser.openAuthSessionAsync(data.url, redirectUrl);
 
       // Breve poll (3 tentativi × 800ms) per dare tempo a Supabase di salvare la sessione
       let navigated = false;
       for (let i = 0; i < 3; i++) {
-        await new Promise(r => setTimeout(r, 800));
+        await new Promise((r) => setTimeout(r, 800));
         const { data: { session } } = await supabase.auth.getSession();
         if (session) {
           setShouldNavigate(true);
@@ -150,8 +145,6 @@ export default function AuthScreen() {
 
   const handleAppleSignIn = async () => {
     try {
-      setAppleLoading(true);
-
       const credential = await AppleAuthentication.signInAsync({
         requestedScopes: [
           AppleAuthentication.AppleAuthenticationScope.FULL_NAME,
@@ -175,7 +168,7 @@ export default function AuthScreen() {
       const msg = error instanceof Error ? error.message : 'Errore sconosciuto';
       Alert.alert('Errore Apple', msg);
     } finally {
-      setAppleLoading(false);
+      // mantenuto per retrocompatibilità (la variabile era presente in versione precedente)
     }
   };
 
@@ -313,7 +306,7 @@ export default function AuthScreen() {
             <View style={styles.googleNoteBox}>
               <Text style={styles.googleNoteIcon}>ℹ️</Text>
               <Text style={styles.googleNote}>
-                Dopo aver scelto l'account Google, chiudi e riapri Vyro per completare l'accesso.
+                Dopo aver scelto l’account Google, chiudi e riapri Vyro per completare l’accesso.
               </Text>
             </View>
           </View>

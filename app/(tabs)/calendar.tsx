@@ -285,7 +285,7 @@ export default function CalendarScreen() {
   const [currentYear, setCurrentYear] = useState(today.getFullYear());
   const [currentMonth, setCurrentMonth] = useState(today.getMonth());
   const [sessions, setSessions] = useState<WorkoutSession[]>([]);
-  const { filterByHistoryLimit, isGuest, GUEST_LIMITS } = useGuestLimits();
+  const { filterByHistoryLimit } = useGuestLimits();
   const [loading, setLoading] = useState(true);
   const [selectedSessionId, setSelectedSessionId] = useState<number | null>(null);
 
@@ -300,7 +300,7 @@ export default function CalendarScreen() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [filterByHistoryLimit]);
 
   useFocusEffect(useCallback(() => { loadSessions(); }, [loadSessions]));
 
@@ -436,9 +436,10 @@ export default function CalendarScreen() {
                         { text: 'Elimina', style: 'destructive', onPress: async () => {
                           try {
                             await deleteWorkoutSession(session.id);
-                            loadSessions();
-                          } catch {
-                            Alert.alert('Errore', 'Impossibile eliminare la sessione.');
+                            await loadSessions();
+                          } catch (error) {
+                            const message = error instanceof Error ? error.message : 'Impossibile eliminare la sessione.';
+                            Alert.alert('Errore', message);
                           }
                         }},
                       ]

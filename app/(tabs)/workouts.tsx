@@ -124,7 +124,7 @@ function OnboardingEmptyState({
         {phase === 'has_exercises' && (
           <>
             <Text style={onboardStyles.stepText}>
-              Dai un nome al tuo primo template — ad esempio "Push A", "Full Body" o il giorno della settimana.
+              Dai un nome al tuo primo template — ad esempio “Push A”, “Full Body” o il giorno della settimana.
             </Text>
             <TextInput
               value={name}
