@@ -468,7 +468,7 @@ secondaryButton: { marginHorizontal: 20, marginBottom: 18, backgroundColor: Colo
   sectionHeader: { marginBottom: 16, paddingHorizontal: 20 },
   sectionTitle: { fontSize: 24, fontWeight: '800', color: Colors.dark.text, marginBottom: 6 },
   sectionDescription: { fontSize: 15, lineHeight: 22, color: Colors.dark.textMuted },
-  listContent: { paddingHorizontal: 20, paddingBottom: 24 },
+  listContent: { paddingHorizontal: 20, paddingTop: 16, paddingBottom: 24 },
   templateItem: { backgroundColor: Colors.dark.surface, borderRadius: 16, padding: 16, borderWidth: 1, borderColor: Colors.dark.border, marginBottom: 12 },
   templateHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 12 },
   templateTextContainer: { flex: 1 },

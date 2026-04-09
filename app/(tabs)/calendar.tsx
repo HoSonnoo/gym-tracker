@@ -438,7 +438,7 @@ export default function CalendarScreen() {
               <Text style={screenStyles.modalEmptyText}>Nessun allenamento questo mese.</Text>
             </View>
           ) : (
-            <View style={screenStyles.sessionList}>
+            <View style={[screenStyles.sessionList, { marginTop: 16, marginHorizontal: 20 }]}>
               {sessionsThisMonth.map((session) => {
                 const d = new Date(session.completed_at ?? session.started_at);
                 return (
