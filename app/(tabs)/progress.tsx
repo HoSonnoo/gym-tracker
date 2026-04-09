@@ -16,7 +16,7 @@ import { useGuestLimits } from '@/hooks/use-guest-limits';
 import { getHealthDataLast30Days, initHealthKit, type DailyHealthData } from '@/lib/healthkit';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useFocusEffect } from '@react-navigation/native';
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Dimensions,
@@ -218,6 +218,20 @@ const histStyles = StyleSheet.create({
 // ─── PR Section ───────────────────────────────────────────────────────────────
 
 function PRSection({ records, unit, onSelectExercise }: { records: ExercisePR[]; unit: 'kg' | 'lbs'; onSelectExercise: (name: string) => void }) {
+  const grouped = useMemo(() => {
+    const map = new Map<string, ExercisePR[]>();
+    for (const pr of records) {
+      const key = pr.category?.trim() || 'Senza categoria';
+      if (!map.has(key)) map.set(key, []);
+      map.get(key)!.push(pr);
+    }
+    return Array.from(map.entries()).sort(([a], [b]) => {
+      if (a === 'Senza categoria') return 1;
+      if (b === 'Senza categoria') return -1;
+      return a.localeCompare(b, 'it');
+    });
+  }, [records]);
+
   if (records.length === 0) {
     return (
       <View style={styles.emptyCard}>
@@ -228,18 +242,23 @@ function PRSection({ records, unit, onSelectExercise }: { records: ExercisePR[];
   }
   return (
     <View style={styles.list}>
-      {records.map((pr) => (
-        <TouchableOpacity key={pr.exercise_name} style={styles.prCard} onPress={() => onSelectExercise(pr.exercise_name)} activeOpacity={0.85}>
-          <View style={styles.prLeft}>
-            <Text style={styles.prExerciseName}>{pr.exercise_name}</Text>
-            <Text style={styles.prDate}>{formatDateShort(pr.achieved_at)}</Text>
-          </View>
-          <View style={styles.prRight}>
-            <Text style={styles.prWeight}>{formatWeight(pr.max_weight_kg, unit)}</Text>
-            {pr.reps_at_max != null && <Text style={styles.prReps}>× {pr.reps_at_max} rep</Text>}
-            <Text style={styles.prChevron}>›</Text>
-          </View>
-        </TouchableOpacity>
+      {grouped.map(([category, prs]) => (
+        <View key={category}>
+          <Text style={styles.groupHeader}>{category}</Text>
+          {prs.map((pr) => (
+            <TouchableOpacity key={pr.exercise_name} style={styles.prCard} onPress={() => onSelectExercise(pr.exercise_name)} activeOpacity={0.85}>
+              <View style={styles.prLeft}>
+                <Text style={styles.prExerciseName}>{pr.exercise_name}</Text>
+                <Text style={styles.prDate}>{formatDateShort(pr.achieved_at)}</Text>
+              </View>
+              <View style={styles.prRight}>
+                <Text style={styles.prWeight}>{formatWeight(pr.max_weight_kg, unit)}</Text>
+                {pr.reps_at_max != null && <Text style={styles.prReps}>× {pr.reps_at_max} rep</Text>}
+                <Text style={styles.prChevron}>›</Text>
+              </View>
+            </TouchableOpacity>
+          ))}
+        </View>
       ))}
     </View>
   );
@@ -248,6 +267,20 @@ function PRSection({ records, unit, onSelectExercise }: { records: ExercisePR[];
 // ─── Volume Section ───────────────────────────────────────────────────────────
 
 function VolumeSection({ volumes, unit, onSelectExercise }: { volumes: ExerciseVolume[]; unit: 'kg' | 'lbs'; onSelectExercise: (name: string) => void }) {
+  const grouped = useMemo(() => {
+    const map = new Map<string, ExerciseVolume[]>();
+    for (const v of volumes) {
+      const key = v.category?.trim() || 'Senza categoria';
+      if (!map.has(key)) map.set(key, []);
+      map.get(key)!.push(v);
+    }
+    return Array.from(map.entries()).sort(([a], [b]) => {
+      if (a === 'Senza categoria') return 1;
+      if (b === 'Senza categoria') return -1;
+      return a.localeCompare(b, 'it');
+    });
+  }, [volumes]);
+
   if (volumes.length === 0) {
     return (
       <View style={styles.emptyCard}>
@@ -259,30 +292,35 @@ function VolumeSection({ volumes, unit, onSelectExercise }: { volumes: ExerciseV
   const maxVolume = Math.max(...volumes.map((v) => v.total_volume_kg));
   return (
     <View style={styles.list}>
-      {volumes.map((v) => {
-        const pct = maxVolume > 0 ? v.total_volume_kg / maxVolume : 0;
-        const displayVolume = unit === 'lbs'
-          ? `${Math.round(v.total_volume_kg * 2.20462).toLocaleString('it-IT')} lbs`
-          : `${v.total_volume_kg.toLocaleString('it-IT')} kg`;
-        return (
-          <TouchableOpacity key={v.exercise_name} style={styles.volumeCard} onPress={() => onSelectExercise(v.exercise_name)} activeOpacity={0.85}>
-            <View style={styles.volumeHeader}>
-              <Text style={styles.volumeExerciseName}>{v.exercise_name}</Text>
-              <View style={styles.volumeRightRow}>
-                <Text style={styles.volumeTotal}>{v.total_volume_kg > 0 ? displayVolume : `${v.total_sets} serie`}</Text>
-                <Text style={styles.prChevron}>›</Text>
-              </View>
-            </View>
-            <View style={styles.volumeBarTrack}>
-              <View style={[styles.volumeBarFill, { width: `${pct * 100}%` as any }]} />
-            </View>
-            <View style={styles.volumeMeta}>
-              <Text style={styles.volumeMetaText}>{v.total_sets} serie</Text>
-              <Text style={styles.volumeMetaText}>{v.total_reps} reps totali</Text>
-            </View>
-          </TouchableOpacity>
-        );
-      })}
+      {grouped.map(([category, items]) => (
+        <View key={category}>
+          <Text style={styles.groupHeader}>{category}</Text>
+          {items.map((v) => {
+            const pct = maxVolume > 0 ? v.total_volume_kg / maxVolume : 0;
+            const displayVolume = unit === 'lbs'
+              ? `${Math.round(v.total_volume_kg * 2.20462).toLocaleString('it-IT')} lbs`
+              : `${v.total_volume_kg.toLocaleString('it-IT')} kg`;
+            return (
+              <TouchableOpacity key={v.exercise_name} style={[styles.volumeCard, { marginBottom: 10 }]} onPress={() => onSelectExercise(v.exercise_name)} activeOpacity={0.85}>
+                <View style={styles.volumeHeader}>
+                  <Text style={styles.volumeExerciseName}>{v.exercise_name}</Text>
+                  <View style={styles.volumeRightRow}>
+                    <Text style={styles.volumeTotal}>{v.total_volume_kg > 0 ? displayVolume : `${v.total_sets} serie`}</Text>
+                    <Text style={styles.prChevron}>›</Text>
+                  </View>
+                </View>
+                <View style={styles.volumeBarTrack}>
+                  <View style={[styles.volumeBarFill, { width: `${pct * 100}%` as any }]} />
+                </View>
+                <View style={styles.volumeMeta}>
+                  <Text style={styles.volumeMetaText}>{v.total_sets} serie</Text>
+                  <Text style={styles.volumeMetaText}>{v.total_reps} reps totali</Text>
+                </View>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+      ))}
     </View>
   );
 }
@@ -911,6 +949,7 @@ const styles = StyleSheet.create({
   emptyTitle: { fontSize: 16, fontWeight: '700', color: Colors.dark.text },
   emptyText: { fontSize: 14, lineHeight: 20, color: Colors.dark.textMuted, textAlign: 'center' },
   list: { gap: 12 },
+  groupHeader: { fontSize: 12, fontWeight: '800', color: Colors.dark.textMuted, letterSpacing: 1, textTransform: 'uppercase', marginTop: 4, marginBottom: 8, paddingHorizontal: 2 },
   prCard: { backgroundColor: Colors.dark.surface, borderRadius: 16, padding: 16, borderWidth: 1, borderColor: Colors.dark.border, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   prLeft: { flex: 1, gap: 4 },
   prExerciseName: { fontSize: 15, fontWeight: '700', color: Colors.dark.text },

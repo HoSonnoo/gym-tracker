@@ -8,14 +8,14 @@ import {
 } from '@/database';
 import { useGuestLimits } from '@/hooks/use-guest-limits';
 import { useFocusEffect, useRouter } from 'expo-router';
-import { useCallback, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import {
   Alert,
-  FlatList,
   KeyboardAvoidingView,
   Modal,
   Platform,
   Pressable,
+  SectionList,
   StyleSheet,
   Text,
   TextInput,
@@ -119,6 +119,22 @@ export default function ExercisesScreen() {
     }, [loadExercises])
   );
 
+  const sections = useMemo(() => {
+    const map = new Map<string, Exercise[]>();
+    for (const ex of exercises) {
+      const key = ex.category?.trim() || 'Senza categoria';
+      if (!map.has(key)) map.set(key, []);
+      map.get(key)!.push(ex);
+    }
+    return Array.from(map.entries())
+      .sort(([a], [b]) => {
+        if (a === 'Senza categoria') return 1;
+        if (b === 'Senza categoria') return -1;
+        return a.localeCompare(b, 'it');
+      })
+      .map(([title, data]) => ({ title, data }));
+  }, [exercises]);
+
   return (
     <SafeAreaView style={styles.safeArea} edges={['top']}>
       <View style={styles.container}>
@@ -201,32 +217,25 @@ export default function ExercisesScreen() {
           </KeyboardAvoidingView>
         </Modal>
 
-        <FlatList
-          data={exercises}
+        <SectionList
+          sections={sections}
           keyExtractor={(item) => item.id.toString()}
           contentContainerStyle={styles.listContent}
           scrollIndicatorInsets={{ right: 1 }}
+          renderSectionHeader={({ section }) => (
+            <Text style={styles.sectionGroupHeader}>{section.title}</Text>
+          )}
           renderItem={({ item }) => (
             <View style={styles.exerciseItem}>
               <View style={styles.exerciseHeader}>
                 <View style={styles.exerciseTextContainer}>
                   <Text style={styles.exerciseName}>{item.name}</Text>
-                  <Text style={styles.exerciseCategory}>
-                    {item.category ?? 'Nessuna categoria'}
-                  </Text>
                 </View>
-
                 <View style={{ flexDirection: 'row', gap: 8 }}>
-                  <Pressable
-                    style={styles.renameButton}
-                    onPress={() => handleRenameExercise(item)}
-                  >
+                  <Pressable style={styles.renameButton} onPress={() => handleRenameExercise(item)}>
                     <Text style={styles.renameButtonText}>Modifica</Text>
                   </Pressable>
-                  <Pressable
-                    style={styles.deleteButton}
-                    onPress={() => handleDeleteExercise(item)}
-                  >
+                  <Pressable style={styles.deleteButton} onPress={() => handleDeleteExercise(item)}>
                     <Text style={styles.deleteButtonText}>Elimina</Text>
                   </Pressable>
                 </View>
@@ -236,9 +245,7 @@ export default function ExercisesScreen() {
           ListEmptyComponent={
             <View style={styles.card}>
               <Text style={styles.cardTitle}>Nessun esercizio trovato</Text>
-              <Text style={styles.cardText}>
-                Aggiungi il primo esercizio dal form qui sopra.
-              </Text>
+              <Text style={styles.cardText}>Aggiungi il primo esercizio dal form qui sopra.</Text>
             </View>
           }
         />
@@ -348,6 +355,16 @@ const styles = StyleSheet.create({
   listContent: {
     paddingHorizontal: 20,
     paddingBottom: 24,
+  },
+  sectionGroupHeader: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: Colors.dark.textMuted,
+    letterSpacing: 1,
+    textTransform: 'uppercase',
+    marginTop: 16,
+    marginBottom: 8,
+    paddingHorizontal: 2,
   },
   exerciseItem: {
     backgroundColor: Colors.dark.surface,

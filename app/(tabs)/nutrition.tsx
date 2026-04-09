@@ -2127,7 +2127,17 @@ function PianoSection() {
     });
   }, []);
   const [expandedDay, setExpandedDay] = useState<number | null>(null);
+  const [collapsedMeals, setCollapsedMeals] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
+
+  const toggleMeal = (dayId: number, mealKey: string) => {
+    const k = `${dayId}-${mealKey}`;
+    setCollapsedMeals((prev) => {
+      const next = new Set(prev);
+      next.has(k) ? next.delete(k) : next.add(k);
+      return next;
+    });
+  };
 
   // Modals
   const [showNewPlanModal, setShowNewPlanModal] = useState(false);
@@ -2517,23 +2527,34 @@ function PianoSection() {
                     {MEAL_TYPES.map((meal) => {
                       const mealEntries = mealGroups[meal.key] ?? [];
                       const isEmpty = mealEntries.length === 0;
+                      const isMealCollapsed = collapsedMeals.has(`${day.id}-${meal.key}`);
                       return (
                         <View key={meal.key} style={pianoStyles.mealGroup}>
-                          <View style={pianoStyles.mealGroupHeader}>
+                          <TouchableOpacity
+                            style={pianoStyles.mealGroupHeader}
+                            onPress={() => toggleMeal(day.id, meal.key)}
+                            activeOpacity={0.75}
+                          >
                             <Text style={[pianoStyles.mealGroupTitle, isEmpty && pianoStyles.mealGroupTitleEmpty]}>
                               {meal.emoji} {meal.label}
+                              {mealEntries.length > 0 && isMealCollapsed && (
+                                <Text style={pianoStyles.mealCollapsedCount}> · {mealEntries.length} aliment{mealEntries.length === 1 ? 'o' : 'i'}</Text>
+                              )}
                             </Text>
-                            <TouchableOpacity
-                              style={pianoStyles.addEntryBtn}
-                              onPress={() => setShowAddEntryModal({ dayId: day.id, mealType: meal.key })}
-                              activeOpacity={0.8}
-                            >
-                              <Text style={pianoStyles.addEntryBtnText}>+ Aggiungi</Text>
-                            </TouchableOpacity>
-                          </View>
-                          {mealEntries.length === 0 ? (
+                            <View style={pianoStyles.mealGroupHeaderRight}>
+                              <TouchableOpacity
+                                style={pianoStyles.addEntryBtn}
+                                onPress={() => setShowAddEntryModal({ dayId: day.id, mealType: meal.key })}
+                                activeOpacity={0.8}
+                              >
+                                <Text style={pianoStyles.addEntryBtnText}>+ Aggiungi</Text>
+                              </TouchableOpacity>
+                              <Text style={pianoStyles.mealChevron}>{isMealCollapsed ? '▶' : '▼'}</Text>
+                            </View>
+                          </TouchableOpacity>
+                          {!isMealCollapsed && mealEntries.length === 0 ? (
                             <Text style={pianoStyles.emptyMealText}>Nessun alimento</Text>
-                          ) : (
+                          ) : !isMealCollapsed ? (
                             <View style={pianoStyles.entryList}>
                               {mealEntries.map((entry) => {
                                 const done = completedEntries.has(entry.id);
@@ -2557,7 +2578,7 @@ function PianoSection() {
                                 );
                               })}
                             </View>
-                          )}
+                          ) : null}
                         </View>
                       );
                     })}
@@ -3546,8 +3567,11 @@ const pianoStyles = StyleSheet.create({
   dayContent: { paddingHorizontal: 16, paddingBottom: 16, gap: 14, borderTopWidth: 1, borderTopColor: Colors.dark.border },
   mealGroup: { gap: 8, paddingTop: 14 },
   mealGroupHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  mealGroupTitle: { fontSize: 14, fontWeight: '700', color: Colors.dark.text },
+  mealGroupHeaderRight: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  mealGroupTitle: { fontSize: 14, fontWeight: '700', color: Colors.dark.text, flex: 1 },
   mealGroupTitleEmpty: { color: Colors.dark.textMuted, textDecorationLine: 'line-through' },
+  mealCollapsedCount: { fontSize: 12, fontWeight: '600', color: Colors.dark.textMuted },
+  mealChevron: { fontSize: 11, color: Colors.dark.textMuted, fontWeight: '700', marginLeft: 2 },
   addEntryBtn: { backgroundColor: 'rgba(126,71,255,0.14)', borderRadius: 8, borderWidth: 1, borderColor: PRIMARY, paddingHorizontal: 10, paddingVertical: 4 },
   addEntryBtnText: { color: Colors.dark.primarySoft, fontSize: 12, fontWeight: '700' },
   emptyMealText: { fontSize: 12, color: Colors.dark.textMuted, fontStyle: 'italic' },
@@ -3657,6 +3681,6 @@ const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: Colors.dark.background }, 
   container: { flex: 1, backgroundColor: Colors.dark.background },
   content: { padding: 20, paddingTop: 8, paddingBottom: 40 },
-  pageTitle: { fontSize: 30, fontWeight: '800', color: Colors.dark.text, marginBottom: 16 },
+  pageTitle: { fontSize: 30, fontWeight: '800', color: Colors.dark.text, marginTop: 8, marginBottom: 4 },
   sectionContent: { marginTop: 16 },
 });

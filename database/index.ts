@@ -1113,6 +1113,7 @@ export async function getWorkoutSessionDetail(
 
 export type ExercisePR = {
   exercise_name: string;
+  category: string | null;
   max_weight_kg: number;
   reps_at_max: number | null;
   achieved_at: string; // completed_at della sessione
@@ -1120,6 +1121,7 @@ export type ExercisePR = {
 
 export type ExerciseVolume = {
   exercise_name: string;
+  category: string | null;
   total_sets: number;
   total_reps: number;
   total_volume_kg: number; // somma di (peso × reps) per ogni serie completata
@@ -1131,6 +1133,7 @@ export async function getPersonalRecords(): Promise<ExercisePR[]> {
   return database.getAllAsync<ExercisePR>(`
     SELECT
       wse.exercise_name,
+      wse.category,
       MAX(wss.actual_weight_kg) AS max_weight_kg,
       wss.actual_reps AS reps_at_max,
       ws.completed_at AS achieved_at
@@ -1142,7 +1145,7 @@ export async function getPersonalRecords(): Promise<ExercisePR[]> {
       AND wss.actual_weight_kg IS NOT NULL
       AND ws.status = 'completed'
     GROUP BY wse.exercise_name
-    ORDER BY wse.exercise_name ASC
+    ORDER BY wse.category ASC, wse.exercise_name ASC
   `);
 }
 
@@ -1152,6 +1155,7 @@ export async function getExerciseVolumeSummary(): Promise<ExerciseVolume[]> {
   return database.getAllAsync<ExerciseVolume>(`
     SELECT
       wse.exercise_name,
+      wse.category,
       COUNT(wss.id) AS total_sets,
       COALESCE(SUM(wss.actual_reps), 0) AS total_reps,
       COALESCE(SUM(
@@ -1168,7 +1172,7 @@ export async function getExerciseVolumeSummary(): Promise<ExerciseVolume[]> {
       wss.is_completed = 1
       AND ws.status = 'completed'
     GROUP BY wse.exercise_name
-    ORDER BY total_volume_kg DESC
+    ORDER BY wse.category ASC, total_volume_kg DESC
   `);
 }
 
