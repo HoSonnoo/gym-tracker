@@ -1,4 +1,5 @@
 import { Colors } from '@/constants/Colors';
+import { SUPABASE_ANON_KEY, SUPABASE_URL } from '@/lib/supabase';
 import React, { useEffect, useRef, useState } from 'react';
 import {
   Animated,
@@ -15,8 +16,7 @@ import {
 } from 'react-native';
 
 const PRIMARY = '#7e47ff';
-const PROXY_URL = 'https://xttmvtgkoshsfyqmizja.supabase.co/functions/v1/anthropic-proxy';
-const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inh0dG12dGdrb3Noc2Z5cW1pemphIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM5MDk5MjUsImV4cCI6MjA4OTQ4NTkyNX0.3ooDzd5rLe8GeJ1sLWkpKSjp_D5TAey_acThZN_2WiU';
+const PROXY_URL = `${SUPABASE_URL}/functions/v1/anthropic-proxy`;
 
 const SYSTEM_PROMPT = `Sei Vyro Assistant, l'assistente AI integrato nell'app VYRO — un tracker di allenamento e nutrizione.
 
