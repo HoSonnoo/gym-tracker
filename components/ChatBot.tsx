@@ -15,7 +15,8 @@ import {
 } from 'react-native';
 
 const PRIMARY = '#7e47ff';
-const ANTHROPIC_API_KEY = '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';
+const PROXY_URL = 'https://xttmvtgkoshsfyqmizja.supabase.co/functions/v1/anthropic-proxy';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inh0dG12dGdrb3Noc2Z5cW1pemphIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM5MDk5MjUsImV4cCI6MjA4OTQ4NTkyNX0.3ooDzd5rLe8GeJ1sLWkpKSjp_D5TAey_acThZN_2WiU';
 
 const SYSTEM_PROMPT = `Sei Vyro Assistant, l'assistente AI integrato nell'app VYRO — un tracker di allenamento e nutrizione.
 
@@ -83,12 +84,11 @@ export default function ChatBot() {
         .filter((m) => m.id !== '0')
         .map((m) => ({ role: m.role, content: m.text }));
 
-      const response = await fetch('https://api.anthropic.com/v1/messages', {
+      const response = await fetch(PROXY_URL, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'x-api-key': ANTHROPIC_API_KEY,
-          'anthropic-version': '2023-06-01',
+          'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
         },
         body: JSON.stringify({
           model: 'claude-haiku-4-5-20251001',
@@ -99,6 +99,15 @@ export default function ChatBot() {
       });
 
       const data = await response.json();
+      if (!response.ok || data.type === 'error') {
+        const errMsg = data?.error?.message ?? `Errore API (${response.status})`;
+        console.warn('ChatBot API error:', JSON.stringify(data));
+        setMessages((prev) => [
+          ...prev,
+          { id: Date.now().toString() + '_e', role: 'assistant', text: `Errore: ${errMsg}` },
+        ]);
+        return;
+      }
       const reply = data?.content?.[0]?.text ?? 'Non ho capito, riprova.';
 
       setMessages((prev) => [

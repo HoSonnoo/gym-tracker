@@ -1,12 +1,14 @@
 import { Colors } from '@/constants/Colors';
 import {
   addExerciseToTemplate,
+  clearTemplateSuperset,
   Exercise,
   getExercises,
   getTemplateExercises,
   getWorkoutTemplateById,
   removeExerciseFromTemplate,
   reorderTemplateExercises,
+  setTemplateSuperset,
   TemplateExercise,
   updateWorkoutTemplate,
   WorkoutTemplate,
@@ -17,6 +19,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Alert,
   FlatList,
+  Modal,
   Pressable,
   StyleSheet,
   Text,
@@ -43,10 +46,13 @@ type DraggableItemProps = {
   index: number;
   total: number;
   itemHeightRef: React.MutableRefObject<number>;
+  partnerName: string | null;
   onDragStart: (index: number) => void;
   onDragEnd: (fromIndex: number, toIndex: number) => void;
   onConfigure: () => void;
   onRemove: () => void;
+  onPairSuperset: () => void;
+  onClearSuperset: () => void;
   onLayout?: (e: any) => void;
 };
 
@@ -55,12 +61,16 @@ function DraggableItem({
   index,
   total,
   itemHeightRef,
+  partnerName,
   onDragStart,
   onDragEnd,
   onConfigure,
   onRemove,
+  onPairSuperset,
+  onClearSuperset,
   onLayout,
 }: DraggableItemProps) {
+  const isInSuperset = item.superset_group_id !== null;
   const translateY = useSharedValue(0);
   const scale = useSharedValue(1);
   const zIndex = useSharedValue(0);
@@ -120,8 +130,14 @@ function DraggableItem({
 
   return (
     <GestureDetector gesture={pan}>
-      <Animated.View style={[dragStyles.item, animatedStyle]}
-        onLayout={onLayout}>
+      <Animated.View
+        style={[
+          dragStyles.item,
+          isInSuperset && dragStyles.itemSuperset,
+          animatedStyle,
+        ]}
+        onLayout={onLayout}
+      >
         {/* Handle drag */}
         <View style={dragStyles.handleCol}>
           <View style={dragStyles.handleIcon}>
@@ -134,10 +150,20 @@ function DraggableItem({
 
         {/* Info esercizio */}
         <View style={dragStyles.infoCol}>
-          <Text style={dragStyles.exerciseName}>{item.exercise_name}</Text>
+          <View style={dragStyles.nameRow}>
+            <Text style={dragStyles.exerciseName}>{item.exercise_name}</Text>
+            {isInSuperset && (
+              <View style={dragStyles.ssBadge}>
+                <Text style={dragStyles.ssBadgeText}>SS</Text>
+              </View>
+            )}
+          </View>
           <Text style={dragStyles.exerciseCategory}>
             {item.exercise_category ?? 'Nessuna categoria'}
           </Text>
+          {isInSuperset && partnerName && (
+            <Text style={dragStyles.partnerLabel}>con {partnerName}</Text>
+          )}
         </View>
 
         {/* Azioni */}
@@ -145,6 +171,15 @@ function DraggableItem({
           <Pressable style={dragStyles.configureButton} onPress={onConfigure}>
             <Text style={dragStyles.configureButtonText}>Configura</Text>
           </Pressable>
+          {isInSuperset ? (
+            <Pressable style={dragStyles.supersetClearButton} onPress={onClearSuperset}>
+              <Text style={dragStyles.supersetClearButtonText}>Rimuovi SS</Text>
+            </Pressable>
+          ) : (
+            <Pressable style={dragStyles.supersetButton} onPress={onPairSuperset}>
+              <Text style={dragStyles.supersetButtonText}>Abbina SS</Text>
+            </Pressable>
+          )}
           <Pressable style={dragStyles.removeButton} onPress={onRemove}>
             <Text style={dragStyles.removeButtonText}>Rimuovi</Text>
           </Pressable>
@@ -249,6 +284,167 @@ const dragStyles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '700',
   },
+  itemSuperset: {
+    borderColor: Colors.dark.warning,
+    borderLeftWidth: 3,
+  },
+  nameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    flexWrap: 'wrap',
+  },
+  ssBadge: {
+    backgroundColor: 'rgba(245,158,11,0.18)',
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: Colors.dark.warning,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+  },
+  ssBadgeText: {
+    color: Colors.dark.warning,
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+  },
+  partnerLabel: {
+    fontSize: 11,
+    color: Colors.dark.warning,
+    fontStyle: 'italic',
+    marginTop: 2,
+  },
+  supersetButton: {
+    backgroundColor: 'rgba(245,158,11,0.14)',
+    borderWidth: 1,
+    borderColor: Colors.dark.warning,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 10,
+  },
+  supersetButtonText: {
+    color: Colors.dark.warning,
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  supersetClearButton: {
+    backgroundColor: 'rgba(245,158,11,0.08)',
+    borderWidth: 1,
+    borderColor: Colors.dark.warning,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 10,
+  },
+  supersetClearButtonText: {
+    color: Colors.dark.warning,
+    fontSize: 12,
+    fontWeight: '700',
+  },
+});
+
+// ─── Superset Picker Modal ────────────────────────────────────────────────────
+
+type SupersetPickerModalProps = {
+  visible: boolean;
+  candidates: TemplateExercise[];    // esercizi abbinabili
+  onSelect: (partner: TemplateExercise) => void;
+  onClose: () => void;
+};
+
+function SupersetPickerModal({ visible, candidates, onSelect, onClose }: SupersetPickerModalProps) {
+  return (
+    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
+      <View style={ssPickerStyles.overlay}>
+        <View style={ssPickerStyles.sheet}>
+          <View style={ssPickerStyles.handle} />
+          <Text style={ssPickerStyles.title}>Scegli l'esercizio da abbinare</Text>
+          <Text style={ssPickerStyles.subtitle}>
+            Seleziona un altro esercizio del template per creare una super serie
+          </Text>
+          {candidates.length === 0 ? (
+            <View style={ssPickerStyles.emptyBox}>
+              <Text style={ssPickerStyles.emptyText}>
+                Nessun esercizio disponibile da abbinare.{'\n'}
+                Aggiungi altri esercizi al template prima.
+              </Text>
+            </View>
+          ) : (
+            candidates.map((ex) => (
+              <Pressable
+                key={ex.id}
+                style={ssPickerStyles.exerciseRow}
+                onPress={() => { onSelect(ex); onClose(); }}
+              >
+                <View style={{ flex: 1 }}>
+                  <Text style={ssPickerStyles.exerciseName}>{ex.exercise_name}</Text>
+                  <Text style={ssPickerStyles.exerciseCategory}>
+                    {ex.exercise_category ?? 'Nessuna categoria'}
+                  </Text>
+                </View>
+                <View style={ssPickerStyles.addBadge}>
+                  <Text style={ssPickerStyles.addBadgeText}>Abbina</Text>
+                </View>
+              </Pressable>
+            ))
+          )}
+          <TouchableOpacity style={ssPickerStyles.closeButton} onPress={onClose} activeOpacity={0.8}>
+            <Text style={ssPickerStyles.closeButtonText}>Annulla</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
+const ssPickerStyles = StyleSheet.create({
+  overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' },
+  sheet: {
+    backgroundColor: Colors.dark.surface,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    padding: 24,
+    paddingBottom: 44,
+    borderTopWidth: 1,
+    borderColor: Colors.dark.border,
+    maxHeight: '80%',
+  },
+  handle: { width: 40, height: 4, backgroundColor: Colors.dark.border, borderRadius: 2, alignSelf: 'center', marginBottom: 20 },
+  title: { fontSize: 20, fontWeight: '800', color: Colors.dark.text, textAlign: 'center', marginBottom: 8 },
+  subtitle: { fontSize: 14, color: Colors.dark.textMuted, textAlign: 'center', marginBottom: 20, lineHeight: 20 },
+  emptyBox: { paddingVertical: 24, alignItems: 'center' },
+  emptyText: { color: Colors.dark.textMuted, fontSize: 14, textAlign: 'center', lineHeight: 22 },
+  exerciseRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.dark.surfaceSoft,
+    borderRadius: 14,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: Colors.dark.border,
+    marginBottom: 10,
+    gap: 12,
+  },
+  exerciseName: { fontSize: 15, fontWeight: '700', color: Colors.dark.text, marginBottom: 2 },
+  exerciseCategory: { fontSize: 13, color: Colors.dark.textMuted },
+  addBadge: {
+    backgroundColor: 'rgba(245,158,11,0.14)',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: Colors.dark.warning,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  addBadgeText: { color: Colors.dark.warning, fontSize: 13, fontWeight: '700' },
+  closeButton: {
+    marginTop: 8,
+    paddingVertical: 14,
+    alignItems: 'center',
+    backgroundColor: Colors.dark.surfaceSoft,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: Colors.dark.border,
+  },
+  closeButtonText: { color: Colors.dark.textMuted, fontSize: 15, fontWeight: '600' },
 });
 
 // ─── Draggable List ───────────────────────────────────────────────────────────
@@ -258,6 +454,8 @@ type DraggableExerciseListProps = {
   onReorder: (reordered: TemplateExercise[]) => void;
   onConfigure: (item: TemplateExercise) => void;
   onRemove: (item: TemplateExercise) => void;
+  onPairSuperset: (item: TemplateExercise) => void;
+  onClearSuperset: (item: TemplateExercise) => void;
 };
 
 function DraggableExerciseList({
@@ -265,6 +463,8 @@ function DraggableExerciseList({
   onReorder,
   onConfigure,
   onRemove,
+  onPairSuperset,
+  onClearSuperset,
 }: DraggableExerciseListProps) {
   const [items, setItems] = useState(exercises);
   const itemHeightRef = useRef(82); // fallback iniziale
@@ -291,22 +491,32 @@ function DraggableExerciseList({
 
   return (
     <View>
-      {items.map((item, index) => (
+      {items.map((item, index) => {
+        const partnerName = item.superset_group_id !== null
+          ? (items.find(
+              (e) => e.superset_group_id === item.superset_group_id && e.id !== item.id
+            )?.exercise_name ?? null)
+          : null;
+        return (
         <DraggableItem
           key={item.id}
           item={item}
           index={index}
           total={items.length}
+          partnerName={partnerName}
           itemHeightRef={itemHeightRef}
           onDragStart={handleDragStart}
           onDragEnd={handleDragEnd}
           onConfigure={() => onConfigure(item)}
           onRemove={() => onRemove(item)}
+          onPairSuperset={() => onPairSuperset(item)}
+          onClearSuperset={() => onClearSuperset(item)}
           onLayout={index === 0
             ? (e) => { itemHeightRef.current = e.nativeEvent.layout.height; }
             : undefined}
         />
-      ))}
+        );
+      })}
     </View>
   );
 }
@@ -327,6 +537,7 @@ export default function TemplateDetailScreen() {
   const [editNotes, setEditNotes] = useState('');
   const [isSaving, setIsSaving] = useState(false);
   const [isReordering, setIsReordering] = useState(false);
+  const [supersetPickerTarget, setSupersetPickerTarget] = useState<TemplateExercise | null>(null);
 
   const reorderTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -449,6 +660,43 @@ export default function TemplateDetailScreen() {
                 await loadData();
               } catch {
                 Alert.alert('Errore', 'Impossibile rimuovere l\'esercizio.');
+              }
+            },
+          },
+        ]
+      );
+    },
+    [loadData]
+  );
+
+  const handlePairSuperset = useCallback(
+    async (target: TemplateExercise, partner: TemplateExercise) => {
+      try {
+        await setTemplateSuperset(target.id, partner.id);
+        await loadData();
+      } catch {
+        Alert.alert('Errore', 'Impossibile creare la super serie.');
+      }
+    },
+    [loadData]
+  );
+
+  const handleClearSuperset = useCallback(
+    async (item: TemplateExercise) => {
+      Alert.alert(
+        'Rimuovi super serie',
+        `Vuoi rimuovere l'abbinamento di "${item.exercise_name}"?`,
+        [
+          { text: 'Annulla', style: 'cancel' },
+          {
+            text: 'Rimuovi',
+            style: 'destructive',
+            onPress: async () => {
+              try {
+                await clearTemplateSuperset(item.id);
+                await loadData();
+              } catch {
+                Alert.alert('Errore', 'Impossibile rimuovere la super serie.');
               }
             },
           },
@@ -602,6 +850,8 @@ export default function TemplateDetailScreen() {
                     onReorder={handleReorder}
                     onConfigure={(item) => router.push(`/template/exercise/${item.id}`)}
                     onRemove={handleRemoveExerciseFromTemplate}
+                    onPairSuperset={(item) => setSupersetPickerTarget(item)}
+                    onClearSuperset={handleClearSuperset}
                   />
                   <View style={styles.configureTip}>
                     <Text style={styles.configureTipText}>
@@ -647,6 +897,19 @@ export default function TemplateDetailScreen() {
               </Text>
             </View>
           }
+        />
+
+        <SupersetPickerModal
+          visible={supersetPickerTarget !== null}
+          candidates={templateExercises.filter(
+            (ex) =>
+              ex.id !== supersetPickerTarget?.id &&
+              ex.superset_group_id === null
+          )}
+          onSelect={(partner) => {
+            if (supersetPickerTarget) handlePairSuperset(supersetPickerTarget, partner);
+          }}
+          onClose={() => setSupersetPickerTarget(null)}
         />
       </SafeAreaView>
     </GestureHandlerRootView>

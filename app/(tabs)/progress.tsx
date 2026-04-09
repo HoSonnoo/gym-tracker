@@ -786,144 +786,32 @@ function ActivityChart({ data, valueKey, color }: {
 // ─── Activity Section ─────────────────────────────────────────────────────────
 
 function ActivitySection() {
-  const [healthData, setHealthData] = useState<DailyHealthData[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [permissionDenied, setPermissionDenied] = useState(false);
-
-  React.useEffect(() => {
-    let cancelled = false;
-    const timeout = setTimeout(() => {
-      if (!cancelled) {
-        setPermissionDenied(true);
-        setLoading(false);
-      }
-    }, 8000);
-
-    const run = async () => {
-      try {
-        const granted = await initHealthKit();
-        clearTimeout(timeout);
-        if (cancelled) return;
-        if (!granted) {
-          setPermissionDenied(true);
-          setLoading(false);
-          return;
-        }
-        try {
-          const data = await getHealthDataLast30Days();
-          if (!cancelled) setHealthData(data);
-        } catch {
-          if (!cancelled) setHealthData([]);
-        } finally {
-          if (!cancelled) setLoading(false);
-        }
-      } catch {
-        clearTimeout(timeout);
-        if (!cancelled) {
-          setPermissionDenied(true);
-          setLoading(false);
-        }
-      }
-    };
-
-    run();
-    return () => { cancelled = true; clearTimeout(timeout); };
-  }, []);
-
-  const today = healthData[healthData.length - 1];
-  const avgSteps = healthData.length > 0
-    ? Math.round(healthData.reduce((s, d) => s + d.steps, 0) / healthData.filter(d => d.steps > 0).length || 0)
-    : 0;
-
-  if (loading) {
-    return (
-      <View style={styles.loadingBox}>
-        <ActivityIndicator size="large" color={PRIMARY} />
-      </View>
-    );
-  }
-
-  if (permissionDenied) {
-    return (
-      <View style={styles.emptyCard}>
-        <Text style={styles.emptyTitle}>🏃 Accesso negato</Text>
-        <Text style={styles.emptyText}>
-          Vai su Impostazioni → Privacy → Salute → Vyro e abilita l’accesso per vedere i tuoi dati di attività.
-        </Text>
-      </View>
-    );
-  }
-
   return (
     <View style={styles.list}>
-      {/* Stat cards oggi */}
-      <View style={activityStyles.statsRow}>
-        <View style={activityStyles.statCard}>
-          <Text style={activityStyles.statEmoji}>👟</Text>
-          <Text style={activityStyles.statLabel}>Passi oggi</Text>
-          <Text style={activityStyles.statValue}>{(today?.steps ?? 0).toLocaleString('it-IT')}</Text>
-          <Text style={activityStyles.statSub}>media {avgSteps.toLocaleString('it-IT')}/g</Text>
-        </View>
-        <View style={activityStyles.statCard}>
-          <Text style={activityStyles.statEmoji}>📍</Text>
-          <Text style={activityStyles.statLabel}>Distanza oggi</Text>
-          <Text style={activityStyles.statValue}>{(today?.distanceKm ?? 0).toFixed(2)} km</Text>
-          <Text style={activityStyles.statSub}>ultimi 30 giorni</Text>
-        </View>
-        <View style={activityStyles.statCard}>
-          <Text style={activityStyles.statEmoji}>🔥</Text>
-          <Text style={activityStyles.statLabel}>Calorie oggi</Text>
-          <Text style={activityStyles.statValue}>{Math.round(today?.caloriesBurned ?? 0)}</Text>
-          <Text style={activityStyles.statSub}>kcal attive</Text>
-        </View>
-      </View>
-
-      {/* Grafico passi */}
-      <View style={activityStyles.chartCard}>
-        <Text style={activityStyles.chartTitle}>👟 Passi — ultimi 30 giorni</Text>
-        <ActivityChart data={healthData} valueKey="steps" color={PRIMARY} />
-      </View>
-
-      {/* Grafico distanza */}
-      <View style={activityStyles.chartCard}>
-        <Text style={activityStyles.chartTitle}>📍 Distanza (km) — ultimi 30 giorni</Text>
-        <ActivityChart data={healthData} valueKey="distanceKm" color={Colors.dark.success} />
-      </View>
-
-      {/* Grafico calorie */}
-      <View style={activityStyles.chartCard}>
-        <Text style={activityStyles.chartTitle}>🔥 Calorie attive — ultimi 30 giorni</Text>
-        <ActivityChart data={healthData} valueKey="caloriesBurned" color={Colors.dark.danger} />
+      <View style={activityStyles.comingSoonCard}>
+        <Text style={activityStyles.comingSoonEmoji}>🔗</Text>
+        <Text style={activityStyles.comingSoonTitle}>Integrazione in arrivo</Text>
+        <Text style={activityStyles.comingSoonText}>
+          Il collegamento con l’app Salute di iOS (passi, distanza, calorie) e con Google Health Connect su Android è previsto in una prossima versione di Vyro.
+        </Text>
       </View>
     </View>
   );
 }
 
 const activityStyles = StyleSheet.create({
-  statsRow: { flexDirection: 'row', gap: 10 },
-  statCard: {
-    flex: 1,
-    backgroundColor: Colors.dark.surface,
-    borderRadius: 16,
-    padding: 12,
-    borderWidth: 1,
-    borderColor: Colors.dark.border,
-    alignItems: 'center',
-    gap: 3,
-  },
-  statEmoji: { fontSize: 20, marginBottom: 2 },
-  statLabel: { fontSize: 10, fontWeight: '700', color: Colors.dark.textMuted, textAlign: 'center' },
-  statValue: { fontSize: 15, fontWeight: '800', color: Colors.dark.text, textAlign: 'center' },
-  statSub: { fontSize: 9, color: Colors.dark.textMuted, textAlign: 'center' },
-  chartCard: {
+  comingSoonCard: {
     backgroundColor: Colors.dark.surface,
     borderRadius: 18,
     borderWidth: 1,
     borderColor: Colors.dark.border,
-    padding: 16,
+    padding: 28,
+    alignItems: 'center',
     gap: 12,
   },
-  chartTitle: { fontSize: 13, fontWeight: '700', color: Colors.dark.text },
+  comingSoonEmoji: { fontSize: 40 },
+  comingSoonTitle: { fontSize: 18, fontWeight: '800', color: Colors.dark.text, textAlign: 'center' },
+  comingSoonText: { fontSize: 14, lineHeight: 22, color: Colors.dark.textMuted, textAlign: 'center' },
 });
 
 // ─── Screen ───────────────────────────────────────────────────────────────────

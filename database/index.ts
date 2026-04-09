@@ -242,6 +242,18 @@ export async function initDatabase() {
   } catch {
     // colonna già esistente, ignorato
   }
+
+  // v1.2: superset_group_id per template e sessioni
+  try {
+    await database.execAsync(
+      `ALTER TABLE workout_template_exercises ADD COLUMN superset_group_id INTEGER`
+    );
+  } catch { /* già esistente */ }
+  try {
+    await database.execAsync(
+      `ALTER TABLE workout_session_exercises ADD COLUMN superset_group_id INTEGER`
+    );
+  } catch { /* già esistente */ }
 }
 
 export type Exercise = {
@@ -270,6 +282,7 @@ export type TemplateExercise = {
   notes: string | null;
   exercise_name: string;
   exercise_category: string | null;
+  superset_group_id: number | null;
 };
 
 export type TemplateExerciseSet = {
@@ -307,6 +320,7 @@ export type WorkoutSessionExercise = {
   category: string | null;
   exercise_order: number;
   notes: string | null;
+  superset_group_id: number | null;
   created_at: string;
 };
 
@@ -440,6 +454,7 @@ export async function getTemplateExercises(
       wte.target_reps_max,
       wte.rest_seconds,
       wte.notes,
+      wte.superset_group_id,
       e.name AS exercise_name,
       e.category AS exercise_category
      FROM workout_template_exercises wte
@@ -760,12 +775,14 @@ export async function startWorkoutSessionFromTemplate(templateId: number) {
     notes: string | null;
     exercise_name: string;
     category: string | null;
+    superset_group_id: number | null;
   }>(
     `SELECT
       te.id,
       te.exercise_id,
       te.exercise_order,
       te.notes,
+      te.superset_group_id,
       e.name as exercise_name,
       e.category as category
      FROM workout_template_exercises te
@@ -784,8 +801,9 @@ export async function startWorkoutSessionFromTemplate(templateId: number) {
         exercise_name,
         category,
         exercise_order,
-        notes
-      ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        notes,
+        superset_group_id
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         sessionId,
         templateExercise.id,
@@ -794,6 +812,7 @@ export async function startWorkoutSessionFromTemplate(templateId: number) {
         templateExercise.category,
         templateExercise.exercise_order,
         templateExercise.notes,
+        templateExercise.superset_group_id ?? null,
       ]
     );
 
@@ -863,6 +882,60 @@ export async function startWorkoutSessionFromTemplate(templateId: number) {
   return sessionId;
 }
 
+// ─── Superset management ─────────────────────────────────────────────────────
+
+export async function setTemplateSuperset(id1: number, id2: number): Promise<void> {
+  const database = await getDb();
+  const groupId = Date.now();
+  await database.runAsync(
+    `UPDATE workout_template_exercises SET superset_group_id = ? WHERE id = ?`,
+    [groupId, id1]
+  );
+  await database.runAsync(
+    `UPDATE workout_template_exercises SET superset_group_id = ? WHERE id = ?`,
+    [groupId, id2]
+  );
+}
+
+export async function clearTemplateSuperset(id: number): Promise<void> {
+  const database = await getDb();
+  const row = await database.getFirstAsync<{ superset_group_id: number | null }>(
+    `SELECT superset_group_id FROM workout_template_exercises WHERE id = ?`,
+    [id]
+  );
+  if (!row?.superset_group_id) return;
+  await database.runAsync(
+    `UPDATE workout_template_exercises SET superset_group_id = NULL WHERE superset_group_id = ?`,
+    [row.superset_group_id]
+  );
+}
+
+export async function setSessionSuperset(id1: number, id2: number): Promise<void> {
+  const database = await getDb();
+  const groupId = Date.now();
+  await database.runAsync(
+    `UPDATE workout_session_exercises SET superset_group_id = ? WHERE id = ?`,
+    [groupId, id1]
+  );
+  await database.runAsync(
+    `UPDATE workout_session_exercises SET superset_group_id = ? WHERE id = ?`,
+    [groupId, id2]
+  );
+}
+
+export async function clearSessionSuperset(id: number): Promise<void> {
+  const database = await getDb();
+  const row = await database.getFirstAsync<{ superset_group_id: number | null }>(
+    `SELECT superset_group_id FROM workout_session_exercises WHERE id = ?`,
+    [id]
+  );
+  if (!row?.superset_group_id) return;
+  await database.runAsync(
+    `UPDATE workout_session_exercises SET superset_group_id = NULL WHERE superset_group_id = ?`,
+    [row.superset_group_id]
+  );
+}
+
 export async function getWorkoutSessionExercises(
   sessionId: number
 ): Promise<WorkoutSessionExercise[]> {
@@ -878,6 +951,7 @@ export async function getWorkoutSessionExercises(
       category,
       exercise_order,
       notes,
+      superset_group_id,
       created_at
      FROM workout_session_exercises
      WHERE session_id = ?

@@ -13,6 +13,7 @@ import { useCallback, useState } from 'react';
 import {
   Alert,
   FlatList,
+  Modal,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -257,6 +258,7 @@ export default function WorkoutsScreen() {
   const [notes, setNotes] = useState('');
   const [isSaving, setIsSaving] = useState(false);
   const [phase, setPhase] = useState<OnboardingPhase | null>(null);
+  const [showTemplates, setShowTemplates] = useState(false);
 
   const loadTemplates = useCallback(async () => {
     try {
@@ -391,47 +393,58 @@ const handleAddTemplate = useCallback(async () => {
         <Text style={styles.secondaryButtonText}>Gestisci esercizi</Text>
       </Pressable>
 
-      <Pressable style={styles.historicalButton} onPress={() => router.push('/log-historical')}>
-        <Text style={styles.historicalButtonText}>📝 Registra allenamento pregresso</Text>
+
+      <Pressable style={styles.templatesButton} onPress={() => setShowTemplates(true)}>
+        <Text style={styles.templatesButtonText}>
+          I tuoi template ({templates.length})
+        </Text>
+        <Text style={styles.templatesButtonArrow}>›</Text>
       </Pressable>
 
-      <View style={styles.sectionHeader}>
-        <Text style={styles.sectionTitle}>I tuoi template</Text>
-        <Text style={styles.sectionDescription}>
-          Qui compariranno le tue schede di allenamento da riutilizzare nei vari giorni.
-        </Text>
-      </View>
-
-      <FlatList
-        data={templates}
-        keyExtractor={(item) => item.id.toString()}
-        contentContainerStyle={styles.listContent}
-        scrollIndicatorInsets={{ right: 1 }}
-        renderItem={({ item }) => (
-          <Pressable
-            style={styles.templateItem}
-            onPress={() => router.push(`/template/${item.id}`)}
-          >
-            <View style={styles.templateHeader}>
-              <View style={styles.templateTextContainer}>
-                <Text style={styles.templateName}>{item.name}</Text>
-                <Text style={styles.templateNotes}>
-                  {item.notes?.trim() || 'Nessuna nota'}
-                </Text>
-              </View>
-              <Pressable style={styles.deleteButton} onPress={() => handleDeleteTemplate(item)}>
-                <Text style={styles.deleteButtonText}>Elimina</Text>
-              </Pressable>
-            </View>
-          </Pressable>
-        )}
-        ListEmptyComponent={
-          <View style={styles.emptyCard}>
-            <Text style={styles.cardTitle}>Nessun template trovato</Text>
-            <Text style={styles.cardText}>Crea il tuo primo template dal form qui sopra.</Text>
+      <Modal
+        visible={showTemplates}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => setShowTemplates(false)}
+      >
+        <View style={styles.modalContainer}>
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>I tuoi template</Text>
+            <Pressable style={styles.modalCloseBtn} onPress={() => setShowTemplates(false)}>
+              <Text style={styles.modalCloseBtnText}>Chiudi</Text>
+            </Pressable>
           </View>
-        }
-      />
+          <FlatList
+            data={templates}
+            keyExtractor={(item) => item.id.toString()}
+            contentContainerStyle={styles.listContent}
+            renderItem={({ item }) => (
+              <Pressable
+                style={styles.templateItem}
+                onPress={() => { setShowTemplates(false); router.push(`/template/${item.id}`); }}
+              >
+                <View style={styles.templateHeader}>
+                  <View style={styles.templateTextContainer}>
+                    <Text style={styles.templateName}>{item.name}</Text>
+                    <Text style={styles.templateNotes}>
+                      {item.notes?.trim() || 'Nessuna nota'}
+                    </Text>
+                  </View>
+                  <Pressable style={styles.deleteButton} onPress={() => handleDeleteTemplate(item)}>
+                    <Text style={styles.deleteButtonText}>Elimina</Text>
+                  </Pressable>
+                </View>
+              </Pressable>
+            )}
+            ListEmptyComponent={
+              <View style={styles.emptyCard}>
+                <Text style={styles.cardTitle}>Nessun template trovato</Text>
+                <Text style={styles.cardText}>Crea il tuo primo template dal form qui sopra.</Text>
+              </View>
+            }
+          />
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -450,9 +463,7 @@ const styles = StyleSheet.create({
   button: { backgroundColor: Colors.dark.primary, borderRadius: 14, paddingVertical: 14, alignItems: 'center', justifyContent: 'center', marginTop: 4 },
   buttonDisabled: { opacity: 0.6 },
   buttonText: { color: Colors.dark.text, fontSize: 15, fontWeight: '700' },
-  historicalButton: { marginHorizontal: 20, marginBottom: 14, backgroundColor: 'rgba(126,71,255,0.08)', borderRadius: 14, paddingVertical: 13, alignItems: 'center', borderWidth: 1, borderColor: 'rgba(126,71,255,0.3)' },
-  historicalButtonText: { color: PRIMARY, fontSize: 14, fontWeight: '700' },
-  secondaryButton: { marginHorizontal: 20, marginBottom: 18, backgroundColor: Colors.dark.surfaceSoft, borderRadius: 14, paddingVertical: 14, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: Colors.dark.border },
+secondaryButton: { marginHorizontal: 20, marginBottom: 18, backgroundColor: Colors.dark.surfaceSoft, borderRadius: 14, paddingVertical: 14, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: Colors.dark.border },
   secondaryButtonText: { color: Colors.dark.text, fontSize: 15, fontWeight: '700' },
   sectionHeader: { marginBottom: 16, paddingHorizontal: 20 },
   sectionTitle: { fontSize: 24, fontWeight: '800', color: Colors.dark.text, marginBottom: 6 },
@@ -466,4 +477,12 @@ const styles = StyleSheet.create({
   deleteButton: { backgroundColor: 'rgba(239,68,68,0.14)', borderWidth: 1, borderColor: Colors.dark.danger, paddingHorizontal: 12, paddingVertical: 10, borderRadius: 12 },
   deleteButtonText: { color: Colors.dark.danger, fontSize: 14, fontWeight: '700' },
   emptyCard: { backgroundColor: Colors.dark.surface, borderRadius: 18, padding: 18, borderWidth: 1, borderColor: Colors.dark.border },
+  templatesButton: { marginHorizontal: 20, marginBottom: 14, backgroundColor: Colors.dark.surface, borderRadius: 16, paddingVertical: 16, paddingHorizontal: 18, borderWidth: 1, borderColor: Colors.dark.border, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  templatesButtonText: { fontSize: 16, fontWeight: '700', color: Colors.dark.text },
+  templatesButtonArrow: { fontSize: 22, color: Colors.dark.textMuted, fontWeight: '300' },
+  modalContainer: { flex: 1, backgroundColor: Colors.dark.background },
+  modalHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 20, borderBottomWidth: 1, borderBottomColor: Colors.dark.border },
+  modalTitle: { fontSize: 22, fontWeight: '800', color: Colors.dark.text },
+  modalCloseBtn: { paddingHorizontal: 14, paddingVertical: 8, backgroundColor: Colors.dark.surface, borderRadius: 10, borderWidth: 1, borderColor: Colors.dark.border },
+  modalCloseBtnText: { color: Colors.dark.textMuted, fontSize: 14, fontWeight: '600' },
 });

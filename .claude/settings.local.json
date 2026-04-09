@@ -1,0 +1,22 @@
+{
+  "permissions": {
+    "allow": [
+      "Skill(update-config)"
+    ]
+  },
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node .claude/guide-hook.mjs",
+            "timeout": 5,
+            "statusMessage": "Controllo guida utente..."
+          }
+        ]
+      }
+    ]
+  }
+}

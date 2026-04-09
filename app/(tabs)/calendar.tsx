@@ -9,6 +9,7 @@ import {
 } from '@/database';
 import { useGuestLimits } from '@/hooks/use-guest-limits';
 import { useFocusEffect } from '@react-navigation/native';
+import { useRouter } from 'expo-router';
 import React, { useCallback, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
@@ -206,7 +207,8 @@ function SessionDetailModal({ sessionId, unit, onClose, onDeleted }: SessionDeta
                               <View style={[modalStyles.setBadge, modalStyles.setBadgeEffort]}>
                                 <Text style={[modalStyles.setBadgeText, modalStyles.setBadgeTextEffort]}>
                                   {set.actual_effort_type === 'failure' ? 'Cedimento'
-                                    : set.actual_effort_type === 'buffer' ? 'Buffer'
+                                    : set.actual_effort_type === 'buffer'
+                                      ? set.actual_buffer_value != null ? `Buffer ${set.actual_buffer_value}` : 'Buffer'
                                     : 'Drop set'}
                                 </Text>
                               </View>
@@ -281,9 +283,11 @@ const modalStyles = StyleSheet.create({
 export default function CalendarScreen() {
   const today = useMemo(() => startOfDay(new Date()), []);
   const { preferences } = useUserPreferences();
+  const router = useRouter();
 
   const [currentYear, setCurrentYear] = useState(today.getFullYear());
   const [currentMonth, setCurrentMonth] = useState(today.getMonth());
+  const [showSessions, setShowSessions] = useState(false);
   const [sessions, setSessions] = useState<WorkoutSession[]>([]);
   const { filterByHistoryLimit } = useGuestLimits();
   const [loading, setLoading] = useState(true);
@@ -393,7 +397,7 @@ export default function CalendarScreen() {
                   ]}>
                     {day.getDate()}
                   </Text>
-                  {hasSession && !isToday && <View style={screenStyles.dot} />}
+                  {false && hasSession && !isToday && <View style={screenStyles.dot} />}
                 </Pressable>
               );
             })}
@@ -401,59 +405,86 @@ export default function CalendarScreen() {
         )}
       </View>
 
-      <View style={screenStyles.sectionHeader}>
-        <Text style={screenStyles.sectionTitle}>
+      <Pressable style={screenStyles.historicalButton} onPress={() => router.push('/log-historical')}>
+        <Text style={screenStyles.historicalButtonText}>📝 Registra allenamento pregresso</Text>
+      </Pressable>
+
+      <Pressable style={screenStyles.sessionsButton} onPress={() => setShowSessions(true)}>
+        <Text style={screenStyles.sessionsButtonText}>
           {sessionsThisMonth.length > 0
             ? `${sessionsThisMonth.length} allenament${sessionsThisMonth.length === 1 ? 'o' : 'i'} questo mese`
             : 'Nessun allenamento questo mese'}
         </Text>
-      </View>
+        <Text style={screenStyles.sessionsButtonArrow}>›</Text>
+      </Pressable>
 
-      {sessionsThisMonth.length > 0 && (
-        <View style={screenStyles.sessionList}>
-          {sessionsThisMonth.map((session) => {
-            const d = new Date(session.completed_at ?? session.started_at);
-            return (
-              <View key={session.id} style={screenStyles.sessionRow}>
-                <TouchableOpacity style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 12 }} onPress={() => setSelectedSessionId(session.id)} activeOpacity={0.85}>
-                  <View style={screenStyles.sessionDateBox}>
-                    <Text style={screenStyles.sessionDateDay}>{d.getDate()}</Text>
-                    <Text style={screenStyles.sessionDateMonth}>{MESI[d.getMonth()].slice(0, 3)}</Text>
+      <Modal
+        visible={showSessions}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => setShowSessions(false)}
+      >
+        <View style={screenStyles.modalContainer}>
+          <View style={screenStyles.modalHeader}>
+            <Text style={screenStyles.modalTitle}>
+              {MESI[currentMonth]} {currentYear}
+            </Text>
+            <Pressable style={screenStyles.modalCloseBtn} onPress={() => setShowSessions(false)}>
+              <Text style={screenStyles.modalCloseBtnText}>Chiudi</Text>
+            </Pressable>
+          </View>
+          {sessionsThisMonth.length === 0 ? (
+            <View style={screenStyles.modalEmpty}>
+              <Text style={screenStyles.modalEmptyText}>Nessun allenamento questo mese.</Text>
+            </View>
+          ) : (
+            <View style={screenStyles.sessionList}>
+              {sessionsThisMonth.map((session) => {
+                const d = new Date(session.completed_at ?? session.started_at);
+                return (
+                  <View key={session.id} style={screenStyles.sessionRow}>
+                    <TouchableOpacity style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 12 }} onPress={() => { setShowSessions(false); setSelectedSessionId(session.id); }} activeOpacity={0.85}>
+                      <View style={screenStyles.sessionDateBox}>
+                        <Text style={screenStyles.sessionDateDay}>{d.getDate()}</Text>
+                        <Text style={screenStyles.sessionDateMonth}>{MESI[d.getMonth()].slice(0, 3)}</Text>
+                      </View>
+                      <View style={screenStyles.sessionInfo}>
+                        <Text style={screenStyles.sessionName}>{session.name}</Text>
+                        <Text style={screenStyles.sessionMeta}>{formatTime(session.started_at)} · {formatDuration(session.started_at, session.completed_at)}</Text>
+                      </View>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={screenStyles.deleteSessionBtn}
+                      onPress={() => {
+                        Alert.alert(
+                          'Elimina allenamento',
+                          `Vuoi eliminare "${session.name}"? L'operazione è irreversibile.`,
+                          [
+                            { text: 'Annulla', style: 'cancel' },
+                            { text: 'Elimina', style: 'destructive', onPress: async () => {
+                              try {
+                                await deleteWorkoutSession(session.id);
+                                await loadSessions();
+                                if (sessionsThisMonth.length <= 1) setShowSessions(false);
+                              } catch (error) {
+                                const message = error instanceof Error ? error.message : 'Impossibile eliminare la sessione.';
+                                Alert.alert('Errore', message);
+                              }
+                            }},
+                          ]
+                        );
+                      }}
+                      activeOpacity={0.8}
+                    >
+                      <Text style={screenStyles.deleteSessionBtnText}>✕</Text>
+                    </TouchableOpacity>
                   </View>
-                  <View style={screenStyles.sessionInfo}>
-                    <Text style={screenStyles.sessionName}>{session.name}</Text>
-                    <Text style={screenStyles.sessionMeta}>{formatTime(session.started_at)} · {formatDuration(session.started_at, session.completed_at)}</Text>
-                  </View>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={screenStyles.deleteSessionBtn}
-                  onPress={() => {
-                    Alert.alert(
-                      'Elimina allenamento',
-                      `Vuoi eliminare "${session.name}"? L’operazione è irreversibile.`,
-                      [
-                        { text: 'Annulla', style: 'cancel' },
-                        { text: 'Elimina', style: 'destructive', onPress: async () => {
-                          try {
-                            await deleteWorkoutSession(session.id);
-                            await loadSessions();
-                          } catch (error) {
-                            const message = error instanceof Error ? error.message : 'Impossibile eliminare la sessione.';
-                            Alert.alert('Errore', message);
-                          }
-                        }},
-                      ]
-                    );
-                  }}
-                  activeOpacity={0.8}
-                >
-                  <Text style={screenStyles.deleteSessionBtnText}>✕</Text>
-                </TouchableOpacity>
-              </View>
-            );
-          })}
+                );
+              })}
+            </View>
+          )}
         </View>
-      )}
+      </Modal>
 
       <SessionDetailModal
         sessionId={selectedSessionId}
@@ -486,6 +517,18 @@ const screenStyles = StyleSheet.create({
   todayRing: { position: 'absolute', top: 8, left: 2, right: 2, bottom: -6, borderRadius: 10, borderWidth: 1, borderColor: 'rgba(126,71,255,0.4)' },
   todayRingWithSession: { backgroundColor: 'rgba(126,71,255,0.12)' },
   sessionBg: { position: 'absolute', top: 8, left: 2, right: 2, bottom: -6, borderRadius: 10, backgroundColor: 'rgba(126,71,255,0.12)' },
+  historicalButton: { backgroundColor: 'rgba(126,71,255,0.08)', borderRadius: 14, paddingVertical: 13, alignItems: 'center', borderWidth: 1, borderColor: 'rgba(126,71,255,0.3)' },
+  historicalButtonText: { color: PRIMARY, fontSize: 14, fontWeight: '700' },
+  sessionsButton: { backgroundColor: Colors.dark.surface, borderRadius: 16, paddingVertical: 16, paddingHorizontal: 18, borderWidth: 1, borderColor: Colors.dark.border, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  sessionsButtonText: { fontSize: 15, fontWeight: '700', color: Colors.dark.text },
+  sessionsButtonArrow: { fontSize: 22, color: Colors.dark.textMuted, fontWeight: '300' },
+  modalContainer: { flex: 1, backgroundColor: Colors.dark.background },
+  modalHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 20, borderBottomWidth: 1, borderBottomColor: Colors.dark.border },
+  modalTitle: { fontSize: 22, fontWeight: '800', color: Colors.dark.text },
+  modalCloseBtn: { paddingHorizontal: 14, paddingVertical: 8, backgroundColor: Colors.dark.surface, borderRadius: 10, borderWidth: 1, borderColor: Colors.dark.border },
+  modalCloseBtnText: { color: Colors.dark.textMuted, fontSize: 14, fontWeight: '600' },
+  modalEmpty: { padding: 32, alignItems: 'center' },
+  modalEmptyText: { fontSize: 15, color: Colors.dark.textMuted },
   dot: { width: 4, height: 4, borderRadius: 2, backgroundColor: PRIMARY, position: 'absolute', bottom: 4, alignSelf: 'center' },
   sectionHeader: { marginTop: 4 },
   sectionTitle: { fontSize: 16, fontWeight: '700', color: Colors.dark.textMuted },

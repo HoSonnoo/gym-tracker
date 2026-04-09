@@ -5,6 +5,7 @@ import {
   addEmptySetToSessionExercise,
   addExerciseToSession,
   cancelWorkoutSession,
+  clearSessionSuperset,
   completeWorkoutSession,
   getExercises,
   getWorkoutSessionById,
@@ -12,6 +13,7 @@ import {
   getWorkoutSessionSets,
   removeExerciseFromSession,
   removeSetFromSessionExercise,
+  setSessionSuperset,
   updateWorkoutSessionSet,
   type Exercise,
   type WorkoutSession,
@@ -20,7 +22,7 @@ import {
 } from '@/database';
 import { useFocusEffect } from '@react-navigation/native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import React, { useCallback, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -57,12 +59,17 @@ type SetFormState = {
   actual_reps: string;
   actual_notes: string;
   actual_effort_type: EffortType | '';
+  actual_buffer_value: string;
 };
 
 type SessionExerciseWithSets = {
   exercise: WorkoutSessionExercise;
   sets: WorkoutSessionSet[];
 };
+
+type RenderGroup =
+  | { type: 'single'; item: SessionExerciseWithSets }
+  | { type: 'superset'; groupId: number; items: SessionExerciseWithSets[] };
 
 // ─── Pure helpers ─────────────────────────────────────────────────────────────
 
@@ -82,6 +89,7 @@ function buildInitialForm(set: WorkoutSessionSet): SetFormState {
       (set.actual_effort_type as EffortType | null) ??
       (set.target_effort_type as EffortType) ??
       'none',
+    actual_buffer_value: set.actual_buffer_value !== null ? String(set.actual_buffer_value) : '',
   };
 }
 
@@ -236,6 +244,268 @@ const modalStyles = StyleSheet.create({
   addBadgeText: { color: Colors.dark.primarySoft, fontSize: 13, fontWeight: '700' },
 });
 
+// ─── Rest Timer Picker Modal ──────────────────────────────────────────────────
+
+const DRUM_ITEM_H = 44;
+
+function DrumColumn({
+  count,
+  value,
+  label,
+  onChange,
+}: {
+  count: number;
+  value: number;
+  label: string;
+  onChange: (v: number) => void;
+}) {
+  const ref = useRef<ScrollView>(null);
+  const items = Array.from({ length: count }, (_, i) => i);
+
+  useEffect(() => {
+    const t = setTimeout(() => {
+      ref.current?.scrollTo({ y: value * DRUM_ITEM_H, animated: false });
+    }, 80);
+    return () => clearTimeout(t);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  return (
+    <View style={drumStyles.column}>
+      <Text style={drumStyles.columnLabel}>{label}</Text>
+      <View style={drumStyles.columnWindow}>
+        <ScrollView
+          ref={ref}
+          showsVerticalScrollIndicator={false}
+          snapToInterval={DRUM_ITEM_H}
+          decelerationRate="fast"
+          onMomentumScrollEnd={(e) => {
+            const idx = Math.round(e.nativeEvent.contentOffset.y / DRUM_ITEM_H);
+            onChange(Math.max(0, Math.min(idx, count - 1)));
+          }}
+          contentContainerStyle={{ paddingVertical: DRUM_ITEM_H }}
+        >
+          {items.map((n) => (
+            <View key={n} style={drumStyles.item}>
+              <Text style={drumStyles.itemText}>{String(n).padStart(2, '0')}</Text>
+            </View>
+          ))}
+        </ScrollView>
+        <View pointerEvents="none" style={drumStyles.selectionTop} />
+        <View pointerEvents="none" style={drumStyles.selectionBottom} />
+      </View>
+    </View>
+  );
+}
+
+type RestTimerPickerModalProps = {
+  visible: boolean;
+  selectedSeconds: number;
+  onSelect: (seconds: number) => void;
+  onConfirm: () => void;
+  onSkip: () => void;
+};
+
+function RestTimerPickerModal({
+  visible,
+  selectedSeconds,
+  onSelect,
+  onConfirm,
+  onSkip,
+}: RestTimerPickerModalProps) {
+  const [h, setH] = useState(Math.floor(selectedSeconds / 3600));
+  const [m, setM] = useState(Math.floor((selectedSeconds % 3600) / 60));
+  const [s, setS] = useState(selectedSeconds % 60);
+
+  useEffect(() => {
+    if (visible) {
+      setH(Math.floor(selectedSeconds / 3600));
+      setM(Math.floor((selectedSeconds % 3600) / 60));
+      setS(selectedSeconds % 60);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visible]);
+
+  const handleH = (v: number) => { setH(v); onSelect(v * 3600 + m * 60 + s); };
+  const handleM = (v: number) => { setM(v); onSelect(h * 3600 + v * 60 + s); };
+  const handleS = (v: number) => { setS(v); onSelect(h * 3600 + m * 60 + v); };
+
+  const total = h * 3600 + m * 60 + s;
+  const label = h > 0
+    ? `${h}h ${String(m).padStart(2, '0')}m ${String(s).padStart(2, '0')}s`
+    : m > 0
+    ? `${m}:${String(s).padStart(2, '0')}`
+    : `${s}s`;
+
+  return (
+    <Modal
+      visible={visible}
+      animationType="slide"
+      transparent
+      onRequestClose={onSkip}
+    >
+      <View style={pickerStyles.overlay}>
+        <View style={pickerStyles.sheet}>
+          <View style={pickerStyles.handle} />
+
+          <Text style={pickerStyles.title}>Imposta recupero</Text>
+          <Text style={pickerStyles.subtitle}>
+            Questa serie non ha un recupero configurato.{'\n'}Quanto vuoi riposare?
+          </Text>
+
+          <View style={pickerStyles.drumRow}>
+            <DrumColumn key={visible ? 'h-open' : 'h-closed'} count={24} value={h} label="ore" onChange={handleH} />
+            <Text style={pickerStyles.drumSep}>:</Text>
+            <DrumColumn key={visible ? 'm-open' : 'm-closed'} count={60} value={m} label="min" onChange={handleM} />
+            <Text style={pickerStyles.drumSep}>:</Text>
+            <DrumColumn key={visible ? 's-open' : 's-closed'} count={60} value={s} label="sec" onChange={handleS} />
+          </View>
+
+          <TouchableOpacity
+            style={[pickerStyles.confirmButton, total === 0 && pickerStyles.confirmButtonDisabled]}
+            onPress={total > 0 ? onConfirm : undefined}
+            activeOpacity={0.85}
+          >
+            <Text style={pickerStyles.confirmButtonText}>
+              {total > 0 ? `▶  Avvia timer · ${label}` : 'Seleziona una durata'}
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={pickerStyles.skipButton}
+            onPress={onSkip}
+            activeOpacity={0.8}
+          >
+            <Text style={pickerStyles.skipButtonText}>Salta recupero</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
+const pickerStyles = StyleSheet.create({
+  overlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    justifyContent: 'flex-end',
+  },
+  sheet: {
+    backgroundColor: Colors.dark.surface,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    padding: 24,
+    paddingBottom: 44,
+    borderTopWidth: 1,
+    borderColor: Colors.dark.border,
+  },
+  handle: {
+    width: 40,
+    height: 4,
+    backgroundColor: Colors.dark.border,
+    borderRadius: 2,
+    alignSelf: 'center',
+    marginBottom: 20,
+  },
+  title: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: Colors.dark.text,
+    textAlign: 'center',
+    marginBottom: 8,
+  },
+  subtitle: {
+    fontSize: 14,
+    color: Colors.dark.textMuted,
+    textAlign: 'center',
+    lineHeight: 20,
+    marginBottom: 24,
+  },
+  drumRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 28,
+  },
+  drumSep: {
+    fontSize: 24,
+    fontWeight: '700',
+    color: Colors.dark.textMuted,
+    marginHorizontal: 4,
+    marginTop: 18,
+  },
+  confirmButton: {
+    backgroundColor: PRIMARY,
+    borderRadius: 16,
+    paddingVertical: 16,
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  confirmButtonDisabled: {
+    backgroundColor: Colors.dark.surfaceSoft,
+  },
+  confirmButtonText: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: '#fff',
+  },
+  skipButton: {
+    paddingVertical: 12,
+    alignItems: 'center',
+  },
+  skipButtonText: {
+    fontSize: 14,
+    color: Colors.dark.textMuted,
+    fontWeight: '600',
+  },
+});
+
+const drumStyles = StyleSheet.create({
+  column: {
+    alignItems: 'center',
+    flex: 1,
+  },
+  columnLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: Colors.dark.textMuted,
+    marginBottom: 6,
+    letterSpacing: 0.5,
+    textTransform: 'uppercase',
+  },
+  columnWindow: {
+    height: 44 * 3,
+    overflow: 'hidden',
+    position: 'relative',
+  },
+  item: {
+    height: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  itemText: {
+    fontSize: 26,
+    fontWeight: '600',
+    color: Colors.dark.text,
+  },
+  selectionTop: {
+    position: 'absolute',
+    top: 44,
+    left: 0,
+    right: 0,
+    height: 1,
+    backgroundColor: Colors.dark.border,
+  },
+  selectionBottom: {
+    position: 'absolute',
+    top: 44 * 2,
+    left: 0,
+    right: 0,
+    height: 1,
+    backgroundColor: Colors.dark.border,
+  },
+});
+
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
 function BackButton({ onPress, label = 'Indietro' }: { onPress: () => void; label?: string }) {
@@ -375,6 +645,16 @@ function SetCard({
             );
           })}
         </View>
+        {form.actual_effort_type === 'buffer' && (
+          <TextInput
+            value={form.actual_buffer_value}
+            onChangeText={(v) => onFieldChange('actual_buffer_value', v)}
+            placeholder="Valore buffer (es. 2)"
+            placeholderTextColor={Colors.dark.textMuted}
+            keyboardType="number-pad"
+            style={[styles.input, { marginTop: 10 }]}
+          />
+        )}
       </View>
 
       <View style={styles.inputGroup}>
@@ -490,6 +770,9 @@ export default function WorkoutSessionScreen() {
   const [showAddExerciseModal, setShowAddExerciseModal] = useState(false);
   const [addingExercise, setAddingExercise] = useState(false);
   const [addingSetForExercise, setAddingSetForExercise] = useState<Record<number, boolean>>({});
+  const [pendingTimerSet, setPendingTimerSet] = useState<WorkoutSessionSet | null>(null);
+  const [pickerRestSeconds, setPickerRestSeconds] = useState(60);
+  const [sessionSupersetTarget, setSessionSupersetTarget] = useState<WorkoutSessionExercise | null>(null);
 
   // ── Data loading ──────────────────────────────────────────────────────────────
 
@@ -542,6 +825,22 @@ export default function WorkoutSessionScreen() {
   const progressPercent = totalSetsCount > 0 ? completedSetsCount / totalSetsCount : 0;
   const nextIncompleteSet = useMemo(() => allSets.find((s) => s.is_completed === 0) ?? null, [allSets]);
 
+  const renderGroups = useMemo((): RenderGroup[] => {
+    const groups: RenderGroup[] = [];
+    const seen = new Set<number>();
+    for (const item of sessionData) {
+      const gid = item.exercise.superset_group_id;
+      if (gid === null) {
+        groups.push({ type: 'single', item });
+      } else if (!seen.has(gid)) {
+        seen.add(gid);
+        const paired = sessionData.filter((d) => d.exercise.superset_group_id === gid);
+        groups.push({ type: 'superset', groupId: gid, items: paired });
+      }
+    }
+    return groups;
+  }, [sessionData]);
+
   // ── Scroll ────────────────────────────────────────────────────────────────────
 
   const registerExerciseCardPosition = useCallback(
@@ -584,7 +883,9 @@ export default function WorkoutSessionScreen() {
         actual_weight_kg: parseNullableNumber(form?.actual_weight_kg ?? ''),
         actual_reps: parseNullableNumber(form?.actual_reps ?? ''),
         actual_effort_type: (form?.actual_effort_type as EffortType | '') || null,
-        actual_buffer_value: null,
+        actual_buffer_value: form?.actual_effort_type === 'buffer'
+          ? parseNullableNumber(form?.actual_buffer_value ?? '')
+          : null,
         actual_rir: null,
         actual_notes: form?.actual_notes?.trim() || null,
         is_completed: isCompleted,
@@ -617,6 +918,9 @@ export default function WorkoutSessionScreen() {
           const setIndex = ownerItem?.sets.findIndex((s) => s.id === set.id) ?? 0;
           const setLabel = `Serie ${setIndex + 1} · ${formatSetType(set)}`;
           startTimer(set.target_rest_seconds, exerciseName, setLabel);
+        } else {
+          setPendingTimerSet(set);
+          setPickerRestSeconds(60);
         }
         await loadSessionData();
         scrollToTop();
@@ -628,6 +932,59 @@ export default function WorkoutSessionScreen() {
     },
     [setForms, buildSetPayload, loadSessionData, scrollToTop, sessionData, startTimer]
   );
+
+  const handleSetSessionSuperset = useCallback(
+    async (target: WorkoutSessionExercise, partnerId: number) => {
+      try {
+        await setSessionSuperset(target.id, partnerId);
+        await loadSessionData();
+      } catch {
+        Alert.alert('Errore', 'Impossibile creare la super serie.');
+      }
+    },
+    [loadSessionData]
+  );
+
+  const handleClearSessionSuperset = useCallback(
+    (exercise: WorkoutSessionExercise) => {
+      Alert.alert(
+        'Rimuovi super serie',
+        `Vuoi rimuovere l'abbinamento di "${exercise.exercise_name}"?`,
+        [
+          { text: 'Annulla', style: 'cancel' },
+          {
+            text: 'Rimuovi',
+            style: 'destructive',
+            onPress: async () => {
+              try {
+                await clearSessionSuperset(exercise.id);
+                await loadSessionData();
+              } catch {
+                Alert.alert('Errore', 'Impossibile rimuovere la super serie.');
+              }
+            },
+          },
+        ]
+      );
+    },
+    [loadSessionData]
+  );
+
+  const handlePickerConfirm = useCallback(() => {
+    if (!pendingTimerSet) return;
+    const ownerItem = sessionData.find((item) =>
+      item.sets.some((s) => s.id === pendingTimerSet.id)
+    );
+    const exerciseName = ownerItem?.exercise.exercise_name ?? '';
+    const setIndex = ownerItem?.sets.findIndex((s) => s.id === pendingTimerSet.id) ?? 0;
+    const setLabel = `Serie ${setIndex + 1} · ${formatSetType(pendingTimerSet)}`;
+    startTimer(pickerRestSeconds, exerciseName, setLabel);
+    setPendingTimerSet(null);
+  }, [pendingTimerSet, sessionData, pickerRestSeconds, startTimer]);
+
+  const handlePickerSkip = useCallback(() => {
+    setPendingTimerSet(null);
+  }, []);
 
   const handleUncheckSet = useCallback(
     async (set: WorkoutSessionSet) => {
@@ -789,6 +1146,133 @@ export default function WorkoutSessionScreen() {
     [loadSessionData]
   );
 
+  // ── Exercise card renderer ───────────────────────────────────────────────────
+
+  const renderExerciseCard = (
+    exercise: WorkoutSessionExercise,
+    sets: WorkoutSessionSet[],
+    isInSuperset: boolean,
+    showDivider: boolean
+  ) => {
+    const isInSupersetGroup = exercise.superset_group_id !== null;
+    const supersetPartner = isInSupersetGroup
+      ? sessionData.find(
+          (d) => d.exercise.superset_group_id === exercise.superset_group_id &&
+                 d.exercise.id !== exercise.id
+        )?.exercise ?? null
+      : null;
+
+    return (
+      <View key={exercise.id}>
+        <View
+          onLayout={registerExerciseCardPosition(exercise.id)}
+          style={[styles.exerciseCard, isInSuperset && styles.exerciseCardInSuperset]}
+        >
+          <View style={styles.exerciseHeader}>
+            <View style={styles.exerciseHeaderText}>
+              <View style={styles.exerciseTitleRow}>
+                <Text style={styles.exerciseTitle}>{exercise.exercise_name}</Text>
+                {isInSupersetGroup && (
+                  <View style={styles.ssBadgeSession}>
+                    <Text style={styles.ssBadgeSessionText}>SS</Text>
+                  </View>
+                )}
+              </View>
+              <Text style={styles.exerciseSubtitle}>
+                {exercise.category ?? 'Nessuna categoria'}
+                {exercise.template_exercise_id === null && (
+                  <Text style={styles.freeExerciseBadge}> · Libero</Text>
+                )}
+              </Text>
+            </View>
+            <View style={styles.exerciseHeaderActions}>
+              {isInSupersetGroup ? (
+                <TouchableOpacity
+                  style={styles.ssClearButton}
+                  onPress={() => handleClearSessionSuperset(exercise)}
+                  activeOpacity={0.8}
+                >
+                  <Text style={styles.ssClearButtonText}>Rimuovi SS</Text>
+                </TouchableOpacity>
+              ) : (
+                <TouchableOpacity
+                  style={styles.ssPairButton}
+                  onPress={() => setSessionSupersetTarget(exercise)}
+                  activeOpacity={0.8}
+                >
+                  <Text style={styles.ssPairButtonText}>Abbina SS</Text>
+                </TouchableOpacity>
+              )}
+              <TouchableOpacity
+                style={styles.removeExerciseButton}
+                onPress={() => handleRemoveExercise(exercise)}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.removeExerciseButtonText}>Rimuovi</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+
+          {exercise.notes ? (
+            <View style={styles.exerciseNoteBox}>
+              <Text style={styles.noteLabel}>Note esercizio</Text>
+              <Text style={styles.noteText}>{exercise.notes}</Text>
+            </View>
+          ) : null}
+
+          <View style={styles.exerciseSetsList}>
+            {sets.map((set, index) => {
+              const form: SetFormState = setForms[set.id] ?? {
+                actual_weight_kg: '',
+                actual_reps: '',
+                actual_notes: '',
+                actual_effort_type: (set.target_effort_type as EffortType) ?? 'none',
+              };
+              const isCompleted = set.is_completed === 1;
+              const isNextIncomplete = nextIncompleteSet?.id === set.id && !isCompleted;
+              return (
+                <SetCard
+                  key={set.id}
+                  set={set}
+                  index={index}
+                  form={form}
+                  isCompleted={isCompleted}
+                  isNextIncomplete={isNextIncomplete}
+                  isSaving={savingSetId === set.id}
+                  unit={preferences.unit}
+                  onLayout={registerSetCardPosition(set.id)}
+                  onFieldChange={(field, value) => updateSetField(set.id, field, value)}
+                  onSave={() => handleSaveSet(set)}
+                  onUncheck={() => handleUncheckSet(set)}
+                  onRemove={() => handleRemoveSet(set, exercise.exercise_name)}
+                />
+              );
+            })}
+          </View>
+
+          <TouchableOpacity
+            style={[styles.addSetButton, addingSetForExercise[exercise.id] && styles.disabledButton]}
+            onPress={() => handleAddSet(exercise.id)}
+            disabled={!!addingSetForExercise[exercise.id]}
+            activeOpacity={0.85}
+          >
+            <Text style={styles.addSetButtonText}>
+              {addingSetForExercise[exercise.id] ? 'Aggiunta...' : '+ Serie'}
+            </Text>
+          </TouchableOpacity>
+        </View>
+
+        {showDivider && (
+          <View style={styles.supersetDivider}>
+            <View style={styles.supersetDividerLine} />
+            <Text style={styles.supersetDividerText}>poi</Text>
+            <View style={styles.supersetDividerLine} />
+          </View>
+        )}
+      </View>
+    );
+  };
+
   // ── Guards ────────────────────────────────────────────────────────────────────
 
   if (!sessionId || Number.isNaN(sessionId)) {
@@ -894,80 +1378,23 @@ export default function WorkoutSessionScreen() {
         </View>
 
         {/* Exercise list */}
-        {sessionData.map(({ exercise, sets }) => (
-          <View
-            key={exercise.id}
-            onLayout={registerExerciseCardPosition(exercise.id)}
-            style={styles.exerciseCard}
-          >
-            <View style={styles.exerciseHeader}>
-              <View style={styles.exerciseHeaderText}>
-                <Text style={styles.exerciseTitle}>{exercise.exercise_name}</Text>
-                <Text style={styles.exerciseSubtitle}>
-                  {exercise.category ?? 'Nessuna categoria'}
-                  {exercise.template_exercise_id === null && (
-                    <Text style={styles.freeExerciseBadge}> · Libero</Text>
-                  )}
-                </Text>
+        {renderGroups.map((group) => {
+          if (group.type === 'superset') {
+            return (
+              <View key={`ss-${group.groupId}`} style={styles.supersetContainer}>
+                <View style={styles.supersetHeader}>
+                  <Text style={styles.supersetLabel}>⚡ SUPER SERIE</Text>
+                  <Text style={styles.supersetHint}>Esegui gli esercizi in sequenza, poi riposa</Text>
+                </View>
+                {group.items.map(({ exercise, sets }, ssIdx) =>
+                  renderExerciseCard(exercise, sets, true, ssIdx < group.items.length - 1)
+                )}
               </View>
-              <TouchableOpacity
-                style={styles.removeExerciseButton}
-                onPress={() => handleRemoveExercise(exercise)}
-                activeOpacity={0.8}
-              >
-                <Text style={styles.removeExerciseButtonText}>Rimuovi</Text>
-              </TouchableOpacity>
-            </View>
-
-            {exercise.notes ? (
-              <View style={styles.exerciseNoteBox}>
-                <Text style={styles.noteLabel}>Note esercizio</Text>
-                <Text style={styles.noteText}>{exercise.notes}</Text>
-              </View>
-            ) : null}
-
-            <View style={styles.exerciseSetsList}>
-              {sets.map((set, index) => {
-                const form: SetFormState = setForms[set.id] ?? {
-                  actual_weight_kg: '',
-                  actual_reps: '',
-                  actual_notes: '',
-                  actual_effort_type: (set.target_effort_type as EffortType) ?? 'none',
-                };
-                const isCompleted = set.is_completed === 1;
-                const isNextIncomplete = nextIncompleteSet?.id === set.id && !isCompleted;
-
-                return (
-                  <SetCard
-                    key={set.id}
-                    set={set}
-                    index={index}
-                    form={form}
-                    isCompleted={isCompleted}
-                    isNextIncomplete={isNextIncomplete}
-                    isSaving={savingSetId === set.id}
-                    unit={preferences.unit}
-                    onLayout={registerSetCardPosition(set.id)}
-                    onFieldChange={(field, value) => updateSetField(set.id, field, value)}
-                    onSave={() => handleSaveSet(set)}
-                    onUncheck={() => handleUncheckSet(set)}
-                    onRemove={() => handleRemoveSet(set, exercise.exercise_name)}
-                  />
-                );
-              })}
-            </View>
-            <TouchableOpacity
-              style={[styles.addSetButton, addingSetForExercise[exercise.id] && styles.disabledButton]}
-              onPress={() => handleAddSet(exercise.id)}
-              disabled={!!addingSetForExercise[exercise.id]}
-              activeOpacity={0.85}
-            >
-              <Text style={styles.addSetButtonText}>
-                {addingSetForExercise[exercise.id] ? 'Aggiunta...' : '+ Serie'}
-              </Text>
-            </TouchableOpacity>
-          </View>
-        ))}
+            );
+          }
+          const { exercise, sets } = group.item;
+          return renderExerciseCard(exercise, sets, false, false);
+        })}
 
         {/* Bottone aggiungi esercizio libero */}
         <TouchableOpacity
@@ -987,6 +1414,78 @@ export default function WorkoutSessionScreen() {
         onClose={() => setShowAddExerciseModal(false)}
         onSelect={handleAddFreeExercise}
       />
+
+      <RestTimerPickerModal
+        visible={pendingTimerSet !== null}
+        selectedSeconds={pickerRestSeconds}
+        onSelect={setPickerRestSeconds}
+        onConfirm={handlePickerConfirm}
+        onSkip={handlePickerSkip}
+      />
+
+      {/* Superset picker per la sessione */}
+      <Modal
+        visible={sessionSupersetTarget !== null}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setSessionSupersetTarget(null)}
+      >
+        <View style={styles.ssOverlay}>
+          <View style={styles.ssSheet}>
+            <View style={styles.ssSheetHandle} />
+            <Text style={styles.ssSheetTitle}>Scegli l'esercizio da abbinare</Text>
+            <Text style={styles.ssSheetSubtitle}>
+              Seleziona un esercizio per creare una super serie in questa sessione
+            </Text>
+            {sessionData
+              .filter(
+                (d) =>
+                  d.exercise.id !== sessionSupersetTarget?.id &&
+                  d.exercise.superset_group_id === null
+              )
+              .map(({ exercise }) => (
+                <TouchableOpacity
+                  key={exercise.id}
+                  style={styles.ssExerciseRow}
+                  onPress={() => {
+                    if (sessionSupersetTarget)
+                      handleSetSessionSuperset(sessionSupersetTarget, exercise.id);
+                    setSessionSupersetTarget(null);
+                  }}
+                  activeOpacity={0.85}
+                >
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.ssExerciseName}>{exercise.exercise_name}</Text>
+                    <Text style={styles.ssExerciseCategory}>
+                      {exercise.category ?? 'Nessuna categoria'}
+                    </Text>
+                  </View>
+                  <View style={styles.ssAbbinaBadge}>
+                    <Text style={styles.ssAbbinaBadgeText}>Abbina</Text>
+                  </View>
+                </TouchableOpacity>
+              ))}
+            {sessionData.filter(
+              (d) =>
+                d.exercise.id !== sessionSupersetTarget?.id &&
+                d.exercise.superset_group_id === null
+            ).length === 0 && (
+              <View style={styles.ssEmptyBox}>
+                <Text style={styles.ssEmptyText}>
+                  Nessun esercizio disponibile da abbinare.
+                </Text>
+              </View>
+            )}
+            <TouchableOpacity
+              style={styles.ssCloseButton}
+              onPress={() => setSessionSupersetTarget(null)}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.ssCloseButtonText}>Annulla</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -1079,4 +1578,154 @@ const styles = StyleSheet.create({
   addExerciseButtonText: { color: PRIMARY, fontSize: 15, fontWeight: '700' },
   addSetButton: { marginTop: 12, backgroundColor: 'rgba(126,71,255,0.08)', borderRadius: 12, borderWidth: 1, borderColor: 'rgba(126,71,255,0.35)', borderStyle: 'dashed', paddingVertical: 12, alignItems: 'center', justifyContent: 'center' },
   addSetButtonText: { color: PRIMARY, fontSize: 14, fontWeight: '700' },
+
+  // ── Superset styles ──────────────────────────────────────────────────────────
+  supersetContainer: {
+    marginTop: 12,
+    borderWidth: 1,
+    borderColor: Colors.dark.warning + '66',
+    borderRadius: 20,
+    padding: 12,
+    backgroundColor: 'rgba(245,158,11,0.04)',
+  },
+  supersetHeader: {
+    flexDirection: 'column',
+    alignItems: 'flex-start',
+    marginBottom: 10,
+    paddingHorizontal: 4,
+    gap: 2,
+  },
+  supersetLabel: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: Colors.dark.warning,
+    letterSpacing: 1,
+  },
+  supersetHint: {
+    fontSize: 11,
+    color: Colors.dark.textMuted,
+    fontStyle: 'italic',
+  },
+  supersetDivider: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginVertical: 6,
+    gap: 8,
+  },
+  supersetDividerLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: Colors.dark.warning + '44',
+  },
+  supersetDividerText: {
+    fontSize: 13,
+    color: Colors.dark.warning,
+    fontWeight: '700',
+    letterSpacing: 0.5,
+  },
+  exerciseCardInSuperset: {
+    borderColor: Colors.dark.warning + '44',
+    borderLeftWidth: 3,
+    borderLeftColor: Colors.dark.warning,
+    marginTop: 0,
+  },
+  exerciseTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    flexWrap: 'wrap',
+  },
+  ssBadgeSession: {
+    backgroundColor: 'rgba(245,158,11,0.18)',
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: Colors.dark.warning,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+  },
+  ssBadgeSessionText: {
+    color: Colors.dark.warning,
+    fontSize: 11,
+    fontWeight: '800',
+  },
+  exerciseHeaderActions: {
+    gap: 6,
+    alignItems: 'flex-end',
+  },
+  ssPairButton: {
+    backgroundColor: 'rgba(245,158,11,0.12)',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: Colors.dark.warning,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  ssPairButtonText: {
+    color: Colors.dark.warning,
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  ssClearButton: {
+    backgroundColor: 'rgba(245,158,11,0.08)',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: Colors.dark.warning,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  ssClearButtonText: {
+    color: Colors.dark.warning,
+    fontSize: 12,
+    fontWeight: '700',
+  },
+
+  // ── Session superset modal ───────────────────────────────────────────────────
+  ssOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' },
+  ssSheet: {
+    backgroundColor: Colors.dark.surface,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    padding: 24,
+    paddingBottom: 44,
+    borderTopWidth: 1,
+    borderColor: Colors.dark.border,
+    maxHeight: '80%',
+  },
+  ssSheetHandle: { width: 40, height: 4, backgroundColor: Colors.dark.border, borderRadius: 2, alignSelf: 'center', marginBottom: 20 },
+  ssSheetTitle: { fontSize: 20, fontWeight: '800', color: Colors.dark.text, textAlign: 'center', marginBottom: 8 },
+  ssSheetSubtitle: { fontSize: 14, color: Colors.dark.textMuted, textAlign: 'center', marginBottom: 20, lineHeight: 20 },
+  ssExerciseRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.dark.surfaceSoft,
+    borderRadius: 14,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: Colors.dark.border,
+    marginBottom: 10,
+    gap: 12,
+  },
+  ssExerciseName: { fontSize: 15, fontWeight: '700', color: Colors.dark.text, marginBottom: 2 },
+  ssExerciseCategory: { fontSize: 13, color: Colors.dark.textMuted },
+  ssAbbinaBadge: {
+    backgroundColor: 'rgba(245,158,11,0.14)',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: Colors.dark.warning,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  ssAbbinaBadgeText: { color: Colors.dark.warning, fontSize: 13, fontWeight: '700' },
+  ssEmptyBox: { paddingVertical: 24, alignItems: 'center' },
+  ssEmptyText: { color: Colors.dark.textMuted, fontSize: 14, textAlign: 'center' },
+  ssCloseButton: {
+    marginTop: 8,
+    paddingVertical: 14,
+    alignItems: 'center',
+    backgroundColor: Colors.dark.surfaceSoft,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: Colors.dark.border,
+  },
+  ssCloseButtonText: { color: Colors.dark.textMuted, fontSize: 15, fontWeight: '600' },
 });
