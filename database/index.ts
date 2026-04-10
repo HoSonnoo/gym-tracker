@@ -1109,6 +1109,74 @@ export async function getWorkoutSessionDetail(
   return { session, exercises: exercisesWithSets };
 }
 
+// ─── Ultima sessione per esercizio ───────────────────────────────────────────
+
+export type LastSessionSet = {
+  actual_weight_kg: number | null;
+  actual_reps: number | null;
+  actual_effort_type: string | null;
+  actual_buffer_value: number | null;
+  set_order: number;
+};
+
+export async function getLastSessionSetsForExercise(
+  exerciseName: string,
+  currentSessionId: number
+): Promise<LastSessionSet[]> {
+  const database = await getDb();
+  return database.getAllAsync<LastSessionSet>(
+    `SELECT
+       wss.actual_weight_kg,
+       wss.actual_reps,
+       wss.actual_effort_type,
+       wss.actual_buffer_value,
+       wss.set_order
+     FROM workout_session_sets wss
+     JOIN workout_session_exercises wse ON wss.session_exercise_id = wse.id
+     WHERE wse.session_id = (
+       SELECT wse2.session_id
+       FROM workout_session_exercises wse2
+       JOIN workout_sessions ws2 ON wse2.session_id = ws2.id
+       WHERE wse2.exercise_name = ?
+         AND ws2.status = 'completed'
+         AND ws2.id != ?
+       ORDER BY ws2.completed_at DESC
+       LIMIT 1
+     )
+     AND wse.exercise_name = ?
+     AND wss.is_completed = 1
+     ORDER BY wss.set_order ASC`,
+    [exerciseName, currentSessionId, exerciseName]
+  );
+}
+
+// ─── Sessioni completate oggi ─────────────────────────────────────────────────
+
+export async function getTodayCompletedSessions(): Promise<WorkoutSessionDetail[]> {
+  const database = await getDb();
+  const today = new Date().toISOString().slice(0, 10);
+  const sessions = await database.getAllAsync<WorkoutSession>(
+    `SELECT id, template_id, name, notes, status, started_at, completed_at, created_at
+     FROM workout_sessions
+     WHERE status = 'completed'
+       AND date(completed_at) = ?
+     ORDER BY completed_at DESC`,
+    [today]
+  );
+  return Promise.all(
+    sessions.map(async (session) => {
+      const exercises = await getWorkoutSessionExercises(session.id);
+      const exercisesWithSets = await Promise.all(
+        exercises.map(async (exercise) => ({
+          exercise,
+          sets: await getWorkoutSessionSets(exercise.id),
+        }))
+      );
+      return { session, exercises: exercisesWithSets };
+    })
+  );
+}
+
 // ─── Progressi ────────────────────────────────────────────────────────────────
 
 export type ExercisePR = {

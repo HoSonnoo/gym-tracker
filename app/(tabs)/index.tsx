@@ -4,12 +4,14 @@ import { formatWeight, useUserPreferences } from '@/context/UserPreferencesConte
 import {
   cancelWorkoutSession,
   getActiveWorkoutSession,
+  getTodayCompletedSessions,
   getWorkoutSessionExercises,
   getWorkoutSessionSets,
   getWorkoutTemplates,
   isDatabaseEmpty,
   startWorkoutSessionFromTemplate,
   type WorkoutSession,
+  type WorkoutSessionDetail,
   type WorkoutSessionExercise,
   type WorkoutSessionSet,
   type WorkoutTemplate,
@@ -20,6 +22,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   ActivityIndicator,
   Alert,
+  Modal,
   ScrollView,
   StyleSheet,
   Text,
@@ -342,6 +345,161 @@ const exerciseCardStyles = StyleSheet.create({
   openButtonText: { color: '#fff', fontSize: 15, fontWeight: '800' },
 });
 
+// ─── Completed Session Components ────────────────────────────────────────────
+
+function formatDuration(startedAt: string, completedAt?: string | null): string {
+  const start = new Date(startedAt).getTime();
+  const end = completedAt ? new Date(completedAt).getTime() : Date.now();
+  const totalSeconds = Math.floor((end - start) / 1000);
+  const h = Math.floor(totalSeconds / 3600);
+  const m = Math.floor((totalSeconds % 3600) / 60);
+  if (h > 0) return `${h}h ${m.toString().padStart(2, '0')}m`;
+  return `${m}m`;
+}
+
+function formatEffortShort(type: string | null, buffer: number | null): string {
+  if (!type || type === 'none') return '';
+  if (type === 'buffer') return buffer != null ? ` · Buffer: ${buffer}` : ' · Buffer';
+  if (type === 'failure') return ' · Cedimento';
+  if (type === 'drop_set') return ' · Drop set';
+  return '';
+}
+
+function CompletedSessionDetailModal({
+  data,
+  unit,
+  onClose,
+}: {
+  data: WorkoutSessionDetail;
+  unit: 'kg' | 'lbs';
+  onClose: () => void;
+}) {
+  const { session, exercises } = data;
+  const allCompleted = exercises.flatMap((e) => e.sets.filter((s) => s.is_completed === 1));
+  const totalVolume = allCompleted.reduce((sum, s) =>
+    s.actual_weight_kg != null && s.actual_reps != null
+      ? sum + s.actual_weight_kg * s.actual_reps
+      : sum, 0);
+
+  return (
+    <Modal visible animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
+      <View style={completedStyles.container}>
+        <View style={completedStyles.handle} />
+        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={completedStyles.content}>
+          <Text style={completedStyles.title}>{session.name}</Text>
+          <Text style={completedStyles.subtitle}>
+            {new Date(session.completed_at ?? session.started_at).toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' })}
+            {' · '}{formatDuration(session.started_at, session.completed_at)}
+          </Text>
+
+          <View style={completedStyles.statsRow}>
+            <View style={completedStyles.statBox}>
+              <Text style={completedStyles.statValue}>{allCompleted.length}</Text>
+              <Text style={completedStyles.statLabel}>Serie</Text>
+            </View>
+            <View style={completedStyles.statBox}>
+              <Text style={completedStyles.statValue}>{exercises.filter((e) => e.sets.some((s) => s.is_completed === 1)).length}</Text>
+              <Text style={completedStyles.statLabel}>Esercizi</Text>
+            </View>
+            <View style={completedStyles.statBox}>
+              <Text style={completedStyles.statValue}>
+                {totalVolume > 0 ? `${Math.round(totalVolume).toLocaleString()} ${unit}` : '—'}
+              </Text>
+              <Text style={completedStyles.statLabel}>Volume</Text>
+            </View>
+          </View>
+
+          {exercises.map(({ exercise, sets }) => {
+            const done = sets.filter((s) => s.is_completed === 1);
+            if (done.length === 0) return null;
+            return (
+              <View key={exercise.id} style={completedStyles.exBlock}>
+                <Text style={completedStyles.exName}>{exercise.exercise_name}</Text>
+                <Text style={completedStyles.exCategory}>{exercise.category ?? 'Nessuna categoria'}</Text>
+                {done.map((s, i) => (
+                  <View key={s.id} style={completedStyles.setRow}>
+                    <Text style={completedStyles.setIdx}>S{i + 1}</Text>
+                    <Text style={completedStyles.setDetail}>
+                      {s.actual_weight_kg != null ? `${s.actual_weight_kg} ${unit}` : '—'}
+                      {' × '}
+                      {s.actual_reps != null ? `${s.actual_reps} rep` : '—'}
+                      {formatEffortShort(s.actual_effort_type, s.actual_buffer_value)}
+                    </Text>
+                  </View>
+                ))}
+              </View>
+            );
+          })}
+        </ScrollView>
+        <TouchableOpacity style={completedStyles.closeBtn} onPress={onClose} activeOpacity={0.9}>
+          <Text style={completedStyles.closeBtnText}>Chiudi</Text>
+        </TouchableOpacity>
+      </View>
+    </Modal>
+  );
+}
+
+function CompletedSessionCard({
+  data,
+  unit,
+  onPress,
+}: {
+  data: WorkoutSessionDetail;
+  unit: 'kg' | 'lbs';
+  onPress: () => void;
+}) {
+  const { session, exercises } = data;
+  const completedSets = exercises.flatMap((e) => e.sets.filter((s) => s.is_completed === 1)).length;
+  const totalSets = exercises.flatMap((e) => e.sets).length;
+
+  return (
+    <TouchableOpacity style={completedStyles.card} onPress={onPress} activeOpacity={0.85}>
+      <View style={completedStyles.cardHeader}>
+        <View style={{ flex: 1 }}>
+          <Text style={completedStyles.cardBadge}>COMPLETATO</Text>
+          <Text style={completedStyles.cardName}>{session.name}</Text>
+        </View>
+        <Text style={completedStyles.cardArrow}>→</Text>
+      </View>
+      <View style={completedStyles.cardMeta}>
+        <Text style={completedStyles.cardMetaText}>{formatDuration(session.started_at, session.completed_at)}</Text>
+        <Text style={completedStyles.cardMetaDot}>·</Text>
+        <Text style={completedStyles.cardMetaText}>{completedSets}/{totalSets} serie</Text>
+        <Text style={completedStyles.cardMetaDot}>·</Text>
+        <Text style={completedStyles.cardMetaText}>{exercises.length} esercizi</Text>
+      </View>
+    </TouchableOpacity>
+  );
+}
+
+const completedStyles = StyleSheet.create({
+  card: { backgroundColor: Colors.dark.surface, borderRadius: 18, padding: 18, borderWidth: 1, borderColor: `${Colors.dark.success}44` },
+  cardHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 10 },
+  cardBadge: { fontSize: 10, fontWeight: '800', color: Colors.dark.success, letterSpacing: 1.2, marginBottom: 4 },
+  cardName: { fontSize: 18, fontWeight: '800', color: Colors.dark.text },
+  cardArrow: { fontSize: 18, color: Colors.dark.textMuted },
+  cardMeta: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  cardMetaText: { fontSize: 13, color: Colors.dark.textMuted, fontWeight: '600' },
+  cardMetaDot: { fontSize: 13, color: Colors.dark.border },
+  container: { flex: 1, backgroundColor: Colors.dark.background, paddingHorizontal: 20, paddingBottom: 24 },
+  handle: { width: 40, height: 4, borderRadius: 2, backgroundColor: Colors.dark.border, alignSelf: 'center', marginTop: 12, marginBottom: 20 },
+  content: { paddingBottom: 24 },
+  title: { fontSize: 24, fontWeight: '800', color: Colors.dark.text, marginBottom: 4 },
+  subtitle: { fontSize: 14, color: Colors.dark.textMuted, fontWeight: '600', marginBottom: 20 },
+  statsRow: { flexDirection: 'row', gap: 12, marginBottom: 20 },
+  statBox: { flex: 1, backgroundColor: Colors.dark.surface, borderRadius: 14, padding: 14, alignItems: 'center', gap: 4, borderWidth: 1, borderColor: Colors.dark.border },
+  statValue: { fontSize: 17, fontWeight: '800', color: PRIMARY },
+  statLabel: { fontSize: 11, color: Colors.dark.textMuted, fontWeight: '600' },
+  exBlock: { backgroundColor: Colors.dark.surface, borderRadius: 14, padding: 14, borderWidth: 1, borderColor: Colors.dark.border, marginBottom: 10 },
+  exName: { fontSize: 16, fontWeight: '800', color: Colors.dark.text, marginBottom: 2 },
+  exCategory: { fontSize: 12, color: Colors.dark.textMuted, marginBottom: 10 },
+  setRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 5, borderTopWidth: 1, borderTopColor: Colors.dark.border },
+  setIdx: { fontSize: 11, fontWeight: '800', color: PRIMARY, width: 22 },
+  setDetail: { fontSize: 13, color: Colors.dark.text, fontWeight: '600', flex: 1 },
+  closeBtn: { backgroundColor: Colors.dark.surface, borderRadius: 14, paddingVertical: 14, alignItems: 'center', borderWidth: 1, borderColor: Colors.dark.border, marginTop: 8 },
+  closeBtnText: { color: Colors.dark.text, fontSize: 15, fontWeight: '700' },
+});
+
 // ─── Screen ───────────────────────────────────────────────────────────────────
 
 export default function TodayScreen() {
@@ -357,6 +515,8 @@ export default function TodayScreen() {
   const [templates, setTemplates] = useState<WorkoutTemplate[]>([]);
   const [activeSession, setActiveSession] = useState<WorkoutSession | null>(null);
   const [sessionData, setSessionData] = useState<SessionExerciseWithSets[]>([]);
+  const [todayCompletedSessions, setTodayCompletedSessions] = useState<WorkoutSessionDetail[]>([]);
+  const [selectedCompletedSession, setSelectedCompletedSession] = useState<WorkoutSessionDetail | null>(null);
 
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -376,14 +536,16 @@ export default function TodayScreen() {
   const loadScreenData = useCallback(async () => {
     setLoading(true);
     try {
-      const [templatesData, activeSessionData, empty] = await Promise.all([
+      const [templatesData, activeSessionData, empty, completedToday] = await Promise.all([
         getWorkoutTemplates(),
         getActiveWorkoutSession(),
         isDatabaseEmpty(),
+        getTodayCompletedSessions(),
       ]);
       setTemplates(templatesData);
       setActiveSession(activeSessionData);
       setDbEmpty(empty);
+      setTodayCompletedSessions(completedToday);
       if (!activeSessionData) {
         setSessionData([]);
         return;
@@ -567,6 +729,29 @@ export default function TodayScreen() {
 
         </>
       )}
+
+      {/* Sessioni completate oggi */}
+      {todayCompletedSessions.length > 0 && (
+        <>
+          <Text style={styles.sectionTitle}>Completati oggi</Text>
+          {todayCompletedSessions.map((detail) => (
+            <CompletedSessionCard
+              key={detail.session.id}
+              data={detail}
+              unit={preferences.unit}
+              onPress={() => setSelectedCompletedSession(detail)}
+            />
+          ))}
+        </>
+      )}
+
+      {selectedCompletedSession && (
+        <CompletedSessionDetailModal
+          data={selectedCompletedSession}
+          unit={preferences.unit}
+          onClose={() => setSelectedCompletedSession(null)}
+        />
+      )}
     </ScrollView>
   );
 }
@@ -578,6 +763,7 @@ const styles = StyleSheet.create({
   content: { padding: 20, paddingBottom: 40, gap: 16 },
   loadingContainer: { flex: 1, backgroundColor: Colors.dark.background, alignItems: 'center', justifyContent: 'center' },
   pageTitle: { fontSize: 30, fontWeight: '800', color: Colors.dark.text, marginTop: 8, marginBottom: 8 },
+  sectionTitle: { fontSize: 16, fontWeight: '800', color: Colors.dark.textMuted, letterSpacing: 0.5, marginTop: 4 },
   card: { backgroundColor: Colors.dark.surface, borderRadius: 18, padding: 18, borderWidth: 1, borderColor: Colors.dark.border },
   cardTitle: { fontSize: 18, fontWeight: '700', color: Colors.dark.text, marginBottom: 12 },
   cardText: { fontSize: 15, lineHeight: 22, color: Colors.dark.textMuted },

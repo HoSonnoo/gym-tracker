@@ -8,6 +8,7 @@ import {
   clearSessionSuperset,
   completeWorkoutSession,
   getExercises,
+  getLastSessionSetsForExercise,
   getWorkoutSessionById,
   getWorkoutSessionExercises,
   getWorkoutSessionSets,
@@ -16,7 +17,9 @@ import {
   setSessionSuperset,
   updateWorkoutSessionSet,
   type Exercise,
+  type LastSessionSet,
   type WorkoutSession,
+  type WorkoutSessionDetail,
   type WorkoutSessionExercise,
   type WorkoutSessionSet,
 } from '@/database';
@@ -27,8 +30,9 @@ import {
   ActivityIndicator,
   Alert,
   FlatList,
-  LayoutChangeEvent,
   Modal,
+  NativeScrollEvent,
+  NativeSyntheticEvent,
   ScrollView,
   StyleSheet,
   Text,
@@ -533,7 +537,8 @@ type SetCardProps = {
   isNextIncomplete: boolean;
   isSaving: boolean;
   unit: 'kg' | 'lbs';
-  onLayout: (e: LayoutChangeEvent) => void;
+  setViewRef: (ref: View | null) => void;
+  lastSet: LastSessionSet | null;
   onFieldChange: (field: keyof SetFormState, value: string) => void;
   onSave: () => void;
   onUncheck: () => void;
@@ -548,7 +553,8 @@ function SetCard({
   isNextIncomplete,
   isSaving,
   unit,
-  onLayout,
+  setViewRef,
+  lastSet,
   onFieldChange,
   onSave,
   onUncheck,
@@ -559,7 +565,7 @@ function SetCard({
 
   return (
     <View
-      onLayout={onLayout}
+      ref={setViewRef}
       style={[
         styles.setCard,
         isCompleted && styles.setCardCompleted,
@@ -593,6 +599,20 @@ function SetCard({
         <TargetBox label="Pausa" value={formatRest(set)} />
         <TargetBox label="Sforzo" value={formatEffortType(set.target_effort_type)} />
       </View>
+
+      {lastSet && (
+        <View style={styles.lastSessionRow}>
+          <Text style={styles.lastSessionLabel}>Ultima volta</Text>
+          <Text style={styles.lastSessionValue}>
+            {lastSet.actual_weight_kg != null ? `${lastSet.actual_weight_kg} ${unit}` : '—'}
+            {' × '}
+            {lastSet.actual_reps != null ? `${lastSet.actual_reps} rep` : '—'}
+            {lastSet.actual_effort_type && lastSet.actual_effort_type !== 'none'
+              ? ` · ${formatEffortType(lastSet.actual_effort_type)}${lastSet.actual_effort_type === 'buffer' && lastSet.actual_buffer_value != null ? `: ${lastSet.actual_buffer_value}` : ''}`
+              : ''}
+          </Text>
+        </View>
+      )}
 
       {set.target_notes ? (
         <View style={styles.inlineNoteBox}>
@@ -696,6 +716,130 @@ function SetCard({
   );
 }
 
+// ─── Session Summary Modal ────────────────────────────────────────────────────
+
+function formatDuration(startedAt: string, completedAt?: string | null): string {
+  const start = new Date(startedAt).getTime();
+  const end = completedAt ? new Date(completedAt).getTime() : Date.now();
+  const totalSeconds = Math.floor((end - start) / 1000);
+  const h = Math.floor(totalSeconds / 3600);
+  const m = Math.floor((totalSeconds % 3600) / 60);
+  const s = totalSeconds % 60;
+  if (h > 0) return `${h}h ${m.toString().padStart(2, '0')}m`;
+  if (m > 0) return `${m}m ${s.toString().padStart(2, '0')}s`;
+  return `${s}s`;
+}
+
+type SummaryModalProps = {
+  data: WorkoutSessionDetail;
+  unit: 'kg' | 'lbs';
+  onClose: () => void;
+};
+
+function SummaryModal({ data, unit, onClose }: SummaryModalProps) {
+  const { session, exercises } = data;
+
+  const allCompletedSets = exercises.flatMap((e) =>
+    e.sets.filter((s) => s.is_completed === 1)
+  );
+  const totalVolume = allCompletedSets.reduce((sum, s) => {
+    if (s.actual_weight_kg != null && s.actual_reps != null) {
+      return sum + s.actual_weight_kg * s.actual_reps;
+    }
+    return sum;
+  }, 0);
+
+  return (
+    <Modal visible animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
+      <View style={summaryStyles.container}>
+        <View style={summaryStyles.handle} />
+
+        <ScrollView
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={summaryStyles.content}
+        >
+          <Text style={summaryStyles.title}>Allenamento completato 💪</Text>
+          <Text style={summaryStyles.sessionName}>{session.name}</Text>
+
+          {/* Statistiche rapide */}
+          <View style={summaryStyles.statsRow}>
+            <View style={summaryStyles.statBox}>
+              <Text style={summaryStyles.statValue}>
+                {formatDuration(session.started_at, session.completed_at)}
+              </Text>
+              <Text style={summaryStyles.statLabel}>Durata</Text>
+            </View>
+            <View style={summaryStyles.statBox}>
+              <Text style={summaryStyles.statValue}>{allCompletedSets.length}</Text>
+              <Text style={summaryStyles.statLabel}>Serie</Text>
+            </View>
+            <View style={summaryStyles.statBox}>
+              <Text style={summaryStyles.statValue}>
+                {totalVolume > 0 ? `${Math.round(totalVolume).toLocaleString()} ${unit}` : '—'}
+              </Text>
+              <Text style={summaryStyles.statLabel}>Volume</Text>
+            </View>
+          </View>
+
+          {/* Dettaglio esercizi */}
+          {exercises.map(({ exercise, sets }) => {
+            const completedSets = sets.filter((s) => s.is_completed === 1);
+            if (completedSets.length === 0) return null;
+            return (
+              <View key={exercise.id} style={summaryStyles.exerciseBlock}>
+                <Text style={summaryStyles.exerciseName}>{exercise.exercise_name}</Text>
+                <Text style={summaryStyles.exerciseCategory}>
+                  {exercise.category ?? 'Nessuna categoria'}
+                </Text>
+                {completedSets.map((s, i) => {
+                  const effortLabel = s.actual_effort_type && s.actual_effort_type !== 'none'
+                    ? ` · ${formatEffortType(s.actual_effort_type)}${s.actual_effort_type === 'buffer' && s.actual_buffer_value != null ? `: ${s.actual_buffer_value}` : ''}`
+                    : '';
+                  return (
+                    <View key={s.id} style={summaryStyles.setRow}>
+                      <Text style={summaryStyles.setIndex}>S{i + 1}</Text>
+                      <Text style={summaryStyles.setDetail}>
+                        {s.actual_weight_kg != null ? formatWeight(s.actual_weight_kg, unit) : '—'}
+                        {' × '}
+                        {s.actual_reps != null ? `${s.actual_reps} rep` : '—'}
+                        {effortLabel}
+                      </Text>
+                    </View>
+                  );
+                })}
+              </View>
+            );
+          })}
+        </ScrollView>
+
+        <TouchableOpacity style={summaryStyles.closeButton} onPress={onClose} activeOpacity={0.9}>
+          <Text style={summaryStyles.closeButtonText}>Torna alla home</Text>
+        </TouchableOpacity>
+      </View>
+    </Modal>
+  );
+}
+
+const summaryStyles = StyleSheet.create({
+  container: { flex: 1, backgroundColor: Colors.dark.background, paddingHorizontal: 20, paddingBottom: 24 },
+  handle: { width: 40, height: 4, borderRadius: 2, backgroundColor: Colors.dark.border, alignSelf: 'center', marginTop: 12, marginBottom: 20 },
+  content: { paddingBottom: 24 },
+  title: { fontSize: 26, fontWeight: '800', color: Colors.dark.text, marginBottom: 4 },
+  sessionName: { fontSize: 16, color: Colors.dark.textMuted, fontWeight: '600', marginBottom: 24 },
+  statsRow: { flexDirection: 'row', gap: 12, marginBottom: 24 },
+  statBox: { flex: 1, backgroundColor: Colors.dark.surface, borderRadius: 16, padding: 16, alignItems: 'center', gap: 4, borderWidth: 1, borderColor: Colors.dark.border },
+  statValue: { fontSize: 18, fontWeight: '800', color: PRIMARY },
+  statLabel: { fontSize: 12, color: Colors.dark.textMuted, fontWeight: '600' },
+  exerciseBlock: { backgroundColor: Colors.dark.surface, borderRadius: 16, padding: 16, borderWidth: 1, borderColor: Colors.dark.border, marginBottom: 12 },
+  exerciseName: { fontSize: 17, fontWeight: '800', color: Colors.dark.text, marginBottom: 2 },
+  exerciseCategory: { fontSize: 13, color: Colors.dark.textMuted, marginBottom: 12 },
+  setRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 6, borderTopWidth: 1, borderTopColor: Colors.dark.border },
+  setIndex: { fontSize: 12, fontWeight: '800', color: PRIMARY, width: 24 },
+  setDetail: { fontSize: 14, color: Colors.dark.text, fontWeight: '600', flex: 1 },
+  closeButton: { backgroundColor: PRIMARY, borderRadius: 16, paddingVertical: 16, alignItems: 'center', marginTop: 8 },
+  closeButtonText: { color: '#fff', fontSize: 16, fontWeight: '800' },
+});
+
 // ─── Rest Timer Banner ────────────────────────────────────────────────────────
 
 function RestTimerBanner() {
@@ -758,8 +902,8 @@ export default function WorkoutSessionScreen() {
   const { preferences } = useUserPreferences();
 
   const scrollRef = useRef<ScrollView | null>(null);
-  const exerciseCardPositionsRef = useRef<Record<number, number>>({});
-  const setCardRelativePositionsRef = useRef<Record<number, number>>({});
+  const setCardRefsMap = useRef<Record<number, View | null>>({});
+  const scrollYRef = useRef(0);
 
   const [loading, setLoading] = useState(true);
   const [session, setSession] = useState<WorkoutSession | null>(null);
@@ -773,6 +917,10 @@ export default function WorkoutSessionScreen() {
   const [pendingTimerSet, setPendingTimerSet] = useState<WorkoutSessionSet | null>(null);
   const [pickerRestSeconds, setPickerRestSeconds] = useState(60);
   const [sessionSupersetTarget, setSessionSupersetTarget] = useState<WorkoutSessionExercise | null>(null);
+  const [showScrollTop, setShowScrollTop] = useState(false);
+  const [lastSessionSetsMap, setLastSessionSetsMap] = useState<Record<string, LastSessionSet[]>>({});
+  const [collapsedExercises, setCollapsedExercises] = useState<Set<number>>(new Set());
+  const [summaryData, setSummaryData] = useState<WorkoutSessionDetail | null>(null);
 
   // ── Data loading ──────────────────────────────────────────────────────────────
 
@@ -805,6 +953,15 @@ export default function WorkoutSessionScreen() {
       }
       setSessionData(exercisesWithSets);
       setSetForms(initialForms);
+
+      // Carica "ultima volta" per ogni esercizio (in parallelo, senza bloccare)
+      const lastSetsEntries = await Promise.all(
+        exercisesWithSets.map(async ({ exercise }) => {
+          const sets = await getLastSessionSetsForExercise(exercise.exercise_name, sessionFromDb.id);
+          return [exercise.exercise_name, sets] as [string, LastSessionSet[]];
+        })
+      );
+      setLastSessionSetsMap(Object.fromEntries(lastSetsEntries));
     } catch {
       Alert.alert('Errore', 'Impossibile caricare la sessione di allenamento.');
     } finally {
@@ -843,36 +1000,27 @@ export default function WorkoutSessionScreen() {
 
   // ── Scroll ────────────────────────────────────────────────────────────────────
 
-  const registerExerciseCardPosition = useCallback(
-    (exerciseId: number) => (event: LayoutChangeEvent) => {
-      exerciseCardPositionsRef.current[exerciseId] = event.nativeEvent.layout.y;
-    }, []
-  );
-
-  const registerSetCardPosition = useCallback(
-    (setId: number) => (event: LayoutChangeEvent) => {
-      setCardRelativePositionsRef.current[setId] = event.nativeEvent.layout.y;
-    }, []
-  );
-
   const scrollToTop = useCallback(() => {
     scrollRef.current?.scrollTo({ y: 0, animated: true });
   }, []);
 
   const scrollToNextIncompleteSet = useCallback(() => {
     if (!nextIncompleteSet || !scrollRef.current) return;
-    const ownerExercise = sessionData.find((item) =>
-      item.sets.some((s) => s.id === nextIncompleteSet.id)
-    );
-    if (!ownerExercise) return;
-    const exerciseY = exerciseCardPositionsRef.current[ownerExercise.exercise.id] ?? 0;
-    const setRelativeY = setCardRelativePositionsRef.current[nextIncompleteSet.id];
-    if (typeof setRelativeY !== 'number') return;
-    scrollRef.current.scrollTo({
-      y: Math.max(exerciseY + setRelativeY - NEXT_SET_SCROLL_OFFSET, 0),
-      animated: true,
+    const setCardView = setCardRefsMap.current[nextIncompleteSet.id];
+    if (!setCardView) return;
+    setCardView.measure((_x, _y, _w, _h, _pageX, pageY) => {
+      scrollRef.current?.measure((_sx, _sy, _sw, _sh, _spx, spy) => {
+        const targetY = pageY - spy + scrollYRef.current - NEXT_SET_SCROLL_OFFSET;
+        scrollRef.current?.scrollTo({ y: Math.max(targetY, 0), animated: true });
+      });
     });
-  }, [nextIncompleteSet, sessionData]);
+  }, [nextIncompleteSet]);
+
+  const handleScroll = useCallback((e: NativeSyntheticEvent<NativeScrollEvent>) => {
+    const y = e.nativeEvent.contentOffset.y;
+    scrollYRef.current = y;
+    setShowScrollTop(y > 200);
+  }, []);
 
   // ── Payload builder ───────────────────────────────────────────────────────────
 
@@ -1008,7 +1156,7 @@ export default function WorkoutSessionScreen() {
       try {
         setFinishingSession(true);
         await completeWorkoutSession(session.id);
-        router.back();
+        setSummaryData({ session, exercises: sessionData });
       } catch {
         Alert.alert('Errore', 'Impossibile completare la sessione.');
       } finally {
@@ -1161,14 +1309,29 @@ export default function WorkoutSessionScreen() {
                  d.exercise.id !== exercise.id
         )?.exercise ?? null
       : null;
+    const isCollapsed = collapsedExercises.has(exercise.id);
+    const completedCount = sets.filter((s) => s.is_completed === 1).length;
+    const lastSets = lastSessionSetsMap[exercise.exercise_name] ?? [];
+
+    const toggleCollapse = () => {
+      setCollapsedExercises((prev) => {
+        const next = new Set(prev);
+        if (next.has(exercise.id)) next.delete(exercise.id); else next.add(exercise.id);
+        return next;
+      });
+    };
 
     return (
       <View key={exercise.id}>
         <View
-          onLayout={registerExerciseCardPosition(exercise.id)}
           style={[styles.exerciseCard, isInSuperset && styles.exerciseCardInSuperset]}
         >
-          <View style={styles.exerciseHeader}>
+          {/* Header — sempre visibile, tocco per collassare */}
+          <TouchableOpacity
+            style={styles.exerciseHeader}
+            onPress={toggleCollapse}
+            activeOpacity={0.8}
+          >
             <View style={styles.exerciseHeaderText}>
               <View style={styles.exerciseTitleRow}>
                 <Text style={styles.exerciseTitle}>{exercise.exercise_name}</Text>
@@ -1189,7 +1352,7 @@ export default function WorkoutSessionScreen() {
               {isInSupersetGroup ? (
                 <TouchableOpacity
                   style={styles.ssClearButton}
-                  onPress={() => handleClearSessionSuperset(exercise)}
+                  onPress={(e) => { e.stopPropagation?.(); handleClearSessionSuperset(exercise); }}
                   activeOpacity={0.8}
                 >
                   <Text style={styles.ssClearButtonText}>Rimuovi SS</Text>
@@ -1197,7 +1360,7 @@ export default function WorkoutSessionScreen() {
               ) : (
                 <TouchableOpacity
                   style={styles.ssPairButton}
-                  onPress={() => setSessionSupersetTarget(exercise)}
+                  onPress={(e) => { e.stopPropagation?.(); setSessionSupersetTarget(exercise); }}
                   activeOpacity={0.8}
                 >
                   <Text style={styles.ssPairButtonText}>Abbina SS</Text>
@@ -1205,61 +1368,81 @@ export default function WorkoutSessionScreen() {
               )}
               <TouchableOpacity
                 style={styles.removeExerciseButton}
-                onPress={() => handleRemoveExercise(exercise)}
+                onPress={(e) => { e.stopPropagation?.(); handleRemoveExercise(exercise); }}
                 activeOpacity={0.8}
               >
                 <Text style={styles.removeExerciseButtonText}>Rimuovi</Text>
               </TouchableOpacity>
+              <Text style={styles.collapseChevron}>{isCollapsed ? '▶' : '▼'}</Text>
             </View>
-          </View>
-
-          {exercise.notes ? (
-            <View style={styles.exerciseNoteBox}>
-              <Text style={styles.noteLabel}>Note esercizio</Text>
-              <Text style={styles.noteText}>{exercise.notes}</Text>
-            </View>
-          ) : null}
-
-          <View style={styles.exerciseSetsList}>
-            {sets.map((set, index) => {
-              const form: SetFormState = setForms[set.id] ?? {
-                actual_weight_kg: '',
-                actual_reps: '',
-                actual_notes: '',
-                actual_effort_type: (set.target_effort_type as EffortType) ?? 'none',
-              };
-              const isCompleted = set.is_completed === 1;
-              const isNextIncomplete = nextIncompleteSet?.id === set.id && !isCompleted;
-              return (
-                <SetCard
-                  key={set.id}
-                  set={set}
-                  index={index}
-                  form={form}
-                  isCompleted={isCompleted}
-                  isNextIncomplete={isNextIncomplete}
-                  isSaving={savingSetId === set.id}
-                  unit={preferences.unit}
-                  onLayout={registerSetCardPosition(set.id)}
-                  onFieldChange={(field, value) => updateSetField(set.id, field, value)}
-                  onSave={() => handleSaveSet(set)}
-                  onUncheck={() => handleUncheckSet(set)}
-                  onRemove={() => handleRemoveSet(set, exercise.exercise_name)}
-                />
-              );
-            })}
-          </View>
-
-          <TouchableOpacity
-            style={[styles.addSetButton, addingSetForExercise[exercise.id] && styles.disabledButton]}
-            onPress={() => handleAddSet(exercise.id)}
-            disabled={!!addingSetForExercise[exercise.id]}
-            activeOpacity={0.85}
-          >
-            <Text style={styles.addSetButtonText}>
-              {addingSetForExercise[exercise.id] ? 'Aggiunta...' : '+ Serie'}
-            </Text>
           </TouchableOpacity>
+
+          {/* Riepilogo collassato */}
+          {isCollapsed ? (
+            <View style={styles.collapsedSummary}>
+              <Text style={styles.collapsedSummaryText}>
+                {completedCount}/{sets.length} serie completate
+              </Text>
+              {lastSets.length > 0 && (
+                <Text style={styles.collapsedLastSession}>
+                  Ultima volta: {lastSets.map((s) =>
+                    `${s.actual_weight_kg ?? '—'} × ${s.actual_reps ?? '—'}`
+                  ).join(' · ')}
+                </Text>
+              )}
+            </View>
+          ) : (
+            <>
+              {exercise.notes ? (
+                <View style={styles.exerciseNoteBox}>
+                  <Text style={styles.noteLabel}>Note esercizio</Text>
+                  <Text style={styles.noteText}>{exercise.notes}</Text>
+                </View>
+              ) : null}
+
+              <View style={styles.exerciseSetsList}>
+                {sets.map((set, index) => {
+                  const form: SetFormState = setForms[set.id] ?? {
+                    actual_weight_kg: '',
+                    actual_reps: '',
+                    actual_notes: '',
+                    actual_effort_type: (set.target_effort_type as EffortType) ?? 'none',
+                  };
+                  const isCompleted = set.is_completed === 1;
+                  const isNextIncomplete = nextIncompleteSet?.id === set.id && !isCompleted;
+                  return (
+                    <SetCard
+                      key={set.id}
+                      set={set}
+                      index={index}
+                      form={form}
+                      isCompleted={isCompleted}
+                      isNextIncomplete={isNextIncomplete}
+                      isSaving={savingSetId === set.id}
+                      unit={preferences.unit}
+                      setViewRef={(ref) => { setCardRefsMap.current[set.id] = ref; }}
+                      lastSet={lastSets[index] ?? null}
+                      onFieldChange={(field, value) => updateSetField(set.id, field, value)}
+                      onSave={() => handleSaveSet(set)}
+                      onUncheck={() => handleUncheckSet(set)}
+                      onRemove={() => handleRemoveSet(set, exercise.exercise_name)}
+                    />
+                  );
+                })}
+              </View>
+
+              <TouchableOpacity
+                style={[styles.addSetButton, addingSetForExercise[exercise.id] && styles.disabledButton]}
+                onPress={() => handleAddSet(exercise.id)}
+                disabled={!!addingSetForExercise[exercise.id]}
+                activeOpacity={0.85}
+              >
+                <Text style={styles.addSetButtonText}>
+                  {addingSetForExercise[exercise.id] ? 'Aggiunta...' : '+ Serie'}
+                </Text>
+              </TouchableOpacity>
+            </>
+          )}
         </View>
 
         {showDivider && (
@@ -1317,6 +1500,8 @@ export default function WorkoutSessionScreen() {
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
+        onScroll={handleScroll}
+        scrollEventThrottle={16}
       >
         <View style={styles.topBar}>
           <BackButton onPress={() => router.back()} />
@@ -1409,6 +1594,16 @@ export default function WorkoutSessionScreen() {
         </TouchableOpacity>
       </ScrollView>
 
+      {showScrollTop && (
+        <TouchableOpacity
+          style={styles.scrollTopButton}
+          onPress={scrollToTop}
+          activeOpacity={0.8}
+        >
+          <Text style={styles.scrollTopButtonIcon}>↑</Text>
+        </TouchableOpacity>
+      )}
+
       <AddExerciseModal
         visible={showAddExerciseModal}
         onClose={() => setShowAddExerciseModal(false)}
@@ -1486,6 +1681,14 @@ export default function WorkoutSessionScreen() {
           </View>
         </View>
       </Modal>
+
+      {summaryData && (
+        <SummaryModal
+          data={summaryData}
+          unit={preferences.unit}
+          onClose={() => router.back()}
+        />
+      )}
     </SafeAreaView>
   );
 }
@@ -1515,6 +1718,10 @@ const styles = StyleSheet.create({
   nextSetButtonText: { color: '#fff', fontSize: 15, fontWeight: '800' },
   exerciseCard: { backgroundColor: Colors.dark.surface, borderRadius: 18, padding: 18, borderWidth: 1, borderColor: Colors.dark.border, marginTop: 12 },
   exerciseHeader: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, marginBottom: 12 },
+  collapseChevron: { color: Colors.dark.textMuted, fontSize: 12, marginLeft: 4, marginTop: 2 },
+  collapsedSummary: { paddingTop: 4, gap: 4 },
+  collapsedSummaryText: { fontSize: 14, color: Colors.dark.textMuted, fontWeight: '600' },
+  collapsedLastSession: { fontSize: 12, color: PRIMARY, fontWeight: '600' },
   exerciseHeaderText: { flex: 1 },
   exerciseTitle: { color: Colors.dark.text, fontSize: 20, fontWeight: '800' },
   exerciseSubtitle: { color: Colors.dark.textMuted, fontSize: 14, marginTop: 4 },
@@ -1539,6 +1746,9 @@ const styles = StyleSheet.create({
   targetBox: { width: '48%', backgroundColor: '#1a1a21', borderRadius: 12, padding: 12, borderWidth: 1, borderColor: Colors.dark.border },
   targetLabel: { color: Colors.dark.textMuted, fontSize: 12, marginBottom: 6 },
   targetValue: { color: Colors.dark.text, fontSize: 15, fontWeight: '700' },
+  lastSessionRow: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: 'rgba(126,71,255,0.08)', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8, marginBottom: 12 },
+  lastSessionLabel: { fontSize: 11, fontWeight: '800', color: PRIMARY, letterSpacing: 0.8, textTransform: 'uppercase' },
+  lastSessionValue: { fontSize: 13, color: Colors.dark.text, fontWeight: '600', flex: 1 },
   inlineNoteBox: { backgroundColor: '#1a1a21', borderRadius: 12, padding: 12, borderWidth: 1, borderColor: Colors.dark.border, marginBottom: 12 },
   noteLabel: { color: Colors.dark.textMuted, fontSize: 12, marginBottom: 6 },
   noteText: { color: Colors.dark.text, fontSize: 14, lineHeight: 20 },
@@ -1578,6 +1788,29 @@ const styles = StyleSheet.create({
   addExerciseButtonText: { color: PRIMARY, fontSize: 15, fontWeight: '700' },
   addSetButton: { marginTop: 12, backgroundColor: 'rgba(126,71,255,0.08)', borderRadius: 12, borderWidth: 1, borderColor: 'rgba(126,71,255,0.35)', borderStyle: 'dashed', paddingVertical: 12, alignItems: 'center', justifyContent: 'center' },
   addSetButtonText: { color: PRIMARY, fontSize: 14, fontWeight: '700' },
+
+  scrollTopButton: {
+    position: 'absolute',
+    bottom: 32,
+    right: 20,
+    width: 46,
+    height: 46,
+    borderRadius: 23,
+    backgroundColor: PRIMARY,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: PRIMARY,
+    shadowOpacity: 0.45,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 8,
+  },
+  scrollTopButtonIcon: {
+    color: '#fff',
+    fontSize: 20,
+    fontWeight: '800',
+    lineHeight: 24,
+  },
 
   // ── Superset styles ──────────────────────────────────────────────────────────
   supersetContainer: {
