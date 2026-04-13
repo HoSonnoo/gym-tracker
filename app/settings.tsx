@@ -22,7 +22,6 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-const PRIMARY = '#7e47ff';
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
@@ -899,7 +898,7 @@ const styles = StyleSheet.create({
     borderRadius: 8,
   },
   segOptionActive: {
-    backgroundColor: PRIMARY,
+    backgroundColor: Colors.dark.primary,
   },
   segOptionText: {
     fontSize: 13,

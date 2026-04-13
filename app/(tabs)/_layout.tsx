@@ -41,7 +41,7 @@ export default function TabsLayout() {
           focused ? (
             <Text
               numberOfLines={1}
-              style={{ fontSize: 10, fontWeight: '700', color, letterSpacing: -0.3 }}
+              style={{ fontSize: 10, fontWeight: '800', color, letterSpacing: -0.3 }}
             >
               {children}
             </Text>
@@ -49,29 +49,11 @@ export default function TabsLayout() {
       }}
     >
       <Tabs.Screen
-        name="index"
-        options={{
-          title: '',
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="today-outline" size={size} color={color} />
-          ),
-        }}
-      />
-      <Tabs.Screen
         name="workouts"
         options={{
           title: '',
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="barbell-outline" size={size} color={color} />
-          ),
-        }}
-      />
-      <Tabs.Screen
-        name="nutrition"
-        options={{
-          title: '',
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="nutrition-outline" size={size} color={color} />
+          tabBarIcon: ({ color, size, focused }) => (
+            <Ionicons name={focused ? 'barbell' : 'barbell-outline'} size={focused ? size + 4 : size} color={color} />
           ),
         }}
       />
@@ -79,8 +61,26 @@ export default function TabsLayout() {
         name="calendar"
         options={{
           title: '',
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="calendar-outline" size={size} color={color} />
+          tabBarIcon: ({ color, size, focused }) => (
+            <Ionicons name={focused ? 'calendar' : 'calendar-outline'} size={focused ? size + 4 : size} color={color} />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="index"
+        options={{
+          title: '',
+          tabBarIcon: ({ color, size, focused }) => (
+            <Ionicons name={focused ? 'home' : 'home-outline'} size={focused ? size + 4 : size} color={color} />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="nutrition"
+        options={{
+          title: '',
+          tabBarIcon: ({ color, size, focused }) => (
+            <Ionicons name={focused ? 'nutrition' : 'nutrition-outline'} size={focused ? size + 4 : size} color={color} />
           ),
         }}
       />
@@ -88,8 +88,8 @@ export default function TabsLayout() {
         name="progress"
         options={{
           title: '',
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="stats-chart-outline" size={size} color={color} />
+          tabBarIcon: ({ color, size, focused }) => (
+            <Ionicons name={focused ? 'stats-chart' : 'stats-chart-outline'} size={focused ? size + 4 : size} color={color} />
           ),
         }}
       />

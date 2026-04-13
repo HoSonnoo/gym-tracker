@@ -64,6 +64,7 @@ export async function initDatabase() {
       template_id INTEGER,
       name TEXT NOT NULL,
       notes TEXT,
+      rating INTEGER,
       status TEXT NOT NULL DEFAULT 'active',
       started_at TEXT NOT NULL,
       completed_at TEXT,
@@ -254,6 +255,11 @@ export async function initDatabase() {
       `ALTER TABLE workout_session_exercises ADD COLUMN superset_group_id INTEGER`
     );
   } catch { /* già esistente */ }
+
+  // v1.3: rating per sessioni completate
+  try {
+    await database.execAsync(`ALTER TABLE workout_sessions ADD COLUMN rating INTEGER`);
+  } catch { /* già esistente */ }
 }
 
 export type Exercise = {
@@ -305,6 +311,7 @@ export type WorkoutSession = {
   template_id: number | null;
   name: string;
   notes: string | null;
+  rating: number | null;
   status: 'active' | 'completed' | 'cancelled';
   started_at: string;
   completed_at: string | null;
@@ -688,6 +695,7 @@ export async function getActiveWorkoutSession(): Promise<WorkoutSession | null> 
       template_id,
       name,
       notes,
+      rating,
       status,
       started_at,
       completed_at,
@@ -712,6 +720,7 @@ export async function getWorkoutSessionById(
       template_id,
       name,
       notes,
+      rating,
       status,
       started_at,
       completed_at,
@@ -1071,6 +1080,7 @@ export async function getCompletedWorkoutSessions(): Promise<WorkoutSession[]> {
       template_id,
       name,
       notes,
+      rating,
       status,
       started_at,
       completed_at,
@@ -1107,6 +1117,127 @@ export async function getWorkoutSessionDetail(
   );
 
   return { session, exercises: exercisesWithSets };
+}
+
+// ─── Valutazione e note sessione ─────────────────────────────────────────────
+
+export async function updateSessionRatingAndNotes(
+  sessionId: number,
+  rating: number | null,
+  notes: string | null
+): Promise<void> {
+  const database = await getDb();
+  await database.runAsync(
+    `UPDATE workout_sessions SET rating = ?, notes = ? WHERE id = ?`,
+    [rating, notes, sessionId]
+  );
+}
+
+// ─── Statistiche globali ──────────────────────────────────────────────────────
+
+export type GlobalStats = {
+  totalSessions: number;
+  totalVolumeKg: number;
+  currentStreak: number;
+  bestStreak: number;
+};
+
+export async function getGlobalStats(): Promise<GlobalStats> {
+  const database = await getDb();
+
+  // Sessioni totali completate
+  const totalRow = await database.getFirstAsync<{ count: number }>(
+    `SELECT COUNT(*) as count FROM workout_sessions WHERE status = 'completed'`
+  );
+
+  // Volume totale (peso × reps su tutte le serie completate di sessioni completate)
+  const volumeRow = await database.getFirstAsync<{ total: number | null }>(
+    `SELECT SUM(wss.actual_weight_kg * wss.actual_reps) as total
+     FROM workout_session_sets wss
+     INNER JOIN workout_session_exercises wse ON wss.session_exercise_id = wse.id
+     INNER JOIN workout_sessions ws ON wse.session_id = ws.id
+     WHERE ws.status = 'completed'
+       AND wss.is_completed = 1
+       AND wss.actual_weight_kg IS NOT NULL
+       AND wss.actual_reps IS NOT NULL`
+  );
+
+  // Date distinte delle sessioni completate (per calcolo streak settimanale)
+  const dateRows = await database.getAllAsync<{ d: string }>(
+    `SELECT DISTINCT date(completed_at) as d
+     FROM workout_sessions
+     WHERE status = 'completed' AND completed_at IS NOT NULL
+     ORDER BY d DESC`
+  );
+
+  // Raggruppa per settimana (lunedì) e calcola streak
+  function getMondayStr(dateStr: string): string {
+    const d = new Date(dateStr + 'T00:00:00');
+    const day = d.getDay(); // 0=dom, 1=lun, ...
+    const diff = day === 0 ? -6 : 1 - day;
+    d.setDate(d.getDate() + diff);
+    return d.toISOString().slice(0, 10);
+  }
+
+  const weekSet = new Set(dateRows.map(r => getMondayStr(r.d)));
+  const sortedWeeks = Array.from(weekSet).sort();
+
+  // Streak corrente: conta settimane consecutive fino a questa (o scorsa)
+  let currentStreak = 0;
+  const now = new Date();
+  const thisMonday = getMondayStr(now.toISOString().slice(0, 10));
+  const prevMonday = (() => {
+    const d = new Date(thisMonday + 'T00:00:00');
+    d.setDate(d.getDate() - 7);
+    return d.toISOString().slice(0, 10);
+  })();
+
+  let cursor = weekSet.has(thisMonday) ? thisMonday : (weekSet.has(prevMonday) ? prevMonday : null);
+  while (cursor && weekSet.has(cursor)) {
+    currentStreak++;
+    const d = new Date(cursor + 'T00:00:00');
+    d.setDate(d.getDate() - 7);
+    cursor = d.toISOString().slice(0, 10);
+  }
+
+  // Streak migliore: finestra scorrevole su settimane ordinate
+  let bestStreak = 0;
+  let run = 1;
+  for (let i = 1; i < sortedWeeks.length; i++) {
+    const prev = new Date(sortedWeeks[i - 1] + 'T00:00:00');
+    const curr = new Date(sortedWeeks[i] + 'T00:00:00');
+    const diffDays = Math.round((curr.getTime() - prev.getTime()) / (1000 * 60 * 60 * 24));
+    if (diffDays === 7) {
+      run++;
+    } else {
+      bestStreak = Math.max(bestStreak, run);
+      run = 1;
+    }
+  }
+  if (sortedWeeks.length > 0) bestStreak = Math.max(bestStreak, run);
+
+  return {
+    totalSessions: totalRow?.count ?? 0,
+    totalVolumeKg: Math.round(volumeRow?.total ?? 0),
+    currentStreak,
+    bestStreak: Math.max(bestStreak, currentStreak),
+  };
+}
+
+// ─── Riordino esercizi sessione ───────────────────────────────────────────────
+
+export async function reorderSessionExercises(
+  exercises: { id: number; exercise_order: number }[]
+): Promise<void> {
+  const database = await getDb();
+  await database.withTransactionAsync(async () => {
+    for (const ex of exercises) {
+      await database.runAsync(
+        `UPDATE workout_session_exercises SET exercise_order = ? WHERE id = ?`,
+        [ex.exercise_order, ex.id]
+      );
+    }
+  });
 }
 
 // ─── Ultima sessione per esercizio ───────────────────────────────────────────
@@ -1156,7 +1287,7 @@ export async function getTodayCompletedSessions(): Promise<WorkoutSessionDetail[
   const database = await getDb();
   const today = new Date().toISOString().slice(0, 10);
   const sessions = await database.getAllAsync<WorkoutSession>(
-    `SELECT id, template_id, name, notes, status, started_at, completed_at, created_at
+    `SELECT id, template_id, name, notes, rating, status, started_at, completed_at, created_at
      FROM workout_sessions
      WHERE status = 'completed'
        AND date(completed_at) = ?
@@ -1926,7 +2057,7 @@ export async function exportAllData(): Promise<ExportData> {
 
   // Sessioni completate + attive con esercizi e serie
   const rawSessions = await database.getAllAsync<WorkoutSession>(`
-    SELECT id, template_id, name, notes, status, started_at, completed_at, created_at
+    SELECT id, template_id, name, notes, rating, status, started_at, completed_at, created_at
     FROM workout_sessions
     ORDER BY started_at DESC
   `);

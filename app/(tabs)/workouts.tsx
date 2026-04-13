@@ -22,7 +22,6 @@ import {
   View,
 } from 'react-native';
 
-const PRIMARY = '#7e47ff';
 
 type OnboardingPhase = 'empty' | 'has_exercises' | 'ready';
 
@@ -210,7 +209,7 @@ const onboardStyles = StyleSheet.create({
     width: 28,
     height: 28,
     borderRadius: 14,
-    backgroundColor: PRIMARY,
+    backgroundColor: Colors.dark.primary,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -227,7 +226,7 @@ const onboardStyles = StyleSheet.create({
   stepText: { fontSize: 14, lineHeight: 20, color: Colors.dark.textMuted },
   stepTextMuted: { fontSize: 14, lineHeight: 20, color: Colors.dark.textMuted },
   stepButton: {
-    backgroundColor: PRIMARY,
+    backgroundColor: Colors.dark.primary,
     borderRadius: 12,
     paddingVertical: 12,
     alignItems: 'center',

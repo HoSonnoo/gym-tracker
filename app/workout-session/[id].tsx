@@ -14,7 +14,9 @@ import {
   getWorkoutSessionSets,
   removeExerciseFromSession,
   removeSetFromSessionExercise,
+  reorderSessionExercises,
   setSessionSuperset,
+  updateSessionRatingAndNotes,
   updateWorkoutSessionSet,
   type Exercise,
   type LastSessionSet,
@@ -23,6 +25,7 @@ import {
   type WorkoutSessionExercise,
   type WorkoutSessionSet,
 } from '@/database';
+import * as Haptics from 'expo-haptics';
 import { useFocusEffect } from '@react-navigation/native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -40,11 +43,18 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
+import Animated, {
+  runOnJS,
+  useAnimatedStyle,
+  useSharedValue,
+  withSpring,
+  withTiming,
+} from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const PRIMARY = '#7e47ff';
 const NEXT_SET_SCROLL_OFFSET = 20;
 
 const EFFORT_OPTIONS: { key: EffortType; label: string }[] = [
@@ -183,7 +193,7 @@ function AddExerciseModal({ visible, onClose, onSelect }: AddExerciseModalProps)
 
         {loading ? (
           <View style={modalStyles.centered}>
-            <ActivityIndicator size="large" color={PRIMARY} />
+            <ActivityIndicator size="large" color={Colors.dark.primary} />
           </View>
         ) : (
           <FlatList
@@ -439,7 +449,7 @@ const pickerStyles = StyleSheet.create({
     marginTop: 18,
   },
   confirmButton: {
-    backgroundColor: PRIMARY,
+    backgroundColor: Colors.dark.primary,
     borderRadius: 16,
     paddingVertical: 16,
     alignItems: 'center',
@@ -716,6 +726,320 @@ function SetCard({
   );
 }
 
+// ─── Exercise Card ────────────────────────────────────────────────────────────
+
+type ExerciseCardProps = {
+  exercise: WorkoutSessionExercise;
+  sets: WorkoutSessionSet[];
+  isInSuperset: boolean;
+  showDivider: boolean;
+  isCollapsed: boolean;
+  lastSets: LastSessionSet[];
+  setForms: Record<number, SetFormState>;
+  nextIncompleteSetId: number | null;
+  savingSetId: number | null;
+  addingSet: boolean;
+  unit: 'kg' | 'lbs';
+  setCardRefsMap: React.MutableRefObject<Record<number, View | null>>;
+  onToggleCollapse: () => void;
+  onClearSuperset: () => void;
+  onPairSuperset: () => void;
+  onRemoveExercise: () => void;
+  onFieldChange: (setId: number, field: keyof SetFormState, value: string) => void;
+  onSaveSet: (set: WorkoutSessionSet) => void;
+  onUncheckSet: (set: WorkoutSessionSet) => void;
+  onRemoveSet: (set: WorkoutSessionSet) => void;
+  onAddSet: () => void;
+};
+
+function ExerciseCard({
+  exercise,
+  sets,
+  isInSuperset,
+  showDivider,
+  isCollapsed,
+  lastSets,
+  setForms,
+  nextIncompleteSetId,
+  savingSetId,
+  addingSet,
+  unit,
+  setCardRefsMap,
+  onToggleCollapse,
+  onClearSuperset,
+  onPairSuperset,
+  onRemoveExercise,
+  onFieldChange,
+  onSaveSet,
+  onUncheckSet,
+  onRemoveSet,
+  onAddSet,
+}: ExerciseCardProps) {
+  const isInSupersetGroup = exercise.superset_group_id !== null;
+  const completedCount = sets.filter((s) => s.is_completed === 1).length;
+
+  return (
+    <View>
+      <View style={[styles.exerciseCard, isInSuperset && styles.exerciseCardInSuperset]}>
+        {/* Header — sempre visibile, tocco per collassare */}
+        <TouchableOpacity
+          style={styles.exerciseHeader}
+          onPress={onToggleCollapse}
+          activeOpacity={0.8}
+        >
+          <View style={styles.exerciseHeaderText}>
+            <View style={styles.exerciseTitleRow}>
+              <Text style={styles.exerciseTitle}>{exercise.exercise_name}</Text>
+              {isInSupersetGroup && (
+                <View style={styles.ssBadgeSession}>
+                  <Text style={styles.ssBadgeSessionText}>SS</Text>
+                </View>
+              )}
+            </View>
+            <Text style={styles.exerciseSubtitle}>
+              {exercise.category ?? 'Nessuna categoria'}
+              {exercise.template_exercise_id === null && (
+                <Text style={styles.freeExerciseBadge}> · Libero</Text>
+              )}
+            </Text>
+          </View>
+          <View style={styles.exerciseHeaderActions}>
+            {isInSupersetGroup ? (
+              <TouchableOpacity
+                style={styles.ssClearButton}
+                onPress={(e) => { e.stopPropagation?.(); onClearSuperset(); }}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.ssClearButtonText}>Rimuovi SS</Text>
+              </TouchableOpacity>
+            ) : (
+              <TouchableOpacity
+                style={styles.ssPairButton}
+                onPress={(e) => { e.stopPropagation?.(); onPairSuperset(); }}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.ssPairButtonText}>Abbina SS</Text>
+              </TouchableOpacity>
+            )}
+            <TouchableOpacity
+              style={styles.removeExerciseButton}
+              onPress={(e) => { e.stopPropagation?.(); onRemoveExercise(); }}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.removeExerciseButtonText}>Rimuovi</Text>
+            </TouchableOpacity>
+            <Text style={styles.collapseChevron}>{isCollapsed ? '▶' : '▼'}</Text>
+          </View>
+        </TouchableOpacity>
+
+        {/* Riepilogo collassato */}
+        {isCollapsed ? (
+          <View style={styles.collapsedSummary}>
+            <Text style={styles.collapsedSummaryText}>
+              {completedCount}/{sets.length} serie completate
+            </Text>
+            {lastSets.length > 0 && (
+              <Text style={styles.collapsedLastSession}>
+                Ultima volta: {lastSets.map((s) =>
+                  `${s.actual_weight_kg ?? '—'} × ${s.actual_reps ?? '—'}`
+                ).join(' · ')}
+              </Text>
+            )}
+          </View>
+        ) : (
+          <>
+            {exercise.notes ? (
+              <View style={styles.exerciseNoteBox}>
+                <Text style={styles.noteLabel}>Note esercizio</Text>
+                <Text style={styles.noteText}>{exercise.notes}</Text>
+              </View>
+            ) : null}
+
+            <View style={styles.exerciseSetsList}>
+              {sets.map((set, index) => {
+                const form: SetFormState = setForms[set.id] ?? {
+                  actual_weight_kg: '',
+                  actual_reps: '',
+                  actual_notes: '',
+                  actual_effort_type: (set.target_effort_type as EffortType) ?? 'none',
+                };
+                const isCompleted = set.is_completed === 1;
+                const isNextIncomplete = nextIncompleteSetId === set.id && !isCompleted;
+                return (
+                  <SetCard
+                    key={set.id}
+                    set={set}
+                    index={index}
+                    form={form}
+                    isCompleted={isCompleted}
+                    isNextIncomplete={isNextIncomplete}
+                    isSaving={savingSetId === set.id}
+                    unit={unit}
+                    setViewRef={(ref) => { setCardRefsMap.current[set.id] = ref; }}
+                    lastSet={lastSets[index] ?? null}
+                    onFieldChange={(field, value) => onFieldChange(set.id, field, value)}
+                    onSave={() => onSaveSet(set)}
+                    onUncheck={() => onUncheckSet(set)}
+                    onRemove={() => onRemoveSet(set)}
+                  />
+                );
+              })}
+            </View>
+
+            <TouchableOpacity
+              style={[styles.addSetButton, addingSet && styles.disabledButton]}
+              onPress={onAddSet}
+              disabled={addingSet}
+              activeOpacity={0.85}
+            >
+              <Text style={styles.addSetButtonText}>
+                {addingSet ? 'Aggiunta...' : '+ Serie'}
+              </Text>
+            </TouchableOpacity>
+          </>
+        )}
+      </View>
+
+      {showDivider && (
+        <View style={styles.supersetDivider}>
+          <View style={styles.supersetDividerLine} />
+          <Text style={styles.supersetDividerText}>poi</Text>
+          <View style={styles.supersetDividerLine} />
+        </View>
+      )}
+    </View>
+  );
+}
+
+// ─── Draggable Session Row ────────────────────────────────────────────────────
+
+type DraggableSessionRowProps = {
+  exercise: WorkoutSessionExercise;
+  index: number;
+  total: number;
+  itemHeightRef: React.MutableRefObject<number>;
+  onDragStart: (index: number) => void;
+  onDragEnd: (fromIndex: number, toIndex: number) => void;
+  onLayout?: (e: any) => void;
+};
+
+function DraggableSessionRow({
+  exercise,
+  index,
+  total,
+  itemHeightRef,
+  onDragStart,
+  onDragEnd,
+  onLayout,
+}: DraggableSessionRowProps) {
+  const translateY = useSharedValue(0);
+  const scale = useSharedValue(1);
+  const zIndex = useSharedValue(0);
+  const opacity = useSharedValue(1);
+  const isActive = useSharedValue(false);
+  const toIndexRef = useRef(index);
+
+  const pan = Gesture.Pan()
+    .activateAfterLongPress(250)
+    .onStart(() => {
+      isActive.value = true;
+      scale.value = withSpring(1.03, { damping: 20, stiffness: 300 });
+      opacity.value = withTiming(0.9, { duration: 150 });
+      zIndex.value = 999;
+      runOnJS(onDragStart)(index);
+      runOnJS(Haptics.impactAsync)(Haptics.ImpactFeedbackStyle.Medium);
+    })
+    .onUpdate((e) => {
+      translateY.value = e.translationY;
+      const rawOffset = Math.round(e.translationY / itemHeightRef.current);
+      const clamped = Math.max(-index, Math.min(total - 1 - index, rawOffset));
+      toIndexRef.current = index + clamped;
+    })
+    .onEnd(() => {
+      translateY.value = withSpring(0, { damping: 25, stiffness: 300 });
+      scale.value = withSpring(1, { damping: 20 });
+      opacity.value = withTiming(1, { duration: 150 });
+      zIndex.value = 0;
+      isActive.value = false;
+      runOnJS(onDragEnd)(index, toIndexRef.current);
+      runOnJS(Haptics.impactAsync)(Haptics.ImpactFeedbackStyle.Light);
+    })
+    .onFinalize(() => {
+      translateY.value = withSpring(0, { damping: 25, stiffness: 300 });
+      scale.value = withSpring(1);
+      opacity.value = withTiming(1);
+      zIndex.value = 0;
+      isActive.value = false;
+    });
+
+  const animatedStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: translateY.value }, { scale: scale.value }],
+    zIndex: zIndex.value,
+    opacity: opacity.value,
+    shadowOpacity: isActive.value ? 0.3 : 0,
+  }));
+
+  return (
+    <GestureDetector gesture={pan}>
+      <Animated.View
+        style={[sessionDragStyles.row, animatedStyle]}
+        onLayout={onLayout}
+      >
+        <View style={sessionDragStyles.handleCol}>
+          <View style={sessionDragStyles.handleIcon}>
+            <Text style={sessionDragStyles.handleDots}>⠿</Text>
+          </View>
+          <View style={sessionDragStyles.orderBadge}>
+            <Text style={sessionDragStyles.orderText}>{index + 1}</Text>
+          </View>
+        </View>
+        <View style={sessionDragStyles.infoCol}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            <Text style={sessionDragStyles.exerciseName}>{exercise.exercise_name}</Text>
+            {exercise.superset_group_id !== null && (
+              <View style={sessionDragStyles.ssBadge}>
+                <Text style={sessionDragStyles.ssBadgeText}>SS</Text>
+              </View>
+            )}
+          </View>
+          <Text style={sessionDragStyles.exerciseCategory}>
+            {exercise.category ?? 'Nessuna categoria'}
+          </Text>
+        </View>
+      </Animated.View>
+    </GestureDetector>
+  );
+}
+
+const sessionDragStyles = StyleSheet.create({
+  row: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.dark.surface,
+    borderRadius: 16,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: Colors.dark.border,
+    gap: 10,
+    marginBottom: 10,
+    minHeight: 64,
+    shadowColor: Colors.dark.primary,
+    shadowOffset: { width: 0, height: 4 },
+    shadowRadius: 12,
+    elevation: 0,
+  },
+  handleCol: { width: 30, alignItems: 'center', justifyContent: 'center', gap: 5 },
+  handleIcon: { width: 30, height: 30, borderRadius: 8, backgroundColor: Colors.dark.surfaceSoft, borderWidth: 1, borderColor: Colors.dark.border, alignItems: 'center', justifyContent: 'center' },
+  handleDots: { fontSize: 22, color: Colors.dark.textMuted, lineHeight: 28 },
+  orderBadge: { width: 20, height: 20, borderRadius: 10, backgroundColor: 'rgba(126,71,255,0.15)', alignItems: 'center', justifyContent: 'center' },
+  orderText: { fontSize: 11, fontWeight: '800', color: Colors.dark.primary },
+  infoCol: { flex: 1 },
+  exerciseName: { fontSize: 16, fontWeight: '700', color: Colors.dark.text },
+  exerciseCategory: { fontSize: 13, color: Colors.dark.textMuted, marginTop: 2 },
+  ssBadge: { backgroundColor: 'rgba(245,158,11,0.18)', borderRadius: 6, borderWidth: 1, borderColor: Colors.dark.warning, paddingHorizontal: 6, paddingVertical: 2 },
+  ssBadgeText: { color: Colors.dark.warning, fontSize: 11, fontWeight: '800' },
+});
+
 // ─── Session Summary Modal ────────────────────────────────────────────────────
 
 function formatDuration(startedAt: string, completedAt?: string | null): string {
@@ -730,14 +1054,24 @@ function formatDuration(startedAt: string, completedAt?: string | null): string 
   return `${s}s`;
 }
 
+const RATING_OPTIONS = [
+  { value: 1, emoji: '😓', label: 'Duro' },
+  { value: 2, emoji: '😕', label: 'Faticoso' },
+  { value: 3, emoji: '😐', label: 'Normale' },
+  { value: 4, emoji: '💪', label: 'Buono' },
+  { value: 5, emoji: '🔥', label: 'Ottimo' },
+];
+
 type SummaryModalProps = {
   data: WorkoutSessionDetail;
   unit: 'kg' | 'lbs';
-  onClose: () => void;
+  onSaveAndClose: (rating: number | null, notes: string) => void;
 };
 
-function SummaryModal({ data, unit, onClose }: SummaryModalProps) {
+function SummaryModal({ data, unit, onSaveAndClose }: SummaryModalProps) {
   const { session, exercises } = data;
+  const [rating, setRating] = React.useState<number | null>(null);
+  const [notes, setNotes] = React.useState('');
 
   const allCompletedSets = exercises.flatMap((e) =>
     e.sets.filter((s) => s.is_completed === 1)
@@ -750,13 +1084,14 @@ function SummaryModal({ data, unit, onClose }: SummaryModalProps) {
   }, 0);
 
   return (
-    <Modal visible animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
+    <Modal visible animationType="slide" presentationStyle="pageSheet" onRequestClose={() => onSaveAndClose(rating, notes)}>
       <View style={summaryStyles.container}>
         <View style={summaryStyles.handle} />
 
         <ScrollView
           showsVerticalScrollIndicator={false}
           contentContainerStyle={summaryStyles.content}
+          keyboardShouldPersistTaps="handled"
         >
           <Text style={summaryStyles.title}>Allenamento completato 💪</Text>
           <Text style={summaryStyles.sessionName}>{session.name}</Text>
@@ -779,6 +1114,40 @@ function SummaryModal({ data, unit, onClose }: SummaryModalProps) {
               </Text>
               <Text style={summaryStyles.statLabel}>Volume</Text>
             </View>
+          </View>
+
+          {/* Rating */}
+          <View style={summaryStyles.ratingSection}>
+            <Text style={summaryStyles.ratingTitle}>Com'è andata?</Text>
+            <View style={summaryStyles.ratingRow}>
+              {RATING_OPTIONS.map((opt) => (
+                <TouchableOpacity
+                  key={opt.value}
+                  style={[summaryStyles.ratingBtn, rating === opt.value && summaryStyles.ratingBtnActive]}
+                  onPress={() => setRating(rating === opt.value ? null : opt.value)}
+                  activeOpacity={0.8}
+                >
+                  <Text style={summaryStyles.ratingEmoji}>{opt.emoji}</Text>
+                  <Text style={[summaryStyles.ratingLabel, rating === opt.value && summaryStyles.ratingLabelActive]}>
+                    {opt.label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+
+          {/* Note */}
+          <View style={summaryStyles.notesSection}>
+            <Text style={summaryStyles.ratingTitle}>Note sessione</Text>
+            <TextInput
+              style={summaryStyles.notesInput}
+              value={notes}
+              onChangeText={setNotes}
+              placeholder="Come ti sei sentito? Cosa hai migliorato?"
+              placeholderTextColor={Colors.dark.textMuted}
+              multiline
+              numberOfLines={3}
+            />
           </View>
 
           {/* Dettaglio esercizi */}
@@ -828,15 +1197,15 @@ const summaryStyles = StyleSheet.create({
   sessionName: { fontSize: 16, color: Colors.dark.textMuted, fontWeight: '600', marginBottom: 24 },
   statsRow: { flexDirection: 'row', gap: 12, marginBottom: 24 },
   statBox: { flex: 1, backgroundColor: Colors.dark.surface, borderRadius: 16, padding: 16, alignItems: 'center', gap: 4, borderWidth: 1, borderColor: Colors.dark.border },
-  statValue: { fontSize: 18, fontWeight: '800', color: PRIMARY },
+  statValue: { fontSize: 18, fontWeight: '800', color: Colors.dark.primary },
   statLabel: { fontSize: 12, color: Colors.dark.textMuted, fontWeight: '600' },
   exerciseBlock: { backgroundColor: Colors.dark.surface, borderRadius: 16, padding: 16, borderWidth: 1, borderColor: Colors.dark.border, marginBottom: 12 },
   exerciseName: { fontSize: 17, fontWeight: '800', color: Colors.dark.text, marginBottom: 2 },
   exerciseCategory: { fontSize: 13, color: Colors.dark.textMuted, marginBottom: 12 },
   setRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 6, borderTopWidth: 1, borderTopColor: Colors.dark.border },
-  setIndex: { fontSize: 12, fontWeight: '800', color: PRIMARY, width: 24 },
+  setIndex: { fontSize: 12, fontWeight: '800', color: Colors.dark.primary, width: 24 },
   setDetail: { fontSize: 14, color: Colors.dark.text, fontWeight: '600', flex: 1 },
-  closeButton: { backgroundColor: PRIMARY, borderRadius: 16, paddingVertical: 16, alignItems: 'center', marginTop: 8 },
+  closeButton: { backgroundColor: Colors.dark.primary, borderRadius: 16, paddingVertical: 16, alignItems: 'center', marginTop: 8 },
   closeButtonText: { color: '#fff', fontSize: 16, fontWeight: '800' },
 });
 
@@ -850,7 +1219,7 @@ function RestTimerBanner() {
     ? timer.remainingSeconds / timer.durationSeconds
     : 0;
   const isExpired = !timer.isActive && timer.remainingSeconds === 0 && timer.durationSeconds > 0;
-  const accentColor = isExpired ? Colors.dark.success : PRIMARY;
+  const accentColor = isExpired ? Colors.dark.success : Colors.dark.primary;
 
   return (
     <View style={[bannerStyles.container, { borderColor: accentColor + '55' }]}>
@@ -921,6 +1290,8 @@ export default function WorkoutSessionScreen() {
   const [lastSessionSetsMap, setLastSessionSetsMap] = useState<Record<string, LastSessionSet[]>>({});
   const [collapsedExercises, setCollapsedExercises] = useState<Set<number>>(new Set());
   const [summaryData, setSummaryData] = useState<WorkoutSessionDetail | null>(null);
+  const [isReorderMode, setIsReorderMode] = useState(false);
+  const reorderItemHeightRef = useRef<number>(64);
 
   // ── Data loading ──────────────────────────────────────────────────────────────
 
@@ -998,6 +1369,14 @@ export default function WorkoutSessionScreen() {
     return groups;
   }, [sessionData]);
 
+  const reorderItems = useMemo(
+    () =>
+      [...sessionData]
+        .sort((a, b) => a.exercise.exercise_order - b.exercise.exercise_order)
+        .map((d) => d.exercise),
+    [sessionData]
+  );
+
   // ── Scroll ────────────────────────────────────────────────────────────────────
 
   const scrollToTop = useCallback(() => {
@@ -1070,6 +1449,7 @@ export default function WorkoutSessionScreen() {
           setPendingTimerSet(set);
           setPickerRestSeconds(60);
         }
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         await loadSessionData();
         scrollToTop();
       } catch {
@@ -1139,6 +1519,7 @@ export default function WorkoutSessionScreen() {
       try {
         setSavingSetId(set.id);
         await updateWorkoutSessionSet(set.id, buildSetPayload(set.id, 0));
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
         await loadSessionData();
         scrollToTop();
       } catch {
@@ -1294,167 +1675,74 @@ export default function WorkoutSessionScreen() {
     [loadSessionData]
   );
 
-  // ── Exercise card renderer ───────────────────────────────────────────────────
+  const handleSessionDragEnd = useCallback(
+    async (fromIndex: number, toIndex: number) => {
+      if (fromIndex === toIndex) return;
+      const newItems = [...reorderItems];
+      const [moved] = newItems.splice(fromIndex, 1);
+      newItems.splice(toIndex, 0, moved);
+      const reordered = newItems.map((ex, i) => ({ id: ex.id, exercise_order: i }));
+      // Aggiorna UI ottimisticamente
+      setSessionData((prev) => {
+        const orderMap: Record<number, number> = {};
+        for (const r of reordered) orderMap[r.id] = r.exercise_order;
+        return [...prev]
+          .map((item) => ({
+            ...item,
+            exercise: {
+              ...item.exercise,
+              exercise_order: orderMap[item.exercise.id] ?? item.exercise.exercise_order,
+            },
+          }))
+          .sort((a, b) => a.exercise.exercise_order - b.exercise.exercise_order);
+      });
+      try {
+        await reorderSessionExercises(reordered);
+      } catch {
+        Alert.alert('Errore', 'Impossibile riordinare gli esercizi.');
+        await loadSessionData();
+      }
+    },
+    [reorderItems, loadSessionData]
+  );
 
-  const renderExerciseCard = (
+  // ── Exercise card helper ─────────────────────────────────────────────────────
+
+  const renderExercise = (
     exercise: WorkoutSessionExercise,
     sets: WorkoutSessionSet[],
     isInSuperset: boolean,
     showDivider: boolean
-  ) => {
-    const isInSupersetGroup = exercise.superset_group_id !== null;
-    const supersetPartner = isInSupersetGroup
-      ? sessionData.find(
-          (d) => d.exercise.superset_group_id === exercise.superset_group_id &&
-                 d.exercise.id !== exercise.id
-        )?.exercise ?? null
-      : null;
-    const isCollapsed = collapsedExercises.has(exercise.id);
-    const completedCount = sets.filter((s) => s.is_completed === 1).length;
-    const lastSets = lastSessionSetsMap[exercise.exercise_name] ?? [];
-
-    const toggleCollapse = () => {
-      setCollapsedExercises((prev) => {
+  ) => (
+    <ExerciseCard
+      key={exercise.id}
+      exercise={exercise}
+      sets={sets}
+      isInSuperset={isInSuperset}
+      showDivider={showDivider}
+      isCollapsed={collapsedExercises.has(exercise.id)}
+      lastSets={lastSessionSetsMap[exercise.exercise_name] ?? []}
+      setForms={setForms}
+      nextIncompleteSetId={nextIncompleteSet?.id ?? null}
+      savingSetId={savingSetId}
+      addingSet={!!addingSetForExercise[exercise.id]}
+      unit={preferences.unit}
+      setCardRefsMap={setCardRefsMap}
+      onToggleCollapse={() => setCollapsedExercises((prev) => {
         const next = new Set(prev);
         if (next.has(exercise.id)) next.delete(exercise.id); else next.add(exercise.id);
         return next;
-      });
-    };
-
-    return (
-      <View key={exercise.id}>
-        <View
-          style={[styles.exerciseCard, isInSuperset && styles.exerciseCardInSuperset]}
-        >
-          {/* Header — sempre visibile, tocco per collassare */}
-          <TouchableOpacity
-            style={styles.exerciseHeader}
-            onPress={toggleCollapse}
-            activeOpacity={0.8}
-          >
-            <View style={styles.exerciseHeaderText}>
-              <View style={styles.exerciseTitleRow}>
-                <Text style={styles.exerciseTitle}>{exercise.exercise_name}</Text>
-                {isInSupersetGroup && (
-                  <View style={styles.ssBadgeSession}>
-                    <Text style={styles.ssBadgeSessionText}>SS</Text>
-                  </View>
-                )}
-              </View>
-              <Text style={styles.exerciseSubtitle}>
-                {exercise.category ?? 'Nessuna categoria'}
-                {exercise.template_exercise_id === null && (
-                  <Text style={styles.freeExerciseBadge}> · Libero</Text>
-                )}
-              </Text>
-            </View>
-            <View style={styles.exerciseHeaderActions}>
-              {isInSupersetGroup ? (
-                <TouchableOpacity
-                  style={styles.ssClearButton}
-                  onPress={(e) => { e.stopPropagation?.(); handleClearSessionSuperset(exercise); }}
-                  activeOpacity={0.8}
-                >
-                  <Text style={styles.ssClearButtonText}>Rimuovi SS</Text>
-                </TouchableOpacity>
-              ) : (
-                <TouchableOpacity
-                  style={styles.ssPairButton}
-                  onPress={(e) => { e.stopPropagation?.(); setSessionSupersetTarget(exercise); }}
-                  activeOpacity={0.8}
-                >
-                  <Text style={styles.ssPairButtonText}>Abbina SS</Text>
-                </TouchableOpacity>
-              )}
-              <TouchableOpacity
-                style={styles.removeExerciseButton}
-                onPress={(e) => { e.stopPropagation?.(); handleRemoveExercise(exercise); }}
-                activeOpacity={0.8}
-              >
-                <Text style={styles.removeExerciseButtonText}>Rimuovi</Text>
-              </TouchableOpacity>
-              <Text style={styles.collapseChevron}>{isCollapsed ? '▶' : '▼'}</Text>
-            </View>
-          </TouchableOpacity>
-
-          {/* Riepilogo collassato */}
-          {isCollapsed ? (
-            <View style={styles.collapsedSummary}>
-              <Text style={styles.collapsedSummaryText}>
-                {completedCount}/{sets.length} serie completate
-              </Text>
-              {lastSets.length > 0 && (
-                <Text style={styles.collapsedLastSession}>
-                  Ultima volta: {lastSets.map((s) =>
-                    `${s.actual_weight_kg ?? '—'} × ${s.actual_reps ?? '—'}`
-                  ).join(' · ')}
-                </Text>
-              )}
-            </View>
-          ) : (
-            <>
-              {exercise.notes ? (
-                <View style={styles.exerciseNoteBox}>
-                  <Text style={styles.noteLabel}>Note esercizio</Text>
-                  <Text style={styles.noteText}>{exercise.notes}</Text>
-                </View>
-              ) : null}
-
-              <View style={styles.exerciseSetsList}>
-                {sets.map((set, index) => {
-                  const form: SetFormState = setForms[set.id] ?? {
-                    actual_weight_kg: '',
-                    actual_reps: '',
-                    actual_notes: '',
-                    actual_effort_type: (set.target_effort_type as EffortType) ?? 'none',
-                  };
-                  const isCompleted = set.is_completed === 1;
-                  const isNextIncomplete = nextIncompleteSet?.id === set.id && !isCompleted;
-                  return (
-                    <SetCard
-                      key={set.id}
-                      set={set}
-                      index={index}
-                      form={form}
-                      isCompleted={isCompleted}
-                      isNextIncomplete={isNextIncomplete}
-                      isSaving={savingSetId === set.id}
-                      unit={preferences.unit}
-                      setViewRef={(ref) => { setCardRefsMap.current[set.id] = ref; }}
-                      lastSet={lastSets[index] ?? null}
-                      onFieldChange={(field, value) => updateSetField(set.id, field, value)}
-                      onSave={() => handleSaveSet(set)}
-                      onUncheck={() => handleUncheckSet(set)}
-                      onRemove={() => handleRemoveSet(set, exercise.exercise_name)}
-                    />
-                  );
-                })}
-              </View>
-
-              <TouchableOpacity
-                style={[styles.addSetButton, addingSetForExercise[exercise.id] && styles.disabledButton]}
-                onPress={() => handleAddSet(exercise.id)}
-                disabled={!!addingSetForExercise[exercise.id]}
-                activeOpacity={0.85}
-              >
-                <Text style={styles.addSetButtonText}>
-                  {addingSetForExercise[exercise.id] ? 'Aggiunta...' : '+ Serie'}
-                </Text>
-              </TouchableOpacity>
-            </>
-          )}
-        </View>
-
-        {showDivider && (
-          <View style={styles.supersetDivider}>
-            <View style={styles.supersetDividerLine} />
-            <Text style={styles.supersetDividerText}>poi</Text>
-            <View style={styles.supersetDividerLine} />
-          </View>
-        )}
-      </View>
-    );
-  };
+      })}
+      onClearSuperset={() => handleClearSessionSuperset(exercise)}
+      onPairSuperset={() => setSessionSupersetTarget(exercise)}
+      onRemoveExercise={() => handleRemoveExercise(exercise)}
+      onFieldChange={updateSetField}
+      onSaveSet={handleSaveSet}
+      onUncheckSet={handleUncheckSet}
+      onRemoveSet={(set) => handleRemoveSet(set, exercise.exercise_name)}
+      onAddSet={() => handleAddSet(exercise.id)}
+    />
+  );
 
   // ── Guards ────────────────────────────────────────────────────────────────────
 
@@ -1473,7 +1761,7 @@ export default function WorkoutSessionScreen() {
     return (
       <SafeAreaView style={styles.safeArea} edges={['top']}>
         <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color={PRIMARY} />
+          <ActivityIndicator size="large" color={Colors.dark.primary} />
         </View>
       </SafeAreaView>
     );
@@ -1493,6 +1781,7 @@ export default function WorkoutSessionScreen() {
   // ── Render ────────────────────────────────────────────────────────────────────
 
   return (
+    <GestureHandlerRootView style={{ flex: 1 }}>
     <SafeAreaView style={styles.safeArea} edges={['top']}>
       <ScrollView
         ref={scrollRef}
@@ -1562,36 +1851,73 @@ export default function WorkoutSessionScreen() {
           </TouchableOpacity>
         </View>
 
-        {/* Exercise list */}
-        {renderGroups.map((group) => {
-          if (group.type === 'superset') {
-            return (
-              <View key={`ss-${group.groupId}`} style={styles.supersetContainer}>
-                <View style={styles.supersetHeader}>
-                  <Text style={styles.supersetLabel}>⚡ SUPER SERIE</Text>
-                  <Text style={styles.supersetHint}>Esegui gli esercizi in sequenza, poi riposa</Text>
-                </View>
-                {group.items.map(({ exercise, sets }, ssIdx) =>
-                  renderExerciseCard(exercise, sets, true, ssIdx < group.items.length - 1)
-                )}
-              </View>
-            );
-          }
-          const { exercise, sets } = group.item;
-          return renderExerciseCard(exercise, sets, false, false);
-        })}
+        {/* Exercise list header */}
+        <View style={styles.exerciseSectionHeader}>
+          <Text style={styles.exerciseSectionTitle}>Esercizi</Text>
+          {sessionData.length > 1 && (
+            <TouchableOpacity
+              style={[styles.reorderToggleBtn, isReorderMode && styles.reorderToggleBtnActive]}
+              onPress={() => setIsReorderMode((v) => !v)}
+              activeOpacity={0.8}
+            >
+              <Text style={[styles.reorderToggleBtnText, isReorderMode && styles.reorderToggleBtnTextActive]}>
+                {isReorderMode ? 'Fine' : '↕ Riordina'}
+              </Text>
+            </TouchableOpacity>
+          )}
+        </View>
 
-        {/* Bottone aggiungi esercizio libero */}
-        <TouchableOpacity
-          style={[styles.addExerciseButton, addingExercise && styles.disabledButton]}
-          onPress={() => setShowAddExerciseModal(true)}
-          disabled={addingExercise}
-          activeOpacity={0.85}
-        >
-          <Text style={styles.addExerciseButtonText}>
-            {addingExercise ? 'Aggiunta...' : '+ Aggiungi esercizio'}
-          </Text>
-        </TouchableOpacity>
+        {isReorderMode ? (
+          reorderItems.map((exercise, index) => (
+            <DraggableSessionRow
+              key={exercise.id}
+              exercise={exercise}
+              index={index}
+              total={reorderItems.length}
+              itemHeightRef={reorderItemHeightRef}
+              onDragStart={() => {}}
+              onDragEnd={handleSessionDragEnd}
+              onLayout={index === 0
+                ? (e: any) => {
+                    const h = e.nativeEvent.layout.height;
+                    if (h > 0) reorderItemHeightRef.current = h;
+                  }
+                : undefined}
+            />
+          ))
+        ) : (
+          <>
+            {renderGroups.map((group) => {
+              if (group.type === 'superset') {
+                return (
+                  <View key={`ss-${group.groupId}`} style={styles.supersetContainer}>
+                    <View style={styles.supersetHeader}>
+                      <Text style={styles.supersetLabel}>⚡ SUPER SERIE</Text>
+                      <Text style={styles.supersetHint}>Esegui gli esercizi in sequenza, poi riposa</Text>
+                    </View>
+                    {group.items.map(({ exercise, sets }, ssIdx) =>
+                      renderExercise(exercise, sets, true, ssIdx < group.items.length - 1)
+                    )}
+                  </View>
+                );
+              }
+              const { exercise, sets } = group.item;
+              return renderExercise(exercise, sets, false, false);
+            })}
+
+            {/* Bottone aggiungi esercizio libero */}
+            <TouchableOpacity
+              style={[styles.addExerciseButton, addingExercise && styles.disabledButton]}
+              onPress={() => setShowAddExerciseModal(true)}
+              disabled={addingExercise}
+              activeOpacity={0.85}
+            >
+              <Text style={styles.addExerciseButtonText}>
+                {addingExercise ? 'Aggiunta...' : '+ Aggiungi esercizio'}
+              </Text>
+            </TouchableOpacity>
+          </>
+        )}
       </ScrollView>
 
       {showScrollTop && (
@@ -1690,6 +2016,7 @@ export default function WorkoutSessionScreen() {
         />
       )}
     </SafeAreaView>
+    </GestureHandlerRootView>
   );
 }
 
@@ -1711,28 +2038,28 @@ const styles = StyleSheet.create({
   cardTitle: { fontSize: 18, fontWeight: '700', color: Colors.dark.text, marginBottom: 10 },
   cardText: { fontSize: 15, lineHeight: 22, color: Colors.dark.textMuted },
   progressBarTrack: { height: 6, backgroundColor: '#2a2a35', borderRadius: 6, overflow: 'hidden', marginBottom: 6 },
-  progressBarFill: { height: '100%', backgroundColor: PRIMARY, borderRadius: 6 },
+  progressBarFill: { height: '100%', backgroundColor: Colors.dark.primary, borderRadius: 6 },
   progressBarFillComplete: { backgroundColor: Colors.dark.success },
   progressLabel: { fontSize: 13, color: Colors.dark.textMuted, marginBottom: 14 },
-  nextSetButton: { backgroundColor: PRIMARY, borderRadius: 14, paddingVertical: 14, alignItems: 'center', justifyContent: 'center' },
+  nextSetButton: { backgroundColor: Colors.dark.primary, borderRadius: 14, paddingVertical: 14, alignItems: 'center', justifyContent: 'center' },
   nextSetButtonText: { color: '#fff', fontSize: 15, fontWeight: '800' },
   exerciseCard: { backgroundColor: Colors.dark.surface, borderRadius: 18, padding: 18, borderWidth: 1, borderColor: Colors.dark.border, marginTop: 12 },
   exerciseHeader: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, marginBottom: 12 },
   collapseChevron: { color: Colors.dark.textMuted, fontSize: 12, marginLeft: 4, marginTop: 2 },
   collapsedSummary: { paddingTop: 4, gap: 4 },
   collapsedSummaryText: { fontSize: 14, color: Colors.dark.textMuted, fontWeight: '600' },
-  collapsedLastSession: { fontSize: 12, color: PRIMARY, fontWeight: '600' },
+  collapsedLastSession: { fontSize: 12, color: Colors.dark.primary, fontWeight: '600' },
   exerciseHeaderText: { flex: 1 },
   exerciseTitle: { color: Colors.dark.text, fontSize: 20, fontWeight: '800' },
   exerciseSubtitle: { color: Colors.dark.textMuted, fontSize: 14, marginTop: 4 },
-  freeExerciseBadge: { color: PRIMARY, fontWeight: '700' },
+  freeExerciseBadge: { color: Colors.dark.primary, fontWeight: '700' },
   removeExerciseButton: { backgroundColor: 'rgba(239,68,68,0.12)', borderRadius: 10, borderWidth: 1, borderColor: Colors.dark.danger, paddingHorizontal: 10, paddingVertical: 6 },
   removeExerciseButtonText: { color: Colors.dark.danger, fontSize: 12, fontWeight: '700' },
   exerciseNoteBox: { backgroundColor: '#1a1a21', borderRadius: 12, padding: 12, borderWidth: 1, borderColor: Colors.dark.border, marginBottom: 14 },
   exerciseSetsList: { gap: 14 },
   setCard: { backgroundColor: '#141419', borderRadius: 16, padding: 14, borderWidth: 1, borderColor: Colors.dark.border },
-  setCardCompleted: { borderColor: PRIMARY },
-  setCardNext: { borderColor: 'rgba(126,71,255,0.7)', shadowColor: PRIMARY, shadowOpacity: 0.18, shadowRadius: 8, shadowOffset: { width: 0, height: 0 } },
+  setCardCompleted: { borderColor: Colors.dark.primary },
+  setCardNext: { borderColor: 'rgba(126,71,255,0.7)', shadowColor: Colors.dark.primary, shadowOpacity: 0.18, shadowRadius: 8, shadowOffset: { width: 0, height: 0 } },
   setHeaderRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10, marginBottom: 12 },
   setHeaderRight: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   setTitle: { color: Colors.dark.text, fontSize: 16, fontWeight: '700', flex: 1 },
@@ -1741,13 +2068,13 @@ const styles = StyleSheet.create({
   statusPill: { backgroundColor: '#24242b', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999 },
   statusPillActive: { backgroundColor: 'rgba(126,71,255,0.18)' },
   statusPillText: { color: Colors.dark.textMuted, fontSize: 12, fontWeight: '700' },
-  statusPillTextActive: { color: PRIMARY },
+  statusPillTextActive: { color: Colors.dark.primary },
   targetGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 12 },
   targetBox: { width: '48%', backgroundColor: '#1a1a21', borderRadius: 12, padding: 12, borderWidth: 1, borderColor: Colors.dark.border },
   targetLabel: { color: Colors.dark.textMuted, fontSize: 12, marginBottom: 6 },
   targetValue: { color: Colors.dark.text, fontSize: 15, fontWeight: '700' },
   lastSessionRow: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: 'rgba(126,71,255,0.08)', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8, marginBottom: 12 },
-  lastSessionLabel: { fontSize: 11, fontWeight: '800', color: PRIMARY, letterSpacing: 0.8, textTransform: 'uppercase' },
+  lastSessionLabel: { fontSize: 11, fontWeight: '800', color: Colors.dark.primary, letterSpacing: 0.8, textTransform: 'uppercase' },
   lastSessionValue: { fontSize: 13, color: Colors.dark.text, fontWeight: '600', flex: 1 },
   inlineNoteBox: { backgroundColor: '#1a1a21', borderRadius: 12, padding: 12, borderWidth: 1, borderColor: Colors.dark.border, marginBottom: 12 },
   noteLabel: { color: Colors.dark.textMuted, fontSize: 12, marginBottom: 6 },
@@ -1759,11 +2086,11 @@ const styles = StyleSheet.create({
   notesInput: { minHeight: 92, textAlignVertical: 'top' },
   effortRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   effortChip: { paddingHorizontal: 12, paddingVertical: 10, borderRadius: 12, backgroundColor: '#16161d', borderWidth: 1, borderColor: Colors.dark.border },
-  effortChipSelected: { backgroundColor: 'rgba(126,71,255,0.18)', borderColor: PRIMARY },
+  effortChipSelected: { backgroundColor: 'rgba(126,71,255,0.18)', borderColor: Colors.dark.primary },
   effortChipText: { color: Colors.dark.textMuted, fontSize: 13, fontWeight: '700' },
-  effortChipTextSelected: { color: PRIMARY },
+  effortChipTextSelected: { color: Colors.dark.primary },
   setActions: { gap: 10, marginTop: 2 },
-  primaryButton: { backgroundColor: PRIMARY, borderRadius: 14, paddingVertical: 14, alignItems: 'center', justifyContent: 'center' },
+  primaryButton: { backgroundColor: Colors.dark.primary, borderRadius: 14, paddingVertical: 14, alignItems: 'center', justifyContent: 'center' },
   primaryButtonText: { color: '#ffffff', fontSize: 15, fontWeight: '800' },
   secondaryButton: { backgroundColor: 'transparent', borderRadius: 14, borderWidth: 1, borderColor: Colors.dark.border, paddingVertical: 14, alignItems: 'center', justifyContent: 'center' },
   secondaryButtonText: { color: Colors.dark.text, fontSize: 14, fontWeight: '700' },
@@ -1781,13 +2108,46 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '700',
   },
-  finishButton: { backgroundColor: PRIMARY, borderRadius: 16, paddingVertical: 16, alignItems: 'center', justifyContent: 'center', marginTop: 18, marginBottom: 12 },
+  finishButton: { backgroundColor: Colors.dark.primary, borderRadius: 16, paddingVertical: 16, alignItems: 'center', justifyContent: 'center', marginTop: 18, marginBottom: 12 },
   finishButtonText: { color: '#ffffff', fontSize: 16, fontWeight: '800' },
   disabledButton: { opacity: 0.6 },
   addExerciseButton: { marginTop: 16, backgroundColor: Colors.dark.surface, borderRadius: 16, borderWidth: 1, borderColor: 'rgba(126,71,255,0.35)', borderStyle: 'dashed', paddingVertical: 16, alignItems: 'center', justifyContent: 'center' },
-  addExerciseButtonText: { color: PRIMARY, fontSize: 15, fontWeight: '700' },
+  addExerciseButtonText: { color: Colors.dark.primary, fontSize: 15, fontWeight: '700' },
   addSetButton: { marginTop: 12, backgroundColor: 'rgba(126,71,255,0.08)', borderRadius: 12, borderWidth: 1, borderColor: 'rgba(126,71,255,0.35)', borderStyle: 'dashed', paddingVertical: 12, alignItems: 'center', justifyContent: 'center' },
-  addSetButtonText: { color: PRIMARY, fontSize: 14, fontWeight: '700' },
+  addSetButtonText: { color: Colors.dark.primary, fontSize: 14, fontWeight: '700' },
+
+  exerciseSectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 8,
+    marginBottom: 4,
+  },
+  exerciseSectionTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: Colors.dark.text,
+  },
+  reorderToggleBtn: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 12,
+    backgroundColor: Colors.dark.surfaceSoft,
+    borderWidth: 1,
+    borderColor: Colors.dark.border,
+  },
+  reorderToggleBtnActive: {
+    backgroundColor: 'rgba(126,71,255,0.14)',
+    borderColor: Colors.dark.primary,
+  },
+  reorderToggleBtnText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: Colors.dark.textMuted,
+  },
+  reorderToggleBtnTextActive: {
+    color: Colors.dark.primary,
+  },
 
   scrollTopButton: {
     position: 'absolute',
@@ -1796,10 +2156,10 @@ const styles = StyleSheet.create({
     width: 46,
     height: 46,
     borderRadius: 23,
-    backgroundColor: PRIMARY,
+    backgroundColor: Colors.dark.primary,
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: PRIMARY,
+    shadowColor: Colors.dark.primary,
     shadowOpacity: 0.45,
     shadowRadius: 10,
     shadowOffset: { width: 0, height: 3 },

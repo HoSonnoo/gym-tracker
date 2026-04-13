@@ -22,7 +22,6 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-const PRIMARY = '#7e47ff';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -477,10 +476,10 @@ const styles = StyleSheet.create({
     borderBottomColor: Colors.dark.border,
   },
   backBtn: { paddingHorizontal: 8, paddingVertical: 6 },
-  backBtnText: { color: PRIMARY, fontSize: 16, fontWeight: '600' },
+  backBtnText: { color: Colors.dark.primary, fontSize: 16, fontWeight: '600' },
   headerTitle: { fontSize: 16, fontWeight: '700', color: Colors.dark.text },
   saveBtn: {
-    backgroundColor: PRIMARY,
+    backgroundColor: Colors.dark.primary,
     borderRadius: 10,
     paddingHorizontal: 16,
     paddingVertical: 8,
@@ -514,7 +513,7 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(126,71,255,0.3)',
   },
   templateChipText: { fontSize: 15, fontWeight: '600', color: Colors.dark.text },
-  templateChipArrow: { fontSize: 18, color: PRIMARY },
+  templateChipArrow: { fontSize: 18, color: Colors.dark.primary },
 
   // Form
   formPad: { padding: 20, gap: 20, paddingBottom: 60 },
@@ -588,7 +587,7 @@ const styles = StyleSheet.create({
     width: 32,
     height: 32,
     borderRadius: 8,
-    backgroundColor: PRIMARY,
+    backgroundColor: Colors.dark.primary,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -633,7 +632,7 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(126,71,255,0.35)',
     borderStyle: 'dashed',
   },
-  addExerciseBtnText: { color: PRIMARY, fontSize: 15, fontWeight: '700' },
+  addExerciseBtnText: { color: Colors.dark.primary, fontSize: 15, fontWeight: '700' },
 
   // Picker
   pickerContainer: { flex: 1, backgroundColor: Colors.dark.background, paddingTop: 12 },

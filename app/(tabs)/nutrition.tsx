@@ -66,7 +66,6 @@ import Svg, { Path } from 'react-native-svg';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const PRIMARY = '#7e47ff';
 const PROXY_URL = `${SUPABASE_URL}/functions/v1/anthropic-proxy`;
 
 const MEAL_TYPES = [
@@ -169,7 +168,7 @@ const segStyles = StyleSheet.create({
     alignItems: 'center',
   },
   tabActive: {
-    backgroundColor: PRIMARY,
+    backgroundColor: Colors.dark.primary,
   },
   label: {
     fontSize: 10,
@@ -442,7 +441,7 @@ function AddToMealModal({ visible, mealType, date, onClose, onAdded }: AddToMeal
 
             {loading ? (
               <View style={addModalStyles.centered}>
-                <ActivityIndicator size="large" color={PRIMARY} />
+                <ActivityIndicator size="large" color={Colors.dark.primary} />
               </View>
             ) : (
               <FlatList
@@ -516,7 +515,7 @@ const addModalStyles = StyleSheet.create({
   previewItem: { flex: 1, alignItems: 'center', gap: 2 },
   previewValue: { fontSize: 16, fontWeight: '800', color: Colors.dark.text },
   previewLabel: { fontSize: 11, color: Colors.dark.textMuted, fontWeight: '600' },
-  addBtn: { backgroundColor: PRIMARY, borderRadius: 16, paddingVertical: 16, alignItems: 'center', justifyContent: 'center', marginBottom: 12 },
+  addBtn: { backgroundColor: Colors.dark.primary, borderRadius: 16, paddingVertical: 16, alignItems: 'center', justifyContent: 'center', marginBottom: 12 },
   addBtnDisabled: { opacity: 0.6 },
   addBtnText: { color: '#fff', fontSize: 16, fontWeight: '800' },
   backBtn: { alignItems: 'center', paddingVertical: 12 },
@@ -661,13 +660,13 @@ const foodModalStyles = StyleSheet.create({
   fieldGroup: { marginBottom: 16 },
   fieldLabel: { fontSize: 13, fontWeight: '600', color: Colors.dark.textMuted, marginBottom: 8 },
   input: { backgroundColor: Colors.dark.surface, borderWidth: 1, borderColor: Colors.dark.border, borderRadius: 14, paddingHorizontal: 16, paddingVertical: 13, color: Colors.dark.text, fontSize: 15 },
-  saveBtn: { backgroundColor: PRIMARY, borderRadius: 16, paddingVertical: 16, alignItems: 'center', marginTop: 8 },
+  saveBtn: { backgroundColor: Colors.dark.primary, borderRadius: 16, paddingVertical: 16, alignItems: 'center', marginTop: 8 },
   saveBtnDisabled: { opacity: 0.6 },
   saveBtnText: { color: '#fff', fontSize: 16, fontWeight: '800' },
 
   divider: { height: 1, backgroundColor: Colors.dark.border, marginVertical: 24 },
-  importBtn: { backgroundColor: 'rgba(126,71,255,0.12)', borderRadius: 14, paddingVertical: 16, alignItems: 'center', borderWidth: 1.5, borderColor: PRIMARY, borderStyle: 'dashed' },
-  importBtnText: { color: PRIMARY, fontSize: 15, fontWeight: '800' },
+  importBtn: { backgroundColor: 'rgba(126,71,255,0.12)', borderRadius: 14, paddingVertical: 16, alignItems: 'center', borderWidth: 1.5, borderColor: Colors.dark.primary, borderStyle: 'dashed' },
+  importBtnText: { color: Colors.dark.primary, fontSize: 15, fontWeight: '800' },
   importHint: { fontSize: 12, color: Colors.dark.textMuted, textAlign: 'center', marginTop: 10, lineHeight: 17, paddingBottom: 20 },
 });
 
@@ -823,7 +822,7 @@ function DiarioSection({ date, onDateChange }: DiarioProps) {
       </View>
 
       {loading ? (
-        <View style={diarioStyles.loadingBox}><ActivityIndicator color={PRIMARY} /></View>
+        <View style={diarioStyles.loadingBox}><ActivityIndicator color={Colors.dark.primary} /></View>
       ) : (
         <View style={diarioStyles.content}>
           {/* Grafico torta + kcal */}
@@ -1034,7 +1033,7 @@ const offStyles = StyleSheet.create({
   macroValue: { fontSize: 18, fontWeight: '800' },
   macroLabel: { fontSize: 11, color: Colors.dark.textMuted, fontWeight: '600' },
   macroPer: { fontSize: 11, color: 'rgba(211, 211, 211, 0.8)' },
-  btn: { backgroundColor: PRIMARY, borderRadius: 14, paddingVertical: 16, alignItems: 'center', marginBottom: 10 },
+  btn: { backgroundColor: Colors.dark.primary, borderRadius: 14, paddingVertical: 16, alignItems: 'center', marginBottom: 10 },
   btnDisabled: { opacity: 0.6 },
   btnText: { color: '#fff', fontSize: 15, fontWeight: '800' },
   btnSecondary: { backgroundColor: Colors.dark.surface, borderRadius: 14, paddingVertical: 16, alignItems: 'center', borderWidth: 1, borderColor: Colors.dark.border },
@@ -1144,7 +1143,7 @@ function CatalogoSection() {
       {/* Risultati catalogo locale */}
       {loading ? (
         <View style={catStyles.loadingBox}>
-          <ActivityIndicator color={PRIMARY} />
+          <ActivityIndicator color={Colors.dark.primary} />
         </View>
       ) : filtered.length === 0 && !search.trim() ? (
         <View style={catStyles.emptyBox}>
@@ -1163,7 +1162,7 @@ function CatalogoSection() {
           <Text style={catStyles.offSectionTitle}>🌐 Risultati online</Text>
           {offLoading ? (
             <View style={catStyles.loadingBox}>
-              <ActivityIndicator color={PRIMARY} size="small" />
+              <ActivityIndicator color={Colors.dark.primary} size="small" />
             </View>
           ) : offResults.length === 0 && !offLoading ? (
             <Text style={catStyles.offEmpty}>Nessun risultato online.</Text>
@@ -1213,7 +1212,7 @@ const catStyles = StyleSheet.create({
   searchRow: { marginBottom: 12 },
   searchInput: { backgroundColor: Colors.dark.surface, borderWidth: 1, borderColor: Colors.dark.border, borderRadius: 14, paddingHorizontal: 16, paddingVertical: 12, color: Colors.dark.text, fontSize: 15 },
   addBtn: { backgroundColor: Colors.dark.surface, borderRadius: 14, borderWidth: 1, borderColor: 'rgba(126,71,255,0.35)', borderStyle: 'dashed', paddingVertical: 14, alignItems: 'center', marginBottom: 16 },
-  addBtnText: { color: PRIMARY, fontSize: 14, fontWeight: '700' },
+  addBtnText: { color: Colors.dark.primary, fontSize: 14, fontWeight: '700' },
   loadingBox: { paddingTop: 60, alignItems: 'center' },
   emptyBox: { paddingTop: 40, alignItems: 'center', gap: 8 },
   emptyTitle: { fontSize: 16, fontWeight: '700', color: Colors.dark.text },
@@ -1514,7 +1513,7 @@ Se i valori nutrizionali non sono presenti usa null.` },
     }
   };
 
-  if (loading) return <View style={{ paddingTop: 60, alignItems: 'center' }}><ActivityIndicator color={PRIMARY} /></View>;
+  if (loading) return <View style={{ paddingTop: 60, alignItems: 'center' }}><ActivityIndicator color={Colors.dark.primary} /></View>;
 
   return (
     <View style={ricetteStyles.container}>
@@ -1593,7 +1592,7 @@ Se i valori nutrizionali non sono presenti usa null.` },
       </Text>
       {importStep === 'loading' ? (
         <View style={ricetteStyles.importLoading}>
-          <ActivityIndicator color={PRIMARY} size="small" />
+          <ActivityIndicator color={Colors.dark.primary} size="small" />
           <Text style={ricetteStyles.importLoadingText}>Analisi in corso...</Text>
         </View>
       ) : (
@@ -1699,8 +1698,8 @@ function NewRecipeModal({ visible, onClose, onSaved }: { visible: boolean; onClo
 
 const ricetteStyles = StyleSheet.create({
   container: { gap: 16 },
-  addBtn: { backgroundColor: 'rgba(126,71,255,0.12)', borderRadius: 14, paddingVertical: 14, alignItems: 'center', borderWidth: 1, borderColor: PRIMARY },
-  addBtnText: { color: PRIMARY, fontSize: 15, fontWeight: '700' },
+  addBtn: { backgroundColor: 'rgba(126,71,255,0.12)', borderRadius: 14, paddingVertical: 14, alignItems: 'center', borderWidth: 1, borderColor: Colors.dark.primary },
+  addBtnText: { color: Colors.dark.primary, fontSize: 15, fontWeight: '700' },
   emptyBox: { alignItems: 'center', gap: 8, paddingVertical: 40 },
   emptyEmoji: { fontSize: 48 },
   emptyTitle: { fontSize: 18, fontWeight: '700', color: Colors.dark.text },
@@ -1731,12 +1730,12 @@ const ricetteStyles = StyleSheet.create({
   ingredientRow: { flexDirection: 'row', gap: 8, alignItems: 'center', marginBottom: 6 },
   removeIngBtn: { width: 32, height: 32, alignItems: 'center', justifyContent: 'center' },
   addIngBtn: { marginTop: 4, paddingVertical: 8, alignItems: 'center', borderRadius: 10, borderWidth: 1, borderColor: Colors.dark.border, backgroundColor: Colors.dark.surfaceSoft },
-  addIngBtnText: { color: PRIMARY, fontSize: 13, fontWeight: '700' },
-  saveBtn: { backgroundColor: PRIMARY, borderRadius: 14, paddingVertical: 16, alignItems: 'center', marginTop: 8 },
+  addIngBtnText: { color: Colors.dark.primary, fontSize: 13, fontWeight: '700' },
+  saveBtn: { backgroundColor: Colors.dark.primary, borderRadius: 14, paddingVertical: 16, alignItems: 'center', marginTop: 8 },
   saveBtnText: { color: '#fff', fontSize: 16, fontWeight: '800' },
   importHint: { fontSize: 13, color: Colors.dark.textMuted, textAlign: 'center', lineHeight: 18, marginTop: 16, paddingHorizontal: 8 },
   importBtn: { marginTop: 8, backgroundColor: 'rgba(126,71,255,0.08)', borderRadius: 14, borderWidth: 1.5, borderColor: 'rgba(126,71,255,0.35)', borderStyle: 'dashed', paddingVertical: 14, paddingHorizontal: 24, alignItems: 'center' },
-  importBtnText: { color: PRIMARY, fontSize: 14, fontWeight: '700' },
+  importBtnText: { color: Colors.dark.primary, fontSize: 14, fontWeight: '700' },
   importLoading: { marginTop: 8, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, paddingVertical: 14 },
   importLoadingText: { color: Colors.dark.textMuted, fontSize: 14, fontWeight: '600' },
 });
@@ -1849,7 +1848,7 @@ function CorpoSection() {
   };
 
   if (loading) {
-    return <View style={corpoStyles.loadingBox}><ActivityIndicator color={PRIMARY} /></View>;
+    return <View style={corpoStyles.loadingBox}><ActivityIndicator color={Colors.dark.primary} /></View>;
   }
 
   return (
@@ -2047,8 +2046,8 @@ const corpoStyles = StyleSheet.create({
   sectionCard: { backgroundColor: Colors.dark.surface, borderRadius: 18, padding: 18, borderWidth: 1, borderColor: Colors.dark.border, marginBottom: 14 },
   sectionHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 },
   sectionTitle: { fontSize: 17, fontWeight: '800', color: Colors.dark.text },
-  addBtn: { backgroundColor: 'rgba(126,71,255,0.14)', borderRadius: 10, borderWidth: 1, borderColor: PRIMARY, paddingHorizontal: 12, paddingVertical: 6 },
-  addBtnText: { color: PRIMARY, fontSize: 13, fontWeight: '700' },
+  addBtn: { backgroundColor: 'rgba(126,71,255,0.14)', borderRadius: 10, borderWidth: 1, borderColor: Colors.dark.primary, paddingHorizontal: 12, paddingVertical: 6 },
+  addBtnText: { color: Colors.dark.primary, fontSize: 13, fontWeight: '700' },
   todayWeightRow: { flexDirection: 'row', alignItems: 'baseline', gap: 6, marginBottom: 16 },
   todayWeightValue: { fontSize: 42, fontWeight: '800', color: Colors.dark.text, fontVariant: ['tabular-nums'] },
   todayWeightUnit: { fontSize: 18, fontWeight: '600', color: Colors.dark.textMuted },
@@ -2074,7 +2073,7 @@ const corpoStyles = StyleSheet.create({
   phaseBadgeText: { fontSize: 12, fontWeight: '700', color: Colors.dark.text },
   notesInput: { backgroundColor: Colors.dark.surface, borderWidth: 1, borderColor: Colors.dark.border, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10, color: Colors.dark.text, fontSize: 14 },
   weightInputActions: { flexDirection: 'row', gap: 10, marginTop: 12 },
-  saveWeightBtn: { flex: 1, backgroundColor: PRIMARY, borderRadius: 12, paddingVertical: 12, alignItems: 'center' },
+  saveWeightBtn: { flex: 1, backgroundColor: Colors.dark.primary, borderRadius: 12, paddingVertical: 12, alignItems: 'center' },
   saveWeightBtnText: { color: '#fff', fontSize: 14, fontWeight: '800' },
   cancelBtn: { flex: 1, backgroundColor: Colors.dark.surfaceSoft, borderRadius: 12, paddingVertical: 12, alignItems: 'center', borderWidth: 1, borderColor: Colors.dark.border },
   cancelBtnText: { color: Colors.dark.textMuted, fontSize: 14, fontWeight: '700' },
@@ -2093,10 +2092,10 @@ const corpoStyles = StyleSheet.create({
   resetWaterBtnText: { color: Colors.dark.danger, fontSize: 12, fontWeight: '700' },
   waterQuickRow: { flexDirection: 'row', gap: 8, marginBottom: 12 },
   waterQuickBtn: { flex: 1, backgroundColor: 'rgba(126,71,255,0.1)', borderRadius: 12, borderWidth: 1, borderColor: 'rgba(126,71,255,0.35)', paddingVertical: 12, alignItems: 'center' },
-  waterQuickBtnText: { color: PRIMARY, fontSize: 13, fontWeight: '800' },
+  waterQuickBtnText: { color: Colors.dark.primary, fontSize: 13, fontWeight: '800' },
   waterCustomRow: { flexDirection: 'row', gap: 10 },
   waterCustomInput: { flex: 1, backgroundColor: '#101015', borderWidth: 1, borderColor: Colors.dark.border, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 11, color: Colors.dark.text, fontSize: 15 },
-  waterCustomBtn: { width: 46, backgroundColor: PRIMARY, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+  waterCustomBtn: { width: 46, backgroundColor: Colors.dark.primary, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
   waterCustomBtnText: { color: '#fff', fontSize: 22, fontWeight: '800' },
   disabledBtn: { opacity: 0.5 },
 });
@@ -2356,7 +2355,7 @@ function PianoSection() {
   };
 
   if (loading) {
-    return <View style={pianoStyles.loadingBox}><ActivityIndicator color={PRIMARY} /></View>;
+    return <View style={pianoStyles.loadingBox}><ActivityIndicator color={Colors.dark.primary} /></View>;
   }
 
   if (plans.length === 0) {
@@ -2388,7 +2387,7 @@ function PianoSection() {
             </View>
             {importStep === 'loading' && (
               <View style={importStyles.centered}>
-                <ActivityIndicator size="large" color={PRIMARY} />
+                <ActivityIndicator size="large" color={Colors.dark.primary} />
                 <Text style={importStyles.loadingText}>Analisi del documento in corso...</Text>
                 <Text style={importStyles.loadingSubtext}>Potrebbe richiedere qualche secondo</Text>
               </View>
@@ -2637,7 +2636,7 @@ function PianoSection() {
           </View>
           {importStep === 'loading' && (
             <View style={importStyles.centered}>
-              <ActivityIndicator size="large" color={PRIMARY} />
+              <ActivityIndicator size="large" color={Colors.dark.primary} />
               <Text style={importStyles.loadingText}>Analisi del documento in corso...</Text>
               <Text style={importStyles.loadingSubtext}>Potrebbe richiedere qualche secondo</Text>
             </View>
@@ -2831,11 +2830,11 @@ const dayAssignStyles = StyleSheet.create({
   weekdayList: { gap: 4 },
   weekdayRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 8, paddingHorizontal: 4, borderRadius: 10 },
   checkbox: { width: 22, height: 22, borderRadius: 6, borderWidth: 2, borderColor: Colors.dark.border, backgroundColor: Colors.dark.surfaceSoft, alignItems: 'center', justifyContent: 'center' },
-  checkboxChecked: { backgroundColor: PRIMARY, borderColor: PRIMARY },
+  checkboxChecked: { backgroundColor: Colors.dark.primary, borderColor: Colors.dark.primary },
   checkboxTick: { color: '#fff', fontSize: 13, fontWeight: '800' },
   weekdayLabel: { fontSize: 14, fontWeight: '600', color: Colors.dark.textMuted },
   weekdayLabelActive: { color: Colors.dark.text, fontWeight: '700' },
-  saveBtn: { backgroundColor: PRIMARY, borderRadius: 14, paddingVertical: 16, alignItems: 'center', marginTop: 8 },
+  saveBtn: { backgroundColor: Colors.dark.primary, borderRadius: 14, paddingVertical: 16, alignItems: 'center', marginTop: 8 },
   saveBtnText: { color: '#fff', fontSize: 16, fontWeight: '800' },
 });
 
@@ -3029,7 +3028,7 @@ function ImportPDFModal({ visible, onClose, onImported, autoStart = false }: {
 
         {step === 'loading' && (
           <View style={importStyles.centered}>
-            <ActivityIndicator size="large" color={PRIMARY} />
+            <ActivityIndicator size="large" color={Colors.dark.primary} />
             <Text style={importStyles.loadingText}>Analisi del documento in corso...</Text>
             <Text style={importStyles.loadingSubtext}>Potrebbe richiedere qualche secondo</Text>
           </View>
@@ -3129,7 +3128,7 @@ const importStyles = StyleSheet.create({
   pickEmoji: { fontSize: 48 },
   pickTitle: { fontSize: 18, fontWeight: '800', color: Colors.dark.text, textAlign: 'center' },
   pickDesc: { fontSize: 14, color: Colors.dark.textMuted, textAlign: 'center', lineHeight: 20 },
-  pickBtn: { backgroundColor: PRIMARY, borderRadius: 14, paddingVertical: 14, paddingHorizontal: 32, marginTop: 8 },
+  pickBtn: { backgroundColor: Colors.dark.primary, borderRadius: 14, paddingVertical: 14, paddingHorizontal: 32, marginTop: 8 },
   pickBtnText: { color: '#fff', fontSize: 15, fontWeight: '800' },
   loadingText: { fontSize: 16, fontWeight: '700', color: Colors.dark.text, marginTop: 16 },
   loadingSubtext: { fontSize: 13, color: Colors.dark.textMuted },
@@ -3144,7 +3143,7 @@ const importStyles = StyleSheet.create({
   dayCard: { backgroundColor: Colors.dark.surface, borderRadius: 16, padding: 14, borderWidth: 1, borderColor: Colors.dark.border, marginBottom: 12 },
   dayLabel: { fontSize: 16, fontWeight: '800', color: Colors.dark.text, marginBottom: 10 },
   mealGroup: { marginBottom: 10 },
-  mealLabel: { fontSize: 12, fontWeight: '700', color: PRIMARY, marginBottom: 6, letterSpacing: 0.3 },
+  mealLabel: { fontSize: 12, fontWeight: '700', color: Colors.dark.primary, marginBottom: 6, letterSpacing: 0.3 },
   entryRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 8, backgroundColor: '#101015', borderRadius: 10, padding: 10, marginBottom: 6 },
   entryMain: { flex: 1, gap: 6 },
   entryNameInput: { fontSize: 14, fontWeight: '700', color: Colors.dark.text, borderBottomWidth: 1, borderBottomColor: Colors.dark.border, paddingBottom: 4 },
@@ -3154,7 +3153,7 @@ const importStyles = StyleSheet.create({
   macroInput: { width: '100%', fontSize: 12, color: Colors.dark.text, textAlign: 'center', backgroundColor: Colors.dark.surface, borderRadius: 6, paddingVertical: 4 },
   removeEntryBtn: { width: 26, height: 26, backgroundColor: 'rgba(239,68,68,0.12)', borderRadius: 7, borderWidth: 1, borderColor: Colors.dark.danger, alignItems: 'center', justifyContent: 'center', marginTop: 2 },
   removeEntryBtnText: { color: Colors.dark.danger, fontSize: 12, fontWeight: '800' },
-  confirmBtn: { backgroundColor: PRIMARY, borderRadius: 16, paddingVertical: 16, alignItems: 'center', marginTop: 8 },
+  confirmBtn: { backgroundColor: Colors.dark.primary, borderRadius: 16, paddingVertical: 16, alignItems: 'center', marginTop: 8 },
   confirmBtnText: { color: '#fff', fontSize: 16, fontWeight: '800' },
 });
 
@@ -3259,7 +3258,7 @@ const editEntryStyles = StyleSheet.create({
   closeBtnText: { color: Colors.dark.text, fontSize: 14, fontWeight: '600' },
   fieldLabel: { fontSize: 13, fontWeight: '600', color: Colors.dark.textMuted, marginBottom: 8 },
   input: { backgroundColor: Colors.dark.surface, borderWidth: 1, borderColor: Colors.dark.border, borderRadius: 14, paddingHorizontal: 16, paddingVertical: 13, color: Colors.dark.text, fontSize: 15, marginBottom: 4 },
-  saveBtn: { backgroundColor: PRIMARY, borderRadius: 16, paddingVertical: 16, alignItems: 'center', marginTop: 8 },
+  saveBtn: { backgroundColor: Colors.dark.primary, borderRadius: 16, paddingVertical: 16, alignItems: 'center', marginTop: 8 },
   saveBtnDisabled: { opacity: 0.6 },
   saveBtnText: { color: '#fff', fontSize: 16, fontWeight: '800' },
 });
@@ -3383,18 +3382,18 @@ const newPlanStyles = StyleSheet.create({
   input: { backgroundColor: Colors.dark.surface, borderWidth: 1, borderColor: Colors.dark.border, borderRadius: 14, paddingHorizontal: 16, paddingVertical: 13, color: Colors.dark.text, fontSize: 15, marginBottom: 4 },
   typeRow: { gap: 10, marginBottom: 24 },
   typeCard: { backgroundColor: Colors.dark.surface, borderRadius: 14, padding: 16, borderWidth: 1, borderColor: Colors.dark.border },
-  typeCardActive: { borderColor: PRIMARY, backgroundColor: 'rgba(126,71,255,0.1)' },
+  typeCardActive: { borderColor: Colors.dark.primary, backgroundColor: 'rgba(126,71,255,0.1)' },
   typeLabel: { fontSize: 15, fontWeight: '700', color: Colors.dark.textMuted, marginBottom: 4 },
   typeLabelActive: { color: Colors.dark.text },
   typeDesc: { fontSize: 13, color: Colors.dark.textMuted },
-  saveBtn: { backgroundColor: PRIMARY, borderRadius: 16, paddingVertical: 16, alignItems: 'center' },
+  saveBtn: { backgroundColor: Colors.dark.primary, borderRadius: 16, paddingVertical: 16, alignItems: 'center' },
   saveBtnDisabled: { opacity: 0.6 },
   saveBtnText: { color: '#fff', fontSize: 16, fontWeight: '800' },
   sameEveryDayRow: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: Colors.dark.surface, borderRadius: 14, padding: 14, borderWidth: 1, borderColor: Colors.dark.border, marginBottom: 16 },
   sameEveryDayLabel: { fontSize: 14, fontWeight: '700', color: Colors.dark.text },
   sameEveryDayDesc: { fontSize: 12, color: Colors.dark.textMuted, marginTop: 2 },
   toggle: { width: 44, height: 26, borderRadius: 13, backgroundColor: Colors.dark.border, justifyContent: 'center', paddingHorizontal: 3 },
-  toggleActive: { backgroundColor: PRIMARY },
+  toggleActive: { backgroundColor: Colors.dark.primary },
   toggleThumb: { width: 20, height: 20, borderRadius: 10, backgroundColor: '#fff', alignSelf: 'flex-end' },
 });
 
@@ -3499,7 +3498,7 @@ function AddEntryToPlanModal({ visible, dayId, mealType, onClose, onAdded }: {
               <TextInput value={search} onChangeText={setSearch} placeholder="Cerca alimento..." placeholderTextColor={Colors.dark.textMuted} style={addModalStyles.searchInput} autoFocus clearButtonMode="while-editing" />
             </View>
             {loading ? (
-              <View style={addModalStyles.centered}><ActivityIndicator size="large" color={PRIMARY} /></View>
+              <View style={addModalStyles.centered}><ActivityIndicator size="large" color={Colors.dark.primary} /></View>
             ) : (
               <FlatList
                 data={filtered}
@@ -3535,20 +3534,20 @@ const pianoStyles = StyleSheet.create({
   emptyEmoji: { fontSize: 40 },
   emptyTitle: { fontSize: 18, fontWeight: '800', color: Colors.dark.text },
   emptyText: { fontSize: 14, color: Colors.dark.textMuted, textAlign: 'center', lineHeight: 20, paddingHorizontal: 20 },
-  createBtn: { backgroundColor: PRIMARY, borderRadius: 14, paddingVertical: 14, paddingHorizontal: 28, marginTop: 8 },
+  createBtn: { backgroundColor: Colors.dark.primary, borderRadius: 14, paddingVertical: 14, paddingHorizontal: 28, marginTop: 8 },
   createBtnText: { color: '#fff', fontSize: 15, fontWeight: '800' },
   planSelectorRow: { marginBottom: 12 },
   planChip: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20, backgroundColor: Colors.dark.surface, borderWidth: 1, borderColor: Colors.dark.border },
-  planChipActive: { backgroundColor: 'rgba(126,71,255,0.18)', borderColor: PRIMARY },
+  planChipActive: { backgroundColor: 'rgba(126,71,255,0.18)', borderColor: Colors.dark.primary },
   planChipText: { fontSize: 13, fontWeight: '700', color: Colors.dark.textMuted },
-  planChipTextActive: { color: PRIMARY },
+  planChipTextActive: { color: Colors.dark.primary },
   planHeader: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 16, gap: 12 },
   planHeaderLeft: { flex: 1, gap: 6 },
   planName: { fontSize: 20, fontWeight: '800', color: Colors.dark.text },
   planTypeBadge: { alignSelf: 'flex-start', backgroundColor: Colors.dark.surfaceSoft, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 4, borderWidth: 1, borderColor: Colors.dark.border },
   planTypeText: { fontSize: 12, fontWeight: '600', color: Colors.dark.textMuted },
   planHeaderActions: { flexDirection: 'row', gap: 8, marginTop: 4 },
-  newPlanBtn: { backgroundColor: 'rgba(126,71,255,0.14)', borderRadius: 10, borderWidth: 1, borderColor: PRIMARY, paddingHorizontal: 10, paddingVertical: 6 },
+  newPlanBtn: { backgroundColor: 'rgba(126,71,255,0.14)', borderRadius: 10, borderWidth: 1, borderColor: Colors.dark.primary, paddingHorizontal: 10, paddingVertical: 6 },
   newPlanBtnText: { color: Colors.dark.primarySoft, fontSize: 12, fontWeight: '700' },
   deletePlanBtn: { backgroundColor: 'rgba(239,68,68,0.12)', borderRadius: 10, borderWidth: 1, borderColor: Colors.dark.danger, paddingHorizontal: 10, paddingVertical: 6 },
   deletePlanBtnText: { color: Colors.dark.danger, fontSize: 12, fontWeight: '700' },
@@ -3572,7 +3571,7 @@ const pianoStyles = StyleSheet.create({
   mealGroupTitleEmpty: { color: Colors.dark.textMuted, textDecorationLine: 'line-through' },
   mealCollapsedCount: { fontSize: 12, fontWeight: '600', color: Colors.dark.textMuted },
   mealChevron: { fontSize: 11, color: Colors.dark.textMuted, fontWeight: '700', marginLeft: 2 },
-  addEntryBtn: { backgroundColor: 'rgba(126,71,255,0.14)', borderRadius: 8, borderWidth: 1, borderColor: PRIMARY, paddingHorizontal: 10, paddingVertical: 4 },
+  addEntryBtn: { backgroundColor: 'rgba(126,71,255,0.14)', borderRadius: 8, borderWidth: 1, borderColor: Colors.dark.primary, paddingHorizontal: 10, paddingVertical: 4 },
   addEntryBtnText: { color: Colors.dark.primarySoft, fontSize: 12, fontWeight: '700' },
   emptyMealText: { fontSize: 12, color: Colors.dark.textMuted, fontStyle: 'italic' },
   entryList: { gap: 6 },
@@ -3589,13 +3588,13 @@ const pianoStyles = StyleSheet.create({
   deleteEntryBtn: { width: 26, height: 26, backgroundColor: 'rgba(239,68,68,0.12)', borderRadius: 7, borderWidth: 1, borderColor: Colors.dark.danger, alignItems: 'center', justifyContent: 'center' },
   deleteEntryBtnText: { color: Colors.dark.danger, fontSize: 12, fontWeight: '800' },
   addDayBtn: { marginTop: 12, backgroundColor: Colors.dark.surface, borderRadius: 14, borderWidth: 1, borderColor: 'rgba(126,71,255,0.35)', borderStyle: 'dashed', paddingVertical: 14, alignItems: 'center' },
-  addDayBtnText: { color: PRIMARY, fontSize: 14, fontWeight: '700' },
+  addDayBtnText: { color: Colors.dark.primary, fontSize: 14, fontWeight: '700' },
   newPlanSeparator: { marginTop: 24, marginBottom: 12, height: 1, backgroundColor: Colors.dark.border },
   newPlanBottomBtn: { backgroundColor: Colors.dark.surface, borderRadius: 14, borderWidth: 1, borderColor: Colors.dark.border, paddingVertical: 14, alignItems: 'center' },
-  newPlanBottomBtnText: { color: PRIMARY, fontSize: 14, fontWeight: '700' },
+  newPlanBottomBtnText: { color: Colors.dark.primary, fontSize: 14, fontWeight: '700' },
   importPDFHint: { fontSize: 13, color: Colors.dark.textMuted, textAlign: 'center', lineHeight: 18, marginTop: 16, paddingHorizontal: 8 },
   importPDFBtn: { marginTop: 10, backgroundColor: 'rgba(126,71,255,0.08)', borderRadius: 14, borderWidth: 1.5, borderColor: 'rgba(126,71,255,0.35)', borderStyle: 'dashed', paddingVertical: 14, paddingHorizontal: 24, alignItems: 'center' },
-  importPDFBtnText: { color: PRIMARY, fontSize: 14, fontWeight: '700' },
+  importPDFBtnText: { color: Colors.dark.primary, fontSize: 14, fontWeight: '700' },
 });
 
 // ─── Screen ───────────────────────────────────────────────────────────────────

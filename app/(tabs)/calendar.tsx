@@ -23,7 +23,6 @@ import {
   View,
 } from 'react-native';
 
-const PRIMARY = '#7e47ff';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -133,7 +132,7 @@ function SessionDetailModal({ sessionId, unit, onClose, onDeleted }: SessionDeta
 
         {loading || !detail ? (
           <View style={modalStyles.centered}>
-            <ActivityIndicator size="large" color={PRIMARY} />
+            <ActivityIndicator size="large" color={Colors.dark.primary} />
           </View>
         ) : (
           <ScrollView style={modalStyles.scroll} contentContainerStyle={modalStyles.scrollContent} showsVerticalScrollIndicator={false}>
@@ -273,7 +272,7 @@ const modalStyles = StyleSheet.create({
   setBadge: { backgroundColor: '#2a2a35', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 4 },
   setBadgeEffort: { backgroundColor: 'rgba(126,71,255,0.15)' },
   setBadgeText: { color: Colors.dark.text, fontSize: 13, fontWeight: '600' },
-  setBadgeTextEffort: { color: PRIMARY },
+  setBadgeTextEffort: { color: Colors.dark.primary },
   setEmpty: { color: Colors.dark.textMuted, fontSize: 13 },
   noSetsText: { color: Colors.dark.textMuted, fontSize: 13, fontStyle: 'italic' },
 });
@@ -364,7 +363,7 @@ export default function CalendarScreen() {
 
         {loading ? (
           <View style={screenStyles.loadingBox}>
-            <ActivityIndicator size="small" color={PRIMARY} />
+            <ActivityIndicator size="small" color={Colors.dark.primary} />
           </View>
         ) : (
           <View style={screenStyles.grid}>
@@ -512,13 +511,13 @@ const screenStyles = StyleSheet.create({
   dayCell: { width: '14.285%', aspectRatio: 1, alignItems: 'center', justifyContent: 'center', position: 'relative' },
   dayCellActive: {},
   dayNumber: { fontSize: 14, fontWeight: '500', color: Colors.dark.textMuted },
-  dayNumberToday: { color: PRIMARY, fontWeight: '800' },
+  dayNumberToday: { color: Colors.dark.primary, fontWeight: '800' },
   dayNumberActive: { color: Colors.dark.text, fontWeight: '700' },
   todayRing: { position: 'absolute', top: 8, left: 2, right: 2, bottom: -6, borderRadius: 10, borderWidth: 1, borderColor: 'rgba(126,71,255,0.4)' },
   todayRingWithSession: { backgroundColor: 'rgba(126,71,255,0.12)' },
   sessionBg: { position: 'absolute', top: 8, left: 2, right: 2, bottom: -6, borderRadius: 10, backgroundColor: 'rgba(126,71,255,0.12)' },
   historicalButton: { backgroundColor: 'rgba(126,71,255,0.08)', borderRadius: 14, paddingVertical: 13, alignItems: 'center', borderWidth: 1, borderColor: 'rgba(126,71,255,0.3)' },
-  historicalButtonText: { color: PRIMARY, fontSize: 14, fontWeight: '700' },
+  historicalButtonText: { color: Colors.dark.primary, fontSize: 14, fontWeight: '700' },
   sessionsButton: { backgroundColor: Colors.dark.surface, borderRadius: 16, paddingVertical: 16, paddingHorizontal: 18, borderWidth: 1, borderColor: Colors.dark.border, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   sessionsButtonText: { fontSize: 15, fontWeight: '700', color: Colors.dark.text },
   sessionsButtonArrow: { fontSize: 22, color: Colors.dark.textMuted, fontWeight: '300' },
@@ -529,14 +528,14 @@ const screenStyles = StyleSheet.create({
   modalCloseBtnText: { color: Colors.dark.textMuted, fontSize: 14, fontWeight: '600' },
   modalEmpty: { padding: 32, alignItems: 'center' },
   modalEmptyText: { fontSize: 15, color: Colors.dark.textMuted },
-  dot: { width: 4, height: 4, borderRadius: 2, backgroundColor: PRIMARY, position: 'absolute', bottom: 4, alignSelf: 'center' },
+  dot: { width: 4, height: 4, borderRadius: 2, backgroundColor: Colors.dark.primary, position: 'absolute', bottom: 4, alignSelf: 'center' },
   sectionHeader: { marginTop: 4 },
   sectionTitle: { fontSize: 16, fontWeight: '700', color: Colors.dark.textMuted },
   sessionList: { backgroundColor: Colors.dark.surface, borderRadius: 18, borderWidth: 1, borderColor: Colors.dark.border, overflow: 'hidden' },
   sessionRow: { flexDirection: 'row', alignItems: 'center', padding: 14, gap: 14, borderBottomWidth: 1, borderBottomColor: Colors.dark.border },
   sessionDateBox: { width: 44, height: 44, borderRadius: 12, backgroundColor: 'rgba(126,71,255,0.12)', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: 'rgba(126,71,255,0.25)' },
-  sessionDateDay: { fontSize: 16, fontWeight: '800', color: PRIMARY, lineHeight: 18 },
-  sessionDateMonth: { fontSize: 10, fontWeight: '700', color: PRIMARY, textTransform: 'uppercase' },
+  sessionDateDay: { fontSize: 16, fontWeight: '800', color: Colors.dark.primary, lineHeight: 18 },
+  sessionDateMonth: { fontSize: 10, fontWeight: '700', color: Colors.dark.primary, textTransform: 'uppercase' },
   sessionInfo: { flex: 1 },
   sessionName: { fontSize: 15, fontWeight: '700', color: Colors.dark.text, marginBottom: 3 },
   sessionMeta: { fontSize: 13, color: Colors.dark.textMuted },

@@ -13,7 +13,6 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-const PRIMARY = '#7e47ff';
 const { width: SCREEN_W } = Dimensions.get('window');
 
 export const ONBOARDING_KEY = '@vyro:onboarding_completed';
@@ -193,7 +192,7 @@ const styles = StyleSheet.create({
   },
   notifBtn: {
     marginTop: 8,
-    backgroundColor: PRIMARY,
+    backgroundColor: Colors.dark.primary,
     borderRadius: 14,
     paddingVertical: 14,
     paddingHorizontal: 24,
@@ -235,11 +234,11 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.dark.border,
   },
   dotActive: {
-    backgroundColor: PRIMARY,
+    backgroundColor: Colors.dark.primary,
     width: 24,
   },
   nextBtn: {
-    backgroundColor: PRIMARY,
+    backgroundColor: Colors.dark.primary,
     borderRadius: 16,
     paddingVertical: 16,
     width: '100%',

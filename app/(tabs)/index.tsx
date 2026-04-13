@@ -30,7 +30,6 @@ import {
   View,
 } from 'react-native';
 
-const PRIMARY = '#7e47ff';
 
 type SessionExerciseWithSets = {
   exercise: WorkoutSessionExercise;
@@ -76,7 +75,7 @@ function RestTimerBanner() {
 
   const progress = timer.durationSeconds > 0 ? timer.remainingSeconds / timer.durationSeconds : 0;
   const isExpired = !timer.isActive && timer.remainingSeconds === 0 && timer.durationSeconds > 0;
-  const accentColor = isExpired ? Colors.dark.success : PRIMARY;
+  const accentColor = isExpired ? Colors.dark.success : Colors.dark.primary;
 
   return (
     <View style={[bannerStyles.container, { borderColor: accentColor + '55' }]}>
@@ -193,7 +192,7 @@ const recoveryStyles = StyleSheet.create({
   sessionName: { fontSize: 18, fontWeight: '800', color: Colors.dark.text },
   description: { fontSize: 14, lineHeight: 20, color: Colors.dark.textMuted },
   actions: { gap: 10 },
-  resumeButton: { backgroundColor: PRIMARY, borderRadius: 14, paddingVertical: 14, alignItems: 'center' },
+  resumeButton: { backgroundColor: Colors.dark.primary, borderRadius: 14, paddingVertical: 14, alignItems: 'center' },
   resumeButtonText: { color: '#fff', fontSize: 15, fontWeight: '800' },
   cancelButton: { backgroundColor: 'transparent', borderRadius: 14, borderWidth: 1, borderColor: Colors.dark.danger, paddingVertical: 14, alignItems: 'center' },
   cancelButtonText: { color: Colors.dark.danger, fontSize: 14, fontWeight: '700' },
@@ -327,20 +326,20 @@ const exerciseCardStyles = StyleSheet.create({
   row: { gap: 6 },
   rowTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   rowLeft: { flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1 },
-  currentDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: PRIMARY },
+  currentDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: Colors.dark.primary },
   exerciseName: { fontSize: 15, fontWeight: '600', color: Colors.dark.text, flex: 1 },
   exerciseNameCurrent: { fontWeight: '700' },
   exerciseNameDone: { color: Colors.dark.success },
   setCount: { fontSize: 13, color: Colors.dark.textMuted },
   setCountDone: { color: Colors.dark.success },
   progressTrack: { height: 4, backgroundColor: '#2a2a35', borderRadius: 4, overflow: 'hidden' },
-  progressFill: { height: '100%', backgroundColor: PRIMARY, borderRadius: 4 },
+  progressFill: { height: '100%', backgroundColor: Colors.dark.primary, borderRadius: 4 },
   progressFillDone: { backgroundColor: Colors.dark.success },
   nextSetRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 4, alignItems: 'center' },
   nextSetLabel: { fontSize: 12, color: Colors.dark.textMuted, fontWeight: '600', marginRight: 2 },
   badge: { backgroundColor: '#2a2a35', borderRadius: 8, paddingHorizontal: 8, paddingVertical: 3 },
   badgeText: { color: Colors.dark.text, fontSize: 12, fontWeight: '600' },
-  openButton: { backgroundColor: PRIMARY, borderRadius: 14, paddingVertical: 14, alignItems: 'center' },
+  openButton: { backgroundColor: Colors.dark.primary, borderRadius: 14, paddingVertical: 14, alignItems: 'center' },
   openButtonDone: { backgroundColor: Colors.dark.success },
   openButtonText: { color: '#fff', fontSize: 15, fontWeight: '800' },
 });
@@ -488,13 +487,13 @@ const completedStyles = StyleSheet.create({
   subtitle: { fontSize: 14, color: Colors.dark.textMuted, fontWeight: '600', marginBottom: 20 },
   statsRow: { flexDirection: 'row', gap: 12, marginBottom: 20 },
   statBox: { flex: 1, backgroundColor: Colors.dark.surface, borderRadius: 14, padding: 14, alignItems: 'center', gap: 4, borderWidth: 1, borderColor: Colors.dark.border },
-  statValue: { fontSize: 17, fontWeight: '800', color: PRIMARY },
+  statValue: { fontSize: 17, fontWeight: '800', color: Colors.dark.primary },
   statLabel: { fontSize: 11, color: Colors.dark.textMuted, fontWeight: '600' },
   exBlock: { backgroundColor: Colors.dark.surface, borderRadius: 14, padding: 14, borderWidth: 1, borderColor: Colors.dark.border, marginBottom: 10 },
   exName: { fontSize: 16, fontWeight: '800', color: Colors.dark.text, marginBottom: 2 },
   exCategory: { fontSize: 12, color: Colors.dark.textMuted, marginBottom: 10 },
   setRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 5, borderTopWidth: 1, borderTopColor: Colors.dark.border },
-  setIdx: { fontSize: 11, fontWeight: '800', color: PRIMARY, width: 22 },
+  setIdx: { fontSize: 11, fontWeight: '800', color: Colors.dark.primary, width: 22 },
   setDetail: { fontSize: 13, color: Colors.dark.text, fontWeight: '600', flex: 1 },
   closeBtn: { backgroundColor: Colors.dark.surface, borderRadius: 14, paddingVertical: 14, alignItems: 'center', borderWidth: 1, borderColor: Colors.dark.border, marginTop: 8 },
   closeBtnText: { color: Colors.dark.text, fontSize: 15, fontWeight: '700' },
@@ -622,7 +621,7 @@ export default function TodayScreen() {
   if (loading) {
     return (
       <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color={PRIMARY} />
+        <ActivityIndicator size="large" color={Colors.dark.primary} />
       </View>
     );
   }
@@ -782,7 +781,7 @@ const styles = StyleSheet.create({
   },
   onboardingButton: {
     marginTop: 16,
-    backgroundColor: PRIMARY,
+    backgroundColor: Colors.dark.primary,
     borderRadius: 14,
     paddingVertical: 14,
     alignItems: 'center',
@@ -798,14 +797,14 @@ const styles = StyleSheet.create({
   templateButtonTitle: { color: Colors.dark.text, fontSize: 16, fontWeight: '700', marginBottom: 4 },
   templateButtonText: { color: Colors.dark.textMuted, fontSize: 14, lineHeight: 20 },
   templateButtonTextMuted: { color: Colors.dark.textMuted, fontSize: 14, fontStyle: 'italic' },
-  templateButtonAction: { color: PRIMARY, fontWeight: '700', fontSize: 14 },
+  templateButtonAction: { color: Colors.dark.primary, fontWeight: '700', fontSize: 14 },
   sessionHeaderCard: { backgroundColor: Colors.dark.surface, borderRadius: 18, padding: 18, borderWidth: 1, borderColor: 'rgba(126,71,255,0.4)' },
   sessionHeaderTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 },
-  sessionHeaderLabel: { fontSize: 11, fontWeight: '700', color: PRIMARY, letterSpacing: 1.2, marginBottom: 4 },
+  sessionHeaderLabel: { fontSize: 11, fontWeight: '700', color: Colors.dark.primary, letterSpacing: 1.2, marginBottom: 4 },
   sessionHeaderName: { fontSize: 22, fontWeight: '800', color: Colors.dark.text },
   timerBadge: { backgroundColor: 'rgba(126,71,255,0.15)', borderRadius: 12, paddingHorizontal: 14, paddingVertical: 8, borderWidth: 1, borderColor: 'rgba(126,71,255,0.3)' },
-  timerText: { color: PRIMARY, fontSize: 18, fontWeight: '800', fontVariant: ['tabular-nums'] },
+  timerText: { color: Colors.dark.primary, fontSize: 18, fontWeight: '800', fontVariant: ['tabular-nums'] },
   progressBarTrack: { height: 6, backgroundColor: '#2a2a35', borderRadius: 6, overflow: 'hidden' },
-  progressBarFill: { height: '100%', backgroundColor: PRIMARY, borderRadius: 6 },
+  progressBarFill: { height: '100%', backgroundColor: Colors.dark.primary, borderRadius: 6 },
   progressLabel: { marginTop: 8, fontSize: 13, color: Colors.dark.textMuted },
 });

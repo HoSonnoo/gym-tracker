@@ -37,7 +37,6 @@ import Animated, {
 } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-const PRIMARY = '#7e47ff';
 
 // ─── Draggable Item ───────────────────────────────────────────────────────────
 
@@ -201,7 +200,7 @@ const dragStyles = StyleSheet.create({
     gap: 10,
     marginBottom: 10,
     minHeight: 72,
-    shadowColor: PRIMARY,
+    shadowColor: Colors.dark.primary,
     shadowOffset: { width: 0, height: 4 },
     shadowRadius: 12,
     elevation: 0,
@@ -239,7 +238,7 @@ const dragStyles = StyleSheet.create({
   orderText: {
     fontSize: 13,
     fontWeight: '800',
-    color: PRIMARY,
+    color: Colors.dark.primary,
   },
   infoCol: {
     flex: 1,
@@ -932,23 +931,23 @@ const styles = StyleSheet.create({
   editButton: { marginTop: 6, paddingVertical: 6, paddingHorizontal: 12, backgroundColor: Colors.dark.surfaceSoft, borderRadius: 10, borderWidth: 1, borderColor: Colors.dark.border },
   editButtonText: { color: Colors.dark.text, fontSize: 13, fontWeight: '600' },
   editBlock: { marginTop: 8, marginBottom: 24, gap: 12 },
-  editNameInput: { backgroundColor: Colors.dark.surface, borderWidth: 1, borderColor: PRIMARY, borderRadius: 14, paddingHorizontal: 16, paddingVertical: 14, color: Colors.dark.text, fontSize: 22, fontWeight: '800' },
+  editNameInput: { backgroundColor: Colors.dark.surface, borderWidth: 1, borderColor: Colors.dark.primary, borderRadius: 14, paddingHorizontal: 16, paddingVertical: 14, color: Colors.dark.text, fontSize: 22, fontWeight: '800' },
   editNotesInput: { backgroundColor: Colors.dark.surface, borderWidth: 1, borderColor: Colors.dark.border, borderRadius: 14, paddingHorizontal: 16, paddingVertical: 12, color: Colors.dark.text, fontSize: 15, minHeight: 80, textAlignVertical: 'top' },
   editActions: { flexDirection: 'row', gap: 10 },
-  saveButton: { flex: 1, backgroundColor: PRIMARY, borderRadius: 12, paddingVertical: 12, alignItems: 'center' },
+  saveButton: { flex: 1, backgroundColor: Colors.dark.primary, borderRadius: 12, paddingVertical: 12, alignItems: 'center' },
   saveButtonText: { color: '#fff', fontSize: 15, fontWeight: '800' },
   cancelButton: { flex: 1, backgroundColor: Colors.dark.surfaceSoft, borderRadius: 12, paddingVertical: 12, alignItems: 'center', borderWidth: 1, borderColor: Colors.dark.border },
   cancelButtonText: { color: Colors.dark.text, fontSize: 15, fontWeight: '600' },
   buttonDisabled: { opacity: 0.6 },
   onboardingBanner: { backgroundColor: Colors.dark.surface, borderRadius: 18, padding: 18, borderWidth: 1, borderColor: 'rgba(126,71,255,0.4)', marginBottom: 24, gap: 12 },
   onboardingBannerHeader: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  onboardingStep: { width: 28, height: 28, borderRadius: 14, backgroundColor: PRIMARY, alignItems: 'center', justifyContent: 'center' },
+  onboardingStep: { width: 28, height: 28, borderRadius: 14, backgroundColor: Colors.dark.primary, alignItems: 'center', justifyContent: 'center' },
   onboardingStepText: { fontSize: 13, fontWeight: '800', color: '#fff' },
   onboardingBannerTitle: { fontSize: 16, fontWeight: '700', color: Colors.dark.text, flex: 1 },
   onboardingBannerText: { fontSize: 14, lineHeight: 21, color: Colors.dark.textMuted },
   onboardingBannerHighlight: { color: Colors.dark.primarySoft, fontWeight: '700' },
   onboardingArrow: { backgroundColor: 'rgba(126,71,255,0.08)', borderRadius: 10, paddingVertical: 8, paddingHorizontal: 12, alignItems: 'center' },
-  onboardingArrowText: { fontSize: 13, fontWeight: '600', color: PRIMARY },
+  onboardingArrowText: { fontSize: 13, fontWeight: '600', color: Colors.dark.primary },
   sectionHeader: { marginBottom: 14 },
   sectionHeaderRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 },
   sectionTitle: { fontSize: 24, fontWeight: '800', color: Colors.dark.text },

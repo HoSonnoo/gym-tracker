@@ -23,7 +23,6 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 WebBrowser.maybeCompleteAuthSession();
 
-const PRIMARY = '#7e47ff';
 
 type AuthMode = 'login' | 'register';
 
@@ -377,7 +376,7 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   modeOption: { flex: 1, paddingVertical: 11, borderRadius: 10, alignItems: 'center' },
-  modeOptionActive: { backgroundColor: PRIMARY },
+  modeOptionActive: { backgroundColor: Colors.dark.primary },
   modeOptionText: { fontSize: 15, fontWeight: '700', color: Colors.dark.textMuted },
   modeOptionTextActive: { color: '#fff' },
   form: { gap: 16 },
@@ -394,7 +393,7 @@ const styles = StyleSheet.create({
     color: Colors.dark.text,
   },
   submitBtn: {
-    backgroundColor: PRIMARY,
+    backgroundColor: Colors.dark.primary,
     borderRadius: 14,
     paddingVertical: 16,
     alignItems: 'center',
@@ -470,6 +469,6 @@ const styles = StyleSheet.create({
     padding: 16,
     gap: 6,
   },
-  tierInfoTitle: { fontSize: 13, fontWeight: '700', color: PRIMARY, marginBottom: 4 },
+  tierInfoTitle: { fontSize: 13, fontWeight: '700', color: Colors.dark.primary, marginBottom: 4 },
   tierInfoItem: { fontSize: 13, color: Colors.dark.text, fontWeight: '500' },
 });

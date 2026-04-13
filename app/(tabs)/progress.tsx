@@ -28,7 +28,6 @@ import {
 } from 'react-native';
 import Svg, { Circle, Line, Path, Text as SvgText } from 'react-native-svg';
 
-const PRIMARY = '#7e47ff';
 const SCREEN_W = Dimensions.get('window').width;
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -96,7 +95,7 @@ function SegmentedControl({ active, onChange }: { active: TabKey; onChange: (key
 const segStyles = StyleSheet.create({
   container: { flexDirection: 'row', backgroundColor: Colors.dark.surface, borderRadius: 14, borderWidth: 1, borderColor: Colors.dark.border, padding: 4, gap: 4 },
   tab: { flex: 1, paddingVertical: 10, borderRadius: 10, alignItems: 'center' },
-  tabActive: { backgroundColor: PRIMARY },
+  tabActive: { backgroundColor: Colors.dark.primary },
   label: { fontSize: 11, fontWeight: '700', color: Colors.dark.textMuted },
   labelActive: { color: '#fff' },
 });
@@ -137,7 +136,7 @@ function ExerciseHistoryDetail({
 
       {loading ? (
         <View style={histStyles.loadingBox}>
-          <ActivityIndicator size="large" color={PRIMARY} />
+          <ActivityIndicator size="large" color={Colors.dark.primary} />
         </View>
       ) : groups.length === 0 ? (
         <View style={styles.emptyCard}>
@@ -207,12 +206,12 @@ const histStyles = StyleSheet.create({
   setIndex: { fontSize: 13, fontWeight: '700', color: Colors.dark.textMuted, width: 16, textAlign: 'center' },
   setBadge: { backgroundColor: '#2a2a35', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 4 },
   setWeight: { fontSize: 14, fontWeight: '700', color: Colors.dark.text },
-  setWeightPR: { color: PRIMARY },
+  setWeightPR: { color: Colors.dark.primary },
   setReps: { fontSize: 13, fontWeight: '600', color: Colors.dark.textMuted },
   warmupBadge: { backgroundColor: 'rgba(245,158,11,0.15)', borderRadius: 6, paddingHorizontal: 7, paddingVertical: 3 },
   warmupText: { fontSize: 11, fontWeight: '800', color: Colors.dark.warning },
   prBadge: { backgroundColor: 'rgba(126,71,255,0.15)', borderRadius: 6, paddingHorizontal: 7, paddingVertical: 3 },
-  prBadgeText: { fontSize: 11, fontWeight: '800', color: PRIMARY },
+  prBadgeText: { fontSize: 11, fontWeight: '800', color: Colors.dark.primary },
 });
 
 // ─── PR Section ───────────────────────────────────────────────────────────────
@@ -466,7 +465,7 @@ function WeightChart({ logs, unit }: { logs: BodyWeightLog[]; unit: 'kg' | 'lbs'
         {sorted.length > 1 && (
           <Path
             d={pathD}
-            stroke={PRIMARY}
+            stroke={Colors.dark.primary}
             strokeWidth={2}
             fill="none"
             strokeLinejoin="round"
@@ -497,13 +496,13 @@ function WeightChart({ logs, unit }: { logs: BodyWeightLog[]; unit: 'kg' | 'lbs'
               {isLast ? (
                 // Ultimo punto: pieno + alone
                 <>
-                  <Circle cx={cx} cy={cy} r={8} fill={PRIMARY} opacity={0.2} />
-                  <Circle cx={cx} cy={cy} r={5} fill={PRIMARY} />
+                  <Circle cx={cx} cy={cy} r={8} fill={Colors.dark.primary} opacity={0.2} />
+                  <Circle cx={cx} cy={cy} r={5} fill={Colors.dark.primary} />
                 </>
               ) : (
                 // Punti precedenti: cerchio vuoto con bordo
                 <>
-                  <Circle cx={cx} cy={cy} r={5} fill={Colors.dark.surface} stroke={PRIMARY} strokeWidth={2} />
+                  <Circle cx={cx} cy={cy} r={5} fill={Colors.dark.surface} stroke={Colors.dark.primary} strokeWidth={2} />
                   <Circle cx={cx} cy={cy} r={2} fill={Colors.dark.surface} />
                 </>
               )}
@@ -742,7 +741,7 @@ const weightStyles = StyleSheet.create({
   historyRight: { alignItems: 'flex-end', gap: 2 },
   historyDelta: { fontSize: 12, fontWeight: '600' },
   historyWeight: { fontSize: 16, fontWeight: '800', color: Colors.dark.textMuted },
-  historyWeightLatest: { color: PRIMARY },
+  historyWeightLatest: { color: Colors.dark.primary },
 });
 
 // ─── Activity Chart ──────────────────────────────────────────────────────────
@@ -921,7 +920,7 @@ export default function ProgressScreen() {
 
           {loading ? (
             <View style={styles.loadingBox}>
-              <ActivityIndicator size="large" color={PRIMARY} />
+              <ActivityIndicator size="large" color={Colors.dark.primary} />
             </View>
           ) : (
             <>
@@ -955,27 +954,27 @@ const styles = StyleSheet.create({
   prExerciseName: { fontSize: 15, fontWeight: '700', color: Colors.dark.text },
   prDate: { fontSize: 12, color: Colors.dark.textMuted },
   prRight: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  prWeight: { fontSize: 20, fontWeight: '800', color: PRIMARY },
+  prWeight: { fontSize: 20, fontWeight: '800', color: Colors.dark.primary },
   prReps: { fontSize: 13, color: Colors.dark.textMuted },
   prChevron: { fontSize: 20, color: Colors.dark.textMuted, fontWeight: '300' },
   volumeCard: { backgroundColor: Colors.dark.surface, borderRadius: 16, padding: 16, borderWidth: 1, borderColor: Colors.dark.border, gap: 10 },
   volumeHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   volumeExerciseName: { fontSize: 15, fontWeight: '700', color: Colors.dark.text, flex: 1 },
   volumeRightRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  volumeTotal: { fontSize: 15, fontWeight: '800', color: PRIMARY },
+  volumeTotal: { fontSize: 15, fontWeight: '800', color: Colors.dark.primary },
   volumeBarTrack: { height: 6, backgroundColor: '#2a2a35', borderRadius: 6, overflow: 'hidden' },
-  volumeBarFill: { height: '100%', backgroundColor: PRIMARY, borderRadius: 6 },
+  volumeBarFill: { height: '100%', backgroundColor: Colors.dark.primary, borderRadius: 6 },
   volumeMeta: { flexDirection: 'row', justifyContent: 'space-between' },
   volumeMetaText: { fontSize: 12, color: Colors.dark.textMuted },
   freqMainCard: { backgroundColor: Colors.dark.surface, borderRadius: 18, padding: 24, borderWidth: 1, borderColor: 'rgba(126,71,255,0.35)', alignItems: 'center', gap: 4 },
-  freqMainLabel: { fontSize: 11, fontWeight: '800', color: PRIMARY, letterSpacing: 1.2, marginBottom: 4 },
+  freqMainLabel: { fontSize: 11, fontWeight: '800', color: Colors.dark.primary, letterSpacing: 1.2, marginBottom: 4 },
   freqMainValue: { fontSize: 56, fontWeight: '800', color: Colors.dark.text, lineHeight: 64 },
   freqMainSub: { fontSize: 15, color: Colors.dark.textMuted, fontWeight: '500' },
   freqGoalRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', width: '100%', marginTop: 16 },
   freqGoalLabel: { fontSize: 13, color: Colors.dark.textMuted },
   freqGoalStatus: { fontSize: 13, fontWeight: '700' },
   freqGoalTrack: { height: 6, backgroundColor: '#2a2a35', borderRadius: 6, overflow: 'hidden', width: '100%', marginTop: 6 },
-  freqGoalFill: { height: '100%', backgroundColor: PRIMARY, borderRadius: 6 },
+  freqGoalFill: { height: '100%', backgroundColor: Colors.dark.primary, borderRadius: 6 },
   freqGoalFillDone: { backgroundColor: Colors.dark.success },
   freqStatsRow: { flexDirection: 'row', gap: 10 },
   freqStatBox: { flex: 1, backgroundColor: Colors.dark.surface, borderRadius: 14, padding: 14, borderWidth: 1, borderColor: Colors.dark.border, gap: 6 },
