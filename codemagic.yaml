@@ -7,6 +7,8 @@ workflows:
         - vyro-ios
       vars:
         BUNDLE_ID: "com.hosonno.gymtracker"
+        XCODE_WORKSPACE: "ios/Vyro.xcworkspace"
+        XCODE_SCHEME: "Vyro"
       node: v18.17.0
       xcode: latest
       cocoapods: default
@@ -16,15 +18,7 @@ workflows:
           npm install
       - name: Expo Prebuild
         script: |
-          npx expo prebuild --platform ios --non-interactive
-      - name: Find workspace
-        script: |
-          echo "=== iOS folder contents ==="
-          ls ios/
-          echo "=== Workspace files ==="
-          find ios -name "*.xcworkspace" -maxdepth 2
-          echo "=== Scheme files ==="
-          find ios -name "*.xcscheme" -maxdepth 4
+          npx expo prebuild --platform ios --non-interactive --clean
       - name: Install Pods
         script: |
           cd ios && pod install
@@ -39,14 +33,11 @@ workflows:
           echo $CM_PROVISIONING_PROFILE | base64 --decode > "$PROFILE_PATH"
       - name: Build iOS
         script: |
-          WORKSPACE=$(find ios -name "*.xcworkspace" -maxdepth 2 | head -1)
-          SCHEME=$(find ios -name "*.xcscheme" -maxdepth 4 | head -1 | xargs basename | sed 's/.xcscheme//')
-          echo "Using workspace: $WORKSPACE"
-          echo "Using scheme: $SCHEME"
           xcode-project use-profiles
           xcode-project build-ipa \
-            --workspace "$WORKSPACE" \
-            --scheme "$SCHEME"
+            --workspace "$XCODE_WORKSPACE" \
+            --scheme "$XCODE_SCHEME" \
+            --config Release
     artifacts:
       - build/ios/ipa/*.ipa
       - /tmp/xcodebuild_logs/*.log
