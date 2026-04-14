@@ -3638,7 +3638,14 @@ export default function NutritionScreen() {
   useFocusEffect(useCallback(() => { checkShouldShowGuide(); }, [checkShouldShowGuide]));
 
   if (guideShown === null) return null;
-  if (!guideShown) return <NutritionGuide phase={guidePhase} onDone={() => setGuideShown(true)} />;
+  if (!guideShown) return (
+    <NutritionGuide
+      phase={guidePhase}
+      onDone={() => setGuideShown(true)}
+      onGoToCatalog={() => { setSection('catalogo'); setGuideShown(true); }}
+      onGoToPiano={() => { setSection('piano'); setGuideShown(true); }}
+    />
+  );
 
   return (
     <View style={styles.safeArea}>

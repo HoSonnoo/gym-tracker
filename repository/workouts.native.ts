@@ -1,0 +1,72 @@
+export {
+  // Templates
+  addWorkoutTemplate,
+  getWorkoutTemplates,
+  deleteWorkoutTemplate,
+  getWorkoutTemplateById,
+  updateWorkoutTemplate,
+  // Template exercises
+  getTemplateExercises,
+  addExerciseToTemplate,
+  removeExerciseFromTemplate,
+  getTemplateExerciseById,
+  reorderTemplateExercises,
+  setTemplateSuperset,
+  clearTemplateSuperset,
+  // Template sets
+  getTemplateExerciseSets,
+  addTemplateExerciseSet,
+  updateTemplateExerciseSet,
+  deleteTemplateExerciseSet,
+  getTemplateExerciseSetById,
+  // Sessions
+  startWorkoutSessionFromTemplate,
+  getActiveWorkoutSession,
+  getWorkoutSessionById,
+  getWorkoutSessionExercises,
+  getWorkoutSessionSets,
+  updateWorkoutSessionSet,
+  completeWorkoutSession,
+  cancelWorkoutSession,
+  deleteWorkoutSession,
+  getCompletedWorkoutSessions,
+  getWorkoutSessionDetail,
+  updateSessionRatingAndNotes,
+  // Session operations
+  addExerciseToSession,
+  addEmptySetToSessionExercise,
+  removeSetFromSessionExercise,
+  removeExerciseFromSession,
+  reorderSessionExercises,
+  setSessionSuperset,
+  clearSessionSuperset,
+  // Analytics
+  getGlobalStats,
+  getLastSessionSetsForExercise,
+  getTodayCompletedSessions,
+  getPersonalRecords,
+  getExerciseVolumeSummary,
+  getWeeklyFrequency,
+  getExerciseWeightHistory,
+  // Historical
+  saveHistoricalSession,
+  // Utils
+  hasTemplates,
+  isDatabaseEmpty,
+} from '@/database';
+
+export type {
+  WorkoutTemplate,
+  TemplateExercise,
+  TemplateExerciseSet,
+  WorkoutSession,
+  WorkoutSessionExercise,
+  WorkoutSessionSet,
+  WorkoutSessionDetail,
+  GlobalStats,
+  LastSessionSet,
+  ExercisePR,
+  ExerciseVolume,
+  ExerciseWeightHistory,
+  HistoricalSet,
+} from '@/database';

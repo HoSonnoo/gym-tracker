@@ -128,7 +128,7 @@ export default function ChatBot() {
   return (
     <>
       {/* Bottone flottante animato */}
-      <Animated.View style={[styles.fab, { transform: [{ scale: pulse }] }]}>
+      <Animated.View style={[styles.fab, Platform.OS === 'web' ? styles.fabWeb : styles.fabMobile, { transform: [{ scale: pulse }] }]}>
         <TouchableOpacity
           style={styles.fabInner}
           onPress={() => setOpen(true)}
@@ -214,9 +214,15 @@ export default function ChatBot() {
 const styles = StyleSheet.create({
   fab: {
     position: 'absolute',
+    zIndex: 999,
+  },
+  fabMobile: {
     bottom: 90,
     left: 20,
-    zIndex: 999,
+  },
+  fabWeb: {
+    bottom: 24,
+    right: 24,
   },
   fabInner: {
     width: 52,

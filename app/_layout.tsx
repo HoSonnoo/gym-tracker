@@ -2,6 +2,7 @@ import { ONBOARDING_KEY } from '@/app/onboarding';
 import { Colors } from '@/constants/Colors';
 import { AuthProvider, useAuth } from '@/context/AuthContext';
 import { RestTimerProvider } from '@/context/RestTimerContext';
+import { SyncProvider } from '@/context/SyncContext';
 import { UserPreferencesProvider } from '@/context/UserPreferencesContext';
 import { initDatabase } from '@/database';
 import { initHealthKit } from '@/lib/healthkit';
@@ -10,7 +11,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Linking from 'expo-linking';
 import { Stack, useRouter, useSegments } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, View } from 'react-native';
+import { ActivityIndicator, Platform, View } from 'react-native';
 
 function AppNavigator() {
   const { user, loading, isGuest, justLoggedIn, clearJustLoggedIn } = useAuth();
@@ -120,31 +121,48 @@ function AppNavigator() {
   );
 }
 
+// Su web assicura il background corretto senza limitare la larghezza
+// (la sidebar nel tabs layout gestisce lo spazio in autonomia).
+function WebContainer({ children }: { children: React.ReactNode }) {
+  if (Platform.OS !== 'web') return <>{children}</>;
+  return (
+    <View style={{ flex: 1, backgroundColor: Colors.dark.background }}>
+      {children}
+    </View>
+  );
+}
+
 export default function RootLayout() {
   const [dbReady, setDbReady] = useState(false);
 
   useEffect(() => {
     Promise.all([
       initDatabase().catch((e) => console.error('Errore DB:', e)),
-      initHealthKit().catch(() => {}), // Richiede permesso HealthKit all'avvio
+      initHealthKit().catch(() => {}),
     ]).finally(() => setDbReady(true));
   }, []);
 
   if (!dbReady) {
     return (
-      <View style={{ flex: 1, backgroundColor: Colors.dark.background, justifyContent: 'center', alignItems: 'center' }}>
-        <ActivityIndicator size="large" color={Colors.dark.primary} />
-      </View>
+      <WebContainer>
+        <View style={{ flex: 1, backgroundColor: Colors.dark.background, justifyContent: 'center', alignItems: 'center' }}>
+          <ActivityIndicator size="large" color={Colors.dark.primary} />
+        </View>
+      </WebContainer>
     );
   }
 
   return (
-    <AuthProvider>
-      <UserPreferencesProvider>
-        <RestTimerProvider>
-          <AppNavigator />
-        </RestTimerProvider>
-      </UserPreferencesProvider>
-    </AuthProvider>
+    <WebContainer>
+      <AuthProvider>
+        <UserPreferencesProvider>
+          <SyncProvider>
+            <RestTimerProvider>
+              <AppNavigator />
+            </RestTimerProvider>
+          </SyncProvider>
+        </UserPreferencesProvider>
+      </AuthProvider>
+    </WebContainer>
   );
 }

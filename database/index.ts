@@ -260,6 +260,44 @@ export async function initDatabase() {
   try {
     await database.execAsync(`ALTER TABLE workout_sessions ADD COLUMN rating INTEGER`);
   } catch { /* già esistente */ }
+
+  // v2.0: colonne sync (updated_at, synced, deleted_at) per cloud sync + web
+  const syncTables = [
+    'exercises',
+    'workout_templates',
+    'workout_template_exercises',
+    'template_exercise_sets',
+    'workout_sessions',
+    'workout_session_exercises',
+    'workout_session_sets',
+    'meal_plans',
+    'meal_plan_days',
+    'meal_plan_entries',
+    'food_items',
+    'nutrition_logs',
+    'water_logs',
+    'body_weight_logs',
+    'recipes',
+    'recipe_ingredients',
+    'meal_plan_active_days',
+  ];
+  for (const table of syncTables) {
+    try {
+      await database.execAsync(
+        `ALTER TABLE ${table} ADD COLUMN updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP`
+      );
+    } catch { /* già esistente */ }
+    try {
+      await database.execAsync(
+        `ALTER TABLE ${table} ADD COLUMN synced INTEGER NOT NULL DEFAULT 0`
+      );
+    } catch { /* già esistente */ }
+    try {
+      await database.execAsync(
+        `ALTER TABLE ${table} ADD COLUMN deleted_at TEXT`
+      );
+    } catch { /* già esistente */ }
+  }
 }
 
 export type Exercise = {

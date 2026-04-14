@@ -13,7 +13,7 @@ import {
   type ExerciseWeightHistory,
 } from '@/database';
 import { useGuestLimits } from '@/hooks/use-guest-limits';
-import { getHealthDataLast30Days, initHealthKit, type DailyHealthData } from '@/lib/healthkit';
+import { type DailyHealthData } from '@/lib/healthkit';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useFocusEffect } from '@react-navigation/native';
 import React, { useCallback, useMemo, useState } from 'react';
@@ -829,7 +829,7 @@ function ActivitySection() {
         <Text style={activityStyles.comingSoonEmoji}>🔗</Text>
         <Text style={activityStyles.comingSoonTitle}>Integrazione in arrivo</Text>
         <Text style={activityStyles.comingSoonText}>
-          Il collegamento con l’app Salute di iOS (passi, distanza, calorie) e con Google Health Connect su Android è previsto in una prossima versione di Vyro.
+          Il collegamento con l’app Salute di iOS (passi, distanza, calorie) e con Google Health Connect di3 Android è previsto in una prossima versione di Vyro.
         </Text>
       </View>
     </View>
