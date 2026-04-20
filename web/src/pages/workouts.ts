@@ -13,7 +13,10 @@ export async function renderWorkouts(): Promise<HTMLElement> {
   el.className = 'p-6 max-w-3xl mx-auto';
 
   el.innerHTML = `
-    <h1 class="text-2xl font-bold text-zinc-100 mb-5">Allenamenti</h1>
+    <div class="flex items-center justify-between mb-5">
+      <h1 class="text-2xl font-bold text-zinc-100">Allenamenti</h1>
+      <button id="log-historical-btn" class="btn-secondary text-sm">+ Log storico</button>
+    </div>
 
     <!-- Tabs -->
     <div class="flex gap-1 mb-6 bg-[#222834] rounded-lg p-1 w-fit">
@@ -121,6 +124,8 @@ export async function renderWorkouts(): Promise<HTMLElement> {
 
   // ── Templates ──────────────────────────────────────────────────────────────
   const listContainer = el.querySelector('#templates-list') as HTMLElement;
+  el.querySelector('#log-historical-btn')?.addEventListener('click', () => navigate('/log-historical'));
+
   const newBtn = el.querySelector('#new-template-btn') as HTMLButtonElement;
   const form = el.querySelector('#new-template-form') as HTMLElement;
   const cancelBtn = el.querySelector('#cancel-template-btn') as HTMLButtonElement;

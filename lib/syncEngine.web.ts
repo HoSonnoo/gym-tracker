@@ -14,3 +14,7 @@ export async function getPendingSyncCount(): Promise<number> {
 export async function syncToSupabase(): Promise<SyncResult> {
   return { synced: 0, errors: 0, tables: [] };
 }
+
+export async function pullFromSupabase(): Promise<SyncResult> {
+  return { synced: 0, errors: 0, tables: [] };
+}

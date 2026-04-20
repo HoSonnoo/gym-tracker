@@ -848,3 +848,96 @@ export async function isDatabaseEmpty(): Promise<boolean> {
   ]);
   return (exercises.count ?? 0) === 0 && (sessions.count ?? 0) === 0;
 }
+
+export async function getWeeklyFrequencyHistory(): Promise<{ week: string; count: number }[]> {
+  const { data } = await supabase
+    .from('workout_sessions')
+    .select('completed_at')
+    .eq('status', 'completed')
+    .not('completed_at', 'is', null)
+    .order('completed_at');
+
+  const weekMap = new Map<string, number>();
+  for (const s of (data ?? []) as { completed_at: string }[]) {
+    const d = new Date(s.completed_at);
+    const day = d.getDay();
+    const diff = d.getDate() - day + (day === 0 ? -6 : 1);
+    const monday = new Date(d);
+    monday.setDate(diff);
+    const key = monday.toISOString().slice(0, 10);
+    weekMap.set(key, (weekMap.get(key) ?? 0) + 1);
+  }
+
+  return Array.from(weekMap.entries())
+    .map(([week, count]) => ({ week, count }))
+    .sort((a, b) => a.week.localeCompare(b.week));
+}
+
+export async function getExerciseVolumeHistory(exerciseName: string): Promise<{ date: string; volume_kg: number }[]> {
+  const { data: sessions } = await supabase
+    .from('workout_sessions')
+    .select('id, completed_at')
+    .eq('status', 'completed')
+    .not('completed_at', 'is', null);
+
+  if (!sessions?.length) return [];
+
+  const sessionIds = (sessions as { id: number; completed_at: string }[]).map(s => s.id);
+  const sessionMap = new Map((sessions as { id: number; completed_at: string }[]).map(s => [s.id, s.completed_at]));
+
+  const { data: seRows } = await supabase
+    .from('workout_session_exercises')
+    .select('id, session_id')
+    .eq('exercise_name', exerciseName)
+    .in('session_id', sessionIds);
+
+  if (!seRows?.length) return [];
+
+  const seIds = (seRows as { id: number; session_id: number }[]).map(se => se.id);
+  const seToSession = new Map((seRows as { id: number; session_id: number }[]).map(se => [se.id, se.session_id]));
+
+  const { data: sets } = await supabase
+    .from('workout_session_sets')
+    .select('session_exercise_id, actual_weight_kg, actual_reps')
+    .in('session_exercise_id', seIds)
+    .eq('is_completed', true);
+
+  const volumeBySession = new Map<number, number>();
+  for (const s of (sets ?? []) as { session_exercise_id: number; actual_weight_kg: number | null; actual_reps: number | null }[]) {
+    const sessionId = seToSession.get(s.session_exercise_id);
+    if (sessionId == null) continue;
+    const vol = (s.actual_weight_kg ?? 0) * (s.actual_reps ?? 0);
+    volumeBySession.set(sessionId, (volumeBySession.get(sessionId) ?? 0) + vol);
+  }
+
+  return Array.from(volumeBySession.entries())
+    .map(([sessionId, volume_kg]) => ({ date: sessionMap.get(sessionId)!.slice(0, 10), volume_kg }))
+    .sort((a, b) => a.date.localeCompare(b.date));
+}
+
+export async function getPRHistoryByExercise(exerciseName: string): Promise<{ date: string; max_weight_kg: number; reps: number | null }[]> {
+  const history = await getExerciseWeightHistory(exerciseName);
+
+  const bySession = new Map<string, { max_weight_kg: number; reps: number | null }>();
+  for (const row of history) {
+    const date = row.completed_at.slice(0, 10);
+    const existing = bySession.get(date);
+    if (!existing || row.actual_weight_kg > existing.max_weight_kg) {
+      bySession.set(date, { max_weight_kg: row.actual_weight_kg, reps: row.actual_reps ?? null });
+    }
+  }
+
+  return Array.from(bySession.entries())
+    .map(([date, v]) => ({ date, ...v }))
+    .sort((a, b) => a.date.localeCompare(b.date));
+}
+
+export async function getExerciseNamesWithHistory(): Promise<string[]> {
+  const { data } = await supabase
+    .from('workout_session_exercises')
+    .select('exercise_name')
+    .order('exercise_name');
+
+  const unique = [...new Set((data ?? []).map((r: { exercise_name: string }) => r.exercise_name))];
+  return unique.filter(Boolean);
+}

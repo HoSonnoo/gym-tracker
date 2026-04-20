@@ -1,13 +1,14 @@
-import { getPendingSyncCount, syncToSupabase } from '@/lib/syncEngine';
+import { getPendingSyncCount, pullFromSupabase, syncToSupabase } from '@/lib/syncEngine';
 import { useAuth } from '@/context/AuthContext';
 import React, { createContext, useCallback, useContext, useEffect, useRef } from 'react';
 import { Alert, AppState, AppStateStatus, Platform } from 'react-native';
 
 type SyncContextValue = {
   triggerSync: () => Promise<void>;
+  triggerPull: () => Promise<void>;
 };
 
-const SyncContext = createContext<SyncContextValue>({ triggerSync: async () => {} });
+const SyncContext = createContext<SyncContextValue>({ triggerSync: async () => {}, triggerPull: async () => {} });
 
 export function useSyncContext() {
   return useContext(SyncContext);
@@ -17,6 +18,16 @@ export function SyncProvider({ children }: { children: React.ReactNode }) {
   const { user, isGuest } = useAuth();
   const isSyncing = useRef(false);
   const appState = useRef<AppStateStatus>(AppState.currentState);
+
+  const triggerPull = useCallback(async () => {
+    if (Platform.OS === 'web') return;
+    if (!user || isGuest) return;
+    try {
+      await pullFromSupabase();
+    } catch {
+      // Pull silenzioso — non mostrare errori all'utente
+    }
+  }, [user, isGuest]);
 
   const triggerSync = useCallback(async () => {
     // Sul web il syncEngine è un no-op, nessuna logica necessaria
@@ -66,8 +77,11 @@ export function SyncProvider({ children }: { children: React.ReactNode }) {
 
     const subscription = AppState.addEventListener('change', (nextState: AppStateStatus) => {
       if (appState.current !== 'active' && nextState === 'active') {
-        // App tornata in foreground — controlla se ci sono dati da sincronizzare
-        setTimeout(() => triggerSync(), 1500); // Piccolo delay per evitare conflitti con l'inizializzazione
+        // Prima pull (dati da web/altri dispositivi), poi push (dati locali pendenti)
+        setTimeout(async () => {
+          await triggerPull();
+          triggerSync();
+        }, 1500);
       }
       appState.current = nextState;
     });
@@ -75,15 +89,18 @@ export function SyncProvider({ children }: { children: React.ReactNode }) {
     return () => subscription.remove();
   }, [triggerSync]);
 
-  // Trigger sync al primo login
+  // Al primo login: pull silenzioso poi check push
   useEffect(() => {
     if (Platform.OS === 'web') return;
     if (!user || isGuest) return;
-    setTimeout(() => triggerSync(), 2000);
+    setTimeout(async () => {
+      await triggerPull();
+      triggerSync();
+    }, 2000);
   }, [user?.id]);
 
   return (
-    <SyncContext.Provider value={{ triggerSync }}>
+    <SyncContext.Provider value={{ triggerSync, triggerPull }}>
       {children}
     </SyncContext.Provider>
   );

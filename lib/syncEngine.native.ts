@@ -68,6 +68,79 @@ export type SyncResult = {
 };
 
 /**
+ * Scarica da Supabase tutti i dati dell'utente e li inserisce in SQLite.
+ * - Righe con synced=0 (modifiche locali pendenti) non vengono sovrascritte.
+ * - Righe locali synced=1 non presenti su Supabase (cancellate da web) vengono eliminate.
+ */
+export async function pullFromSupabase(): Promise<SyncResult> {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { synced: 0, errors: 0, tables: [] };
+
+  const db = await getDb();
+  let synced = 0;
+  let errors = 0;
+  const tablesWithErrors: string[] = [];
+
+  for (const table of SYNC_TABLES) {
+    try {
+      const { data, error } = await supabase
+        .from(table.name)
+        .select(table.columns.join(', '))
+        .eq('user_id', user.id);
+
+      if (error) {
+        errors++;
+        tablesWithErrors.push(table.name);
+        continue;
+      }
+
+      const remoteRows = data ?? [];
+      const remoteIds = new Set(remoteRows.map((r: Record<string, unknown>) => r.id));
+
+      // Elimina righe locali (già sincronizzate) che non esistono più su Supabase
+      const localSynced = await db.getAllAsync<{ id: number }>(
+        `SELECT id FROM ${table.name} WHERE synced = 1 AND deleted_at IS NULL`
+      ).catch(() => [] as { id: number }[]);
+
+      for (const local of localSynced) {
+        if (!remoteIds.has(local.id)) {
+          await db.runAsync(`DELETE FROM ${table.name} WHERE id = ?`, [local.id]).catch(() => {});
+          synced++;
+        }
+      }
+
+      // Upsert righe remote in locale
+      for (const row of remoteRows as Record<string, unknown>[]) {
+        const localRow = await db.getFirstAsync<{ synced: number }>(
+          `SELECT synced FROM ${table.name} WHERE id = ?`,
+          [row.id as number]
+        ).catch(() => null);
+
+        // Non sovrascrivere modifiche locali non ancora inviate
+        if (localRow?.synced === 0) continue;
+
+        const cols = table.columns;
+        const placeholders = cols.map(() => '?').join(', ');
+        const values = cols.map(c => row[c] ?? null);
+
+        await db.runAsync(
+          `INSERT OR REPLACE INTO ${table.name} (${cols.join(', ')}, synced) VALUES (${placeholders}, 1)`,
+          values
+        ).catch(() => {});
+
+        synced++;
+      }
+    } catch (err) {
+      console.warn(`[Pull] Eccezione su ${table.name}:`, err);
+      errors++;
+      tablesWithErrors.push(table.name);
+    }
+  }
+
+  return { synced, errors, tables: tablesWithErrors };
+}
+
+/**
  * Controlla quante righe sono in attesa di sincronizzazione.
  * Utile per mostrare un badge o un prompt all'utente.
  */

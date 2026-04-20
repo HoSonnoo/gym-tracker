@@ -1,7 +1,8 @@
 import { supabase } from '@/lib/supabase';
 import { getUserId } from '@/lib/userId';
 import { navigate } from '@/router';
-import { deleteWorkoutSession } from '@/repository/workouts';
+import { deleteWorkoutSession, getWorkoutSessionDetail } from '@/repository/workouts';
+import type { WorkoutSessionDetail } from '@/types';
 
 type SessionRow = {
   id: number;
@@ -132,10 +133,18 @@ export async function renderCalendar(): Promise<HTMLElement> {
           <span class="text-sm text-zinc-200">${s.name}</span>
           <div class="flex items-center gap-2">
             <span class="badge-${s.status === 'completed' ? 'green' : 'zinc'}">${s.status}</span>
+            ${s.status === 'completed' ? `<button class="detail-session-btn btn-ghost text-xs text-brand-400 hover:text-brand-300" data-id="${s.id}" title="Dettaglio">Dettaglio</button>` : ''}
             <button class="delete-session-btn btn-ghost text-xs text-red-400 hover:text-red-300" data-id="${s.id}" title="Elimina allenamento">✕</button>
           </div>
         </div>
       `).join('');
+
+      sessionsEl.querySelectorAll('.detail-session-btn').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          const id = Number((btn as HTMLElement).dataset['id']);
+          await showSessionDetailModal(id);
+        });
+      });
 
       sessionsEl.querySelectorAll('.delete-session-btn').forEach(btn => {
         btn.addEventListener('click', async () => {
@@ -173,6 +182,108 @@ export async function renderCalendar(): Promise<HTMLElement> {
   el.querySelector('#start-from-calendar')?.addEventListener('click', () => {
     navigate('/workouts');
   });
+
+  async function showSessionDetailModal(sessionId: number): Promise<void> {
+    const existing = document.getElementById('session-detail-modal');
+    if (existing) existing.remove();
+
+    const modal = document.createElement('div');
+    modal.id = 'session-detail-modal';
+    modal.className = 'fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4';
+    modal.innerHTML = `
+      <div class="bg-[#181C23] border border-[#2C3442] rounded-2xl w-full max-w-lg max-h-[85vh] flex flex-col">
+        <div class="flex items-center justify-between p-4 border-b border-[#2C3442] shrink-0">
+          <span class="font-semibold text-zinc-100">Dettaglio sessione</span>
+          <button id="close-detail-modal" class="btn-ghost text-sm">✕</button>
+        </div>
+        <div class="overflow-y-auto flex-1 p-4">
+          <div class="flex items-center justify-center h-32"><div class="spinner"></div></div>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(modal);
+
+    modal.querySelector('#close-detail-modal')?.addEventListener('click', () => modal.remove());
+    modal.addEventListener('click', (e) => { if (e.target === modal) modal.remove(); });
+
+    const body = modal.querySelector('.overflow-y-auto') as HTMLElement;
+    try {
+      const detail = await getWorkoutSessionDetail(sessionId);
+      if (!detail) { body.innerHTML = '<p class="text-zinc-500 text-sm">Dati non trovati.</p>'; return; }
+      body.innerHTML = renderSessionDetail(detail);
+    } catch {
+      body.innerHTML = '<p class="text-red-400 text-sm">Errore nel caricamento.</p>';
+    }
+  }
+
+  function renderSessionDetail(detail: WorkoutSessionDetail): string {
+    const s = detail.session;
+    const date = s.completed_at ? new Date(s.completed_at).toLocaleDateString('it-IT', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }) : '';
+    const duration = s.started_at && s.completed_at
+      ? Math.round((new Date(s.completed_at).getTime() - new Date(s.started_at).getTime()) / 60000)
+      : null;
+
+    return `
+      <div class="mb-4">
+        <h2 class="text-lg font-bold text-zinc-100">${s.name}</h2>
+        <div class="flex items-center gap-3 mt-1 text-xs text-zinc-500">
+          <span>${date}</span>
+          ${duration !== null ? `<span>${duration} min</span>` : ''}
+          ${s.rating ? `<span>${'★'.repeat(s.rating)}${'☆'.repeat(5 - s.rating)}</span>` : ''}
+        </div>
+        ${s.notes ? `<p class="text-sm text-zinc-400 mt-2">${s.notes}</p>` : ''}
+      </div>
+
+      ${detail.exercises.length === 0
+        ? '<p class="text-zinc-500 text-sm">Nessun esercizio registrato.</p>'
+        : detail.exercises.map(({ exercise, sets }) => {
+            const completedSets = sets.filter(s => s.is_completed);
+            return `
+              <div class="mb-4">
+                <div class="flex items-center gap-2 mb-2">
+                  <span class="font-semibold text-zinc-200 text-sm">${exercise.exercise_name}</span>
+                  ${exercise.category ? `<span class="text-xs text-zinc-600">${exercise.category}</span>` : ''}
+                </div>
+                ${completedSets.length === 0
+                  ? '<p class="text-xs text-zinc-600 pl-2">Nessuna serie completata</p>'
+                  : `<div class="flex flex-col gap-1">
+                      <div class="grid grid-cols-[32px_1fr_1fr_1fr] gap-2 px-2 mb-1">
+                        <span class="text-xs text-zinc-600">#</span>
+                        <span class="text-xs text-zinc-600 text-center">Peso</span>
+                        <span class="text-xs text-zinc-600 text-center">Reps</span>
+                        <span class="text-xs text-zinc-600 text-center">Sforzo</span>
+                      </div>
+                      ${completedSets.map((s, i) => `
+                        <div class="grid grid-cols-[32px_1fr_1fr_1fr] gap-2 items-center px-2 py-1 rounded-lg ${i % 2 === 0 ? 'bg-zinc-800/30' : ''}">
+                          <span class="text-xs font-bold ${s.target_set_type === 'warmup' ? 'text-zinc-500' : 'text-brand-400'}">
+                            ${s.target_set_type === 'warmup' ? 'W' : i + 1}
+                          </span>
+                          <span class="text-sm font-semibold text-zinc-200 text-center">
+                            ${s.actual_weight_kg != null ? s.actual_weight_kg + ' kg' : '—'}
+                          </span>
+                          <span class="text-sm font-semibold text-zinc-200 text-center">
+                            ${s.actual_reps != null ? s.actual_reps : '—'}
+                          </span>
+                          <span class="text-xs text-zinc-500 text-center">
+                            ${formatEffort(s.actual_effort_type, s.actual_buffer_value)}
+                          </span>
+                        </div>
+                      `).join('')}
+                    </div>`
+                }
+              </div>
+            `;
+          }).join('<div class="border-t border-zinc-800 my-3"></div>')}
+    `;
+  }
+
+  function formatEffort(type: string | null, buffer: number | null): string {
+    if (!type || type === 'none') return '—';
+    if (type === 'buffer' && buffer != null) return `RIR ${buffer}`;
+    if (type === 'failure') return 'Cedimento';
+    if (type === 'drop_set') return 'Drop set';
+    return type;
+  }
 
   await loadSessions();
   renderGrid();

@@ -14,6 +14,7 @@ import { renderSettings } from '@/pages/settings';
 import { renderTemplate } from '@/pages/template';
 import { renderTemplateExercise } from '@/pages/template-exercise';
 import { renderWorkoutSession } from '@/pages/workout-session';
+import { renderLogHistorical } from '@/pages/log-historical';
 
 const appEl = document.getElementById('app')!;
 let appMounted = false;
@@ -51,6 +52,7 @@ function mountApp(): void {
   registerRoute('/template', renderTemplate);
   registerRoute('/template-exercise', renderTemplateExercise);
   registerRoute('/workout-session', renderWorkoutSession);
+  registerRoute('/log-historical', renderLogHistorical);
   registerRoute('/auth', renderAuth);
 
   startRouter(contentContainer);

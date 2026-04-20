@@ -4,6 +4,11 @@ import {
   getWaterLogByDate, addWaterLog, resetWaterLog,
 } from '@/repository/nutrition';
 import {
+  Chart, LineController, CategoryScale, LinearScale,
+  PointElement, LineElement, Tooltip, Filler,
+} from 'chart.js';
+Chart.register(LineController, CategoryScale, LinearScale, PointElement, LineElement, Tooltip, Filler);
+import {
   getMealPlans, addMealPlan, deleteMealPlan,
   addMealPlanDay, addMealPlanEntry,
 } from '@/repository/mealplans';
@@ -187,6 +192,12 @@ export async function renderNutrition(): Promise<HTMLElement> {
     <!-- ── CORPO ── -->
     <div id="section-corpo" class="hidden">
       <div class="card mb-4">
+        <h2 class="section-title">Trend peso corporeo</h2>
+        <div style="height:200px" id="weight-chart-wrap">
+          <div class="flex items-center justify-center h-full"><div class="spinner"></div></div>
+        </div>
+      </div>
+      <div class="card mb-4">
         <h2 class="section-title">Registra peso</h2>
         <div class="flex gap-2 flex-wrap mb-2">
           <input id="weight-date" type="date" class="input w-36" value="${today}" />
@@ -204,6 +215,7 @@ export async function renderNutrition(): Promise<HTMLElement> {
         <div class="flex items-center justify-center h-24"><div class="spinner"></div></div>
       </div>
     </div>
+
 
     <!-- ── RICETTE ── -->
     <div id="section-ricette" class="hidden">
@@ -592,9 +604,59 @@ export async function renderNutrition(): Promise<HTMLElement> {
   // TAB CORPO
   // ═══════════════════════════════════════════════════════════════════════════
 
+  let weightChart: Chart | null = null;
+
   async function loadWeights(): Promise<void> {
     const logs   = await getBodyWeightLogs();
     const listEl = el.querySelector('#weight-list') as HTMLElement;
+    const chartWrap = el.querySelector('#weight-chart-wrap') as HTMLElement;
+
+    // Grafico
+    weightChart?.destroy();
+    if (logs.length > 1) {
+      const sorted = [...logs].sort((a, b) => a.date.localeCompare(b.date));
+      chartWrap.innerHTML = '<canvas id="weight-chart"></canvas>';
+      const canvas = chartWrap.querySelector('canvas') as HTMLCanvasElement;
+      weightChart = new Chart(canvas, {
+        type: 'line',
+        data: {
+          labels: sorted.map(w => new Date(w.date).toLocaleDateString('it-IT', { day: '2-digit', month: 'short', year: '2-digit' })),
+          datasets: [{
+            data: sorted.map(w => w.weight_kg),
+            borderColor: '#9066ff',
+            backgroundColor: 'rgba(144, 102, 255, 0.12)',
+            borderWidth: 2,
+            pointRadius: 3,
+            pointBackgroundColor: '#9066ff',
+            fill: true,
+            tension: 0.3,
+          }],
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { display: false },
+            tooltip: {
+              backgroundColor: '#181C23',
+              borderColor: '#2C3442',
+              borderWidth: 1,
+              titleColor: '#f4f4f5',
+              bodyColor: '#a1a1aa',
+              callbacks: { label: (ctx) => ` ${ctx.parsed.y} kg` },
+            },
+          },
+          scales: {
+            x: { grid: { color: 'rgba(44,52,66,0.8)' }, ticks: { color: '#a1a1aa', maxTicksLimit: 8, maxRotation: 30 } },
+            y: { grid: { color: 'rgba(44,52,66,0.8)' }, ticks: { color: '#a1a1aa' } },
+          },
+        },
+      });
+    } else {
+      chartWrap.innerHTML = '<p class="text-zinc-500 text-sm text-center pt-16">Aggiungi almeno 2 pesate per vedere il grafico.</p>';
+    }
+
+    // Lista
     if (logs.length === 0) {
       listEl.innerHTML = '<div class="empty-state"><p>Nessun peso registrato.</p></div>';
       return;
