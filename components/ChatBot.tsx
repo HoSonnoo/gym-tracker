@@ -6,7 +6,6 @@ import {
   Easing,
   FlatList,
   KeyboardAvoidingView,
-  Modal,
   Platform,
   StyleSheet,
   Text,
@@ -14,6 +13,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import WebModal from '@/components/WebModal';
 
 const PRIMARY = '#7e47ff';
 const PROXY_URL = `${SUPABASE_URL}/functions/v1/anthropic-proxy`;
@@ -139,7 +139,7 @@ export default function ChatBot() {
       </Animated.View>
 
       {/* Modal chat */}
-      <Modal visible={open} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setOpen(false)}>
+      <WebModal visible={open} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setOpen(false)}>
         <KeyboardAvoidingView
           style={styles.modal}
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}
@@ -206,7 +206,7 @@ export default function ChatBot() {
             </TouchableOpacity>
           </View>
         </KeyboardAvoidingView>
-      </Modal>
+      </WebModal>
     </>
   );
 }

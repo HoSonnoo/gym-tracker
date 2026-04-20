@@ -24,8 +24,6 @@ export default function NutritionGuide({
   onGoToCatalog?: () => void;
   onGoToPiano?: () => void;
 }) {
-  const router = useRouter();
-
   return (
     <ScrollView
       style={styles.container}
@@ -107,7 +105,7 @@ export default function NutritionGuide({
           <>
             <Text style={styles.stepText}>
               Nel tab Piano puoi costruire il tuo piano manualmente oppure caricare
-              il PDF del tuo nutrizionista: Claude lo strutturerà automaticamente.
+              il PDF del tuo nutrizionista: Vyro lo strutturerà automaticamente.
             </Text>
             <Pressable style={styles.stepButton} onPress={onGoToPiano ?? onDone}>
               <Text style={styles.stepButtonText}>Vai al piano →</Text>

@@ -4,7 +4,7 @@ import { Colors } from '@/constants/Colors';
 import { Slot } from 'expo-router';
 import { View } from 'react-native';
 
-export default function WebTabsLayout() {
+export default function WorkoutSessionWebLayout() {
   return (
     <View style={{ flex: 1, flexDirection: 'row', backgroundColor: Colors.dark.background }}>
       <AppSidebar />

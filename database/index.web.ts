@@ -125,6 +125,8 @@ export {
   addMealPlanEntry,
   updateMealPlanEntry,
   deleteMealPlanEntry,
+  setMealPlanActiveDays,
+  getActivePlanEntriesForToday,
 } from '@/repository/mealplans.web';
 
 // ─── Ricette ──────────────────────────────────────────────────────────────────

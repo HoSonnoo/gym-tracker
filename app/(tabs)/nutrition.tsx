@@ -38,13 +38,12 @@ import {
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useFocusEffect } from '@react-navigation/native';
 import * as DocumentPicker from 'expo-document-picker';
-import * as FileSystem from 'expo-file-system/legacy';
+import { readFileAsBase64 } from '@/lib/fileReader';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
   FlatList,
-  Modal,
   ScrollView,
   StyleSheet,
   Text,
@@ -52,6 +51,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import WebModal from '@/components/WebModal';
 import Animated, {
   Easing,
   interpolateColor,
@@ -348,7 +348,7 @@ function AddToMealModal({ visible, mealType, date, onClose, onAdded }: AddToMeal
   } : null;
 
   return (
-    <Modal
+    <WebModal
       visible={visible}
       animationType="slide"
       presentationStyle="pageSheet"
@@ -480,7 +480,7 @@ function AddToMealModal({ visible, mealType, date, onClose, onAdded }: AddToMeal
           </>
         )}
       </View>
-    </Modal>
+    </WebModal>
   );
 }
 
@@ -583,7 +583,7 @@ function AddFoodItemModal({ visible, onClose, onSaved }: AddFoodItemModalProps) 
   ];
 
   return (
-    <Modal
+    <WebModal
       visible={visible}
       animationType="slide"
       presentationStyle="pageSheet"
@@ -644,7 +644,7 @@ function AddFoodItemModal({ visible, onClose, onSaved }: AddFoodItemModalProps) 
           </Text>
         </TouchableOpacity>
       </ScrollView>
-    </Modal>
+    </WebModal>
   );
 }
 
@@ -972,7 +972,7 @@ function OFFProductModal({ product, onClose, onSavedToCatalog, onAddedToDiary }:
   };
 
   return (
-    <Modal visible animationType="slide" presentationStyle="formSheet" onRequestClose={onClose}>
+    <WebModal visible animationType="slide" presentationStyle="formSheet" onRequestClose={onClose}>
       <View style={offStyles.container}>
         <View style={offStyles.handle} />
         <View style={offStyles.header}>
@@ -1016,7 +1016,7 @@ function OFFProductModal({ product, onClose, onSavedToCatalog, onAddedToDiary }:
           <Text style={offStyles.btnSecondaryText}>📓 Aggiungi al diario</Text>
         </TouchableOpacity>
       </View>
-    </Modal>
+    </WebModal>
   );
 }
 
@@ -1458,7 +1458,7 @@ function RicetteSection() {
 
       setImportStep('loading');
       const file = result.assets[0];
-      const base64 = await FileSystem.readAsStringAsync(file.uri, { encoding: 'base64' });
+      const base64 = await readFileAsBase64(file.uri);
 
       const response = await fetch(PROXY_URL, {
         method: 'POST',
@@ -1645,7 +1645,7 @@ function NewRecipeModal({ visible, onClose, onSaved }: { visible: boolean; onClo
   };
 
   return (
-    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
+    <WebModal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
       <View style={ricetteStyles.modalContainer}>
         <View style={ricetteStyles.modalHeader}>
           <Text style={ricetteStyles.modalTitle}>Nuova ricetta</Text>
@@ -1692,7 +1692,7 @@ function NewRecipeModal({ visible, onClose, onSaved }: { visible: boolean; onClo
           </TouchableOpacity>
         </ScrollView>
       </View>
-    </Modal>
+    </WebModal>
   );
 }
 
@@ -2170,9 +2170,7 @@ function PianoSection() {
 
   const processFile = async (file: { uri: string; name: string; mimeType?: string; size?: number }) => {
     try {
-      const base64 = await FileSystem.readAsStringAsync(file.uri, {
-        encoding: 'base64',
-      });
+      const base64 = await readFileAsBase64(file.uri);
 
       if (!base64 || base64.length === 0) {
         throw new Error('File vuoto o non leggibile.');
@@ -2376,7 +2374,7 @@ function PianoSection() {
           </TouchableOpacity>
         </View>
         <NewPlanModal visible={showNewPlanModal} onClose={() => setShowNewPlanModal(false)} onSaved={() => { loadPlans(); setShowNewPlanModal(false); }} />
-        <Modal visible={importStep === 'preview' || importStep === 'loading' || importStep === 'error'} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setImportStep('idle')}>
+        <WebModal visible={importStep === 'preview' || importStep === 'loading' || importStep === 'error'} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setImportStep('idle')}>
           <View style={importStyles.container}>
             <View style={importStyles.handle} />
             <View style={importStyles.header}>
@@ -2443,7 +2441,7 @@ function PianoSection() {
               </ScrollView>
             )}
           </View>
-        </Modal>
+        </WebModal>
       </>
     );
   }
@@ -2625,7 +2623,7 @@ function PianoSection() {
         />
       )}
 
-      <Modal visible={importStep === 'preview' || importStep === 'loading' || importStep === 'error'} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setImportStep('idle')}>
+      <WebModal visible={importStep === 'preview' || importStep === 'loading' || importStep === 'error'} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setImportStep('idle')}>
         <View style={importStyles.container}>
           <View style={importStyles.handle} />
           <View style={importStyles.header}>
@@ -2692,7 +2690,7 @@ function PianoSection() {
             </ScrollView>
           )}
         </View>
-      </Modal>
+      </WebModal>
 
       {showAddEntryModal && (
         <AddEntryToPlanModal
@@ -2767,7 +2765,7 @@ function DayAssignModal({ visible, planId, onClose, onSaved }: {
   };
 
   return (
-    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
+    <WebModal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
       <View style={dayAssignStyles.container}>
         <View style={dayAssignStyles.header}>
           <Text style={dayAssignStyles.title}>Collega giorni al calendario</Text>
@@ -2814,7 +2812,7 @@ function DayAssignModal({ visible, planId, onClose, onSaved }: {
           </TouchableOpacity>
         </ScrollView>
       </View>
-    </Modal>
+    </WebModal>
   );
 }
 
@@ -2932,9 +2930,7 @@ function ImportPDFModal({ visible, onClose, onImported, autoStart = false }: {
 
       setStep('loading');
       const file = result.assets[0];
-      const base64 = await FileSystem.readAsStringAsync(file.uri, {
-        encoding: FileSystem.EncodingType.Base64,
-      });
+      const base64 = await readFileAsBase64(file.uri);
 
       const response = await fetch(PROXY_URL, {
         method: 'POST',
@@ -3003,7 +2999,7 @@ function ImportPDFModal({ visible, onClose, onImported, autoStart = false }: {
   const mealLabel = (t: string) => ({ integrazione: 'Integrazione', colazione: 'Colazione', pranzo: 'Pranzo', cena: 'Cena', spuntino: 'Spuntini' }[t] ?? t);
 
   return (
-    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
+    <WebModal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
       <View style={importStyles.container}>
         <View style={importStyles.handle} />
         <View style={importStyles.header}>
@@ -3113,7 +3109,7 @@ function ImportPDFModal({ visible, onClose, onImported, autoStart = false }: {
           </ScrollView>
         )}
       </View>
-    </Modal>
+    </WebModal>
   );
 }
 
@@ -3203,7 +3199,7 @@ function EditEntryModal({ entry, onClose, onSaved }: {
   ];
 
   return (
-    <Modal visible animationType="slide" presentationStyle="formSheet" onRequestClose={onClose}>
+    <WebModal visible animationType="slide" presentationStyle="formSheet" onRequestClose={onClose}>
       <ScrollView style={editEntryStyles.container} contentContainerStyle={editEntryStyles.content} keyboardShouldPersistTaps="handled">
         <View style={editEntryStyles.handle} />
         <View style={editEntryStyles.header}>
@@ -3244,7 +3240,7 @@ function EditEntryModal({ entry, onClose, onSaved }: {
           <Text style={editEntryStyles.saveBtnText}>{saving ? `Salvataggio...` : `Salva modifiche`}</Text>
         </TouchableOpacity>
       </ScrollView>
-    </Modal>
+    </WebModal>
   );
 }
 
@@ -3317,7 +3313,7 @@ function NewPlanModal({ visible, onClose, onSaved }: { visible: boolean; onClose
   };
 
   return (
-    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
+    <WebModal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
       <ScrollView style={newPlanStyles.container} contentContainerStyle={newPlanStyles.content} keyboardShouldPersistTaps="handled">
         <View style={newPlanStyles.handle} />
         <View style={newPlanStyles.header}>
@@ -3366,7 +3362,7 @@ function NewPlanModal({ visible, onClose, onSaved }: { visible: boolean; onClose
         </TouchableOpacity>
 
       </ScrollView>
-    </Modal>
+    </WebModal>
   );
 }
 
@@ -3449,7 +3445,7 @@ function AddEntryToPlanModal({ visible, dayId, mealType, onClose, onAdded }: {
   };
 
   return (
-    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
+    <WebModal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
       <View style={addModalStyles.container}>
         <View style={addModalStyles.handle} />
         <View style={addModalStyles.header}>
@@ -3524,7 +3520,7 @@ function AddEntryToPlanModal({ visible, dayId, mealType, onClose, onAdded }: {
           </>
         )}
       </View>
-    </Modal>
+    </WebModal>
   );
 }
 

@@ -1,4 +1,4 @@
-import { getUserId } from '@/lib/webUserId';
+import { getUserId } from '@/lib/userId';
 import { supabase } from '@/lib/supabase';
 import type {
   WorkoutTemplate,
@@ -14,8 +14,7 @@ import type {
   ExerciseVolume,
   ExerciseWeightHistory,
   HistoricalSet,
-} from '@/database';
-
+} from '@/types';
 
 // ─── Templates ────────────────────────────────────────────────────────────────
 
@@ -42,10 +41,7 @@ export async function getWorkoutTemplates(): Promise<WorkoutTemplate[]> {
 }
 
 export async function deleteWorkoutTemplate(id: number): Promise<void> {
-  const { error } = await supabase
-    .from('workout_templates')
-    .delete()
-    .eq('id', id);
+  const { error } = await supabase.from('workout_templates').delete().eq('id', id);
   if (error) throw error;
 }
 
@@ -74,8 +70,6 @@ export async function updateWorkoutTemplate(id: number, name: string, notes: str
 export async function getTemplateExercises(templateId: number): Promise<TemplateExercise[]> {
   const userId = await getUserId();
 
-  // Prova prima con superset_group_id; se la schema cache è stale (PGRST204) ritenta senza
-  let teData: any[] | null = null;
   const { data: d1, error: e1 } = await supabase
     .from('workout_template_exercises')
     .select('id, template_id, exercise_id, exercise_order, target_sets, target_reps_min, target_reps_max, rest_seconds, notes, superset_group_id')
@@ -83,9 +77,9 @@ export async function getTemplateExercises(templateId: number): Promise<Template
     .eq('user_id', userId)
     .order('exercise_order');
 
+  let teData: Record<string, unknown>[] | null = null;
   if (e1) {
-    // PGRST204 = schema cache stale; 42703 = colonna non ancora esistente nel DB
-    const missingCol = (e1 as any).code === 'PGRST204' || (e1 as any).code === '42703';
+    const missingCol = (e1 as { code?: string }).code === 'PGRST204' || (e1 as { code?: string }).code === '42703';
     if (missingCol) {
       const { data: d2, error: e2 } = await supabase
         .from('workout_template_exercises')
@@ -104,7 +98,7 @@ export async function getTemplateExercises(templateId: number): Promise<Template
 
   if (!teData || teData.length === 0) return [];
 
-  const exerciseIds = [...new Set(teData.map(te => te.exercise_id))];
+  const exerciseIds = [...new Set(teData.map(te => te['exercise_id'] as number))];
   const { data: exData } = await supabase
     .from('exercises')
     .select('id, name, category')
@@ -113,14 +107,13 @@ export async function getTemplateExercises(templateId: number): Promise<Template
   const exerciseMap = new Map((exData ?? []).map(e => [e.id, e]));
   return teData.map(te => ({
     ...te,
-    exercise_name: exerciseMap.get(te.exercise_id)?.name ?? '',
-    exercise_category: exerciseMap.get(te.exercise_id)?.category ?? null,
-  })) as TemplateExercise[];
+    exercise_name: exerciseMap.get(te['exercise_id'] as number)?.name ?? '',
+    exercise_category: exerciseMap.get(te['exercise_id'] as number)?.category ?? null,
+  })) as unknown as TemplateExercise[];
 }
 
 export async function addExerciseToTemplate(templateId: number, exerciseId: number): Promise<void> {
   const userId = await getUserId();
-
   const { data: maxRow } = await supabase
     .from('workout_template_exercises')
     .select('exercise_order')
@@ -131,7 +124,6 @@ export async function addExerciseToTemplate(templateId: number, exerciseId: numb
     .maybeSingle();
 
   const nextOrder = ((maxRow?.exercise_order as number) ?? 0) + 1;
-
   const { error } = await supabase
     .from('workout_template_exercises')
     .insert({ template_id: templateId, exercise_id: exerciseId, exercise_order: nextOrder, user_id: userId });
@@ -139,29 +131,8 @@ export async function addExerciseToTemplate(templateId: number, exerciseId: numb
 }
 
 export async function removeExerciseFromTemplate(templateExerciseId: number): Promise<void> {
-  const { error } = await supabase
-    .from('workout_template_exercises')
-    .delete()
-    .eq('id', templateExerciseId);
+  const { error } = await supabase.from('workout_template_exercises').delete().eq('id', templateExerciseId);
   if (error) throw error;
-}
-
-export async function getTemplateExerciseById(id: number): Promise<TemplateExercise | null> {
-  const { data, error } = await supabase
-    .from('workout_template_exercises')
-    .select('id, template_id, exercise_id, exercise_order, target_sets, target_reps_min, target_reps_max, rest_seconds, notes')
-    .eq('id', id)
-    .maybeSingle();
-  if (error) throw error;
-  if (!data) return null;
-
-  const { data: ex } = await supabase
-    .from('exercises')
-    .select('name, category')
-    .eq('id', data.exercise_id)
-    .maybeSingle();
-
-  return { ...data, exercise_name: ex?.name ?? '', exercise_category: ex?.category ?? null } as TemplateExercise;
 }
 
 export async function reorderTemplateExercises(exercises: { id: number; exercise_order: number }[]): Promise<void> {
@@ -174,29 +145,24 @@ export async function reorderTemplateExercises(exercises: { id: number; exercise
 
 export async function setTemplateSuperset(id1: number, id2: number): Promise<void> {
   const groupId = Date.now();
-  const [r1, r2] = await Promise.all([
+  await Promise.all([
     supabase.from('workout_template_exercises').update({ superset_group_id: groupId }).eq('id', id1),
     supabase.from('workout_template_exercises').update({ superset_group_id: groupId }).eq('id', id2),
   ]);
-  const colMissing = (e: any) => e?.code === 'PGRST204' || e?.code === '42703';
-  if (r1.error && !colMissing(r1.error)) throw r1.error;
-  if (r2.error && !colMissing(r2.error)) throw r2.error;
 }
 
 export async function clearTemplateSuperset(id: number): Promise<void> {
-  const { data, error: selErr } = await supabase
+  const { data, error } = await supabase
     .from('workout_template_exercises')
     .select('superset_group_id')
     .eq('id', id)
     .maybeSingle();
-  const colMissing = (e: any) => e?.code === 'PGRST204' || e?.code === '42703';
-  if (selErr && !colMissing(selErr)) throw selErr;
-  if (!data?.superset_group_id) return;
-  const { error: updErr } = await supabase
+  if (error) return;
+  if (!(data as { superset_group_id?: number } | null)?.superset_group_id) return;
+  await supabase
     .from('workout_template_exercises')
     .update({ superset_group_id: null })
-    .eq('superset_group_id', data.superset_group_id);
-  if (updErr && !colMissing(updErr)) throw updErr;
+    .eq('superset_group_id', (data as { superset_group_id: number }).superset_group_id);
 }
 
 // ─── Template Sets ────────────────────────────────────────────────────────────
@@ -222,7 +188,6 @@ export async function addTemplateExerciseSet(templateExerciseId: number, setType
 
   const nextOrder = ((maxRow?.set_order as number) ?? 0) + 1;
   const userId = await getUserId();
-
   const { error } = await supabase
     .from('template_exercise_sets')
     .insert({ template_exercise_id: templateExerciseId, set_order: nextOrder, set_type: setType, effort_type: 'none', user_id: userId });
@@ -242,10 +207,7 @@ export async function updateTemplateExerciseSet(
     notes: string | null;
   }
 ): Promise<void> {
-  const { error } = await supabase
-    .from('template_exercise_sets')
-    .update(data)
-    .eq('id', id);
+  const { error } = await supabase.from('template_exercise_sets').update(data).eq('id', id);
   if (error) throw error;
 }
 
@@ -265,21 +227,11 @@ export async function deleteTemplateExerciseSet(id: number): Promise<void> {
       .eq('template_exercise_id', row.template_exercise_id)
       .order('set_order');
     await Promise.all(
-      (remaining ?? []).map((r, i) =>
+      (remaining ?? []).map((r: { id: number }, i: number) =>
         supabase.from('template_exercise_sets').update({ set_order: i + 1 }).eq('id', r.id)
       )
     );
   }
-}
-
-export async function getTemplateExerciseSetById(id: number): Promise<TemplateExerciseSet | null> {
-  const { data, error } = await supabase
-    .from('template_exercise_sets')
-    .select('id, template_exercise_id, set_order, set_type, weight_kg, reps_min, reps_max, rest_seconds, effort_type, buffer_value, notes, created_at')
-    .eq('id', id)
-    .maybeSingle();
-  if (error) throw error;
-  return data as TemplateExerciseSet | null;
 }
 
 // ─── Sessions ─────────────────────────────────────────────────────────────────
@@ -314,15 +266,12 @@ export async function startWorkoutSessionFromTemplate(templateId: number): Promi
     })
     .select('id')
     .single();
-  if (sessError || !session) {
-    console.error('startSession: sessError', sessError?.message, sessError?.code, sessError?.details, sessError);
-    throw sessError ?? new Error('Impossibile creare la sessione.');
-  }
+  if (sessError || !session) throw sessError ?? new Error('Impossibile creare la sessione.');
 
   const templateExercises = await getTemplateExercises(templateId);
 
   for (const te of templateExercises) {
-    const seRow: Record<string, any> = {
+    const seRow: Record<string, unknown> = {
       session_id: session.id,
       template_exercise_id: te.id,
       exercise_id: te.exercise_id,
@@ -332,8 +281,7 @@ export async function startWorkoutSessionFromTemplate(templateId: number): Promi
       notes: te.notes,
       user_id: userId,
     };
-    // Includi superset_group_id solo se presente (la colonna potrebbe non esistere ancora)
-    if (te.superset_group_id != null) seRow.superset_group_id = te.superset_group_id;
+    if (te.superset_group_id != null) seRow['superset_group_id'] = te.superset_group_id;
 
     const { data: sessionExercise, error: seError } = await supabase
       .from('workout_session_exercises')
@@ -427,10 +375,7 @@ export async function updateWorkoutSessionSet(
 ): Promise<void> {
   const { error } = await supabase
     .from('workout_session_sets')
-    .update({
-      ...data,
-      completed_at: data.is_completed === 1 ? new Date().toISOString() : null,
-    })
+    .update({ ...data, completed_at: data.is_completed === 1 ? new Date().toISOString() : null })
     .eq('id', id);
   if (error) throw error;
 }
@@ -452,10 +397,7 @@ export async function cancelWorkoutSession(sessionId: number): Promise<void> {
 }
 
 export async function deleteWorkoutSession(sessionId: number): Promise<void> {
-  const { error } = await supabase
-    .from('workout_sessions')
-    .delete()
-    .eq('id', sessionId);
+  const { error } = await supabase.from('workout_sessions').delete().eq('id', sessionId);
   if (error) throw error;
 }
 
@@ -482,16 +424,6 @@ export async function getWorkoutSessionDetail(sessionId: number): Promise<Workou
   return { session, exercises: exercisesWithSets };
 }
 
-export async function updateSessionRatingAndNotes(sessionId: number, rating: number | null, notes: string | null): Promise<void> {
-  const { error } = await supabase
-    .from('workout_sessions')
-    .update({ rating, notes })
-    .eq('id', sessionId);
-  if (error) throw error;
-}
-
-// ─── Session Operations ───────────────────────────────────────────────────────
-
 export async function addExerciseToSession(sessionId: number, exerciseId: number, exerciseName: string, category: string | null): Promise<number> {
   const userId = await getUserId();
   const { data: maxRow } = await supabase
@@ -503,7 +435,6 @@ export async function addExerciseToSession(sessionId: number, exerciseId: number
     .maybeSingle();
 
   const nextOrder = ((maxRow?.exercise_order as number) ?? 0) + 1;
-
   const { data, error } = await supabase
     .from('workout_session_exercises')
     .insert({ session_id: sessionId, exercise_id: exerciseId, exercise_name: exerciseName, category, exercise_order: nextOrder, user_id: userId })
@@ -524,7 +455,6 @@ export async function addEmptySetToSessionExercise(sessionExerciseId: number): P
     .maybeSingle();
 
   const nextOrder = ((maxRow?.set_order as number) ?? 0) + 1;
-
   const { error } = await supabase
     .from('workout_session_sets')
     .insert({ session_exercise_id: sessionExerciseId, set_order: nextOrder, target_set_type: 'target', target_effort_type: 'none', is_completed: false, user_id: userId });
@@ -541,35 +471,6 @@ export async function removeExerciseFromSession(sessionExerciseId: number): Prom
   if (error) throw error;
 }
 
-export async function reorderSessionExercises(exercises: { id: number; exercise_order: number }[]): Promise<void> {
-  await Promise.all(
-    exercises.map(ex =>
-      supabase.from('workout_session_exercises').update({ exercise_order: ex.exercise_order }).eq('id', ex.id)
-    )
-  );
-}
-
-export async function setSessionSuperset(id1: number, id2: number): Promise<void> {
-  const groupId = Date.now();
-  await Promise.all([
-    supabase.from('workout_session_exercises').update({ superset_group_id: groupId }).eq('id', id1),
-    supabase.from('workout_session_exercises').update({ superset_group_id: groupId }).eq('id', id2),
-  ]);
-}
-
-export async function clearSessionSuperset(id: number): Promise<void> {
-  const { data } = await supabase
-    .from('workout_session_exercises')
-    .select('superset_group_id')
-    .eq('id', id)
-    .maybeSingle();
-  if (!data?.superset_group_id) return;
-  await supabase
-    .from('workout_session_exercises')
-    .update({ superset_group_id: null })
-    .eq('superset_group_id', data.superset_group_id);
-}
-
 // ─── Analytics ────────────────────────────────────────────────────────────────
 
 export async function getGlobalStats(): Promise<GlobalStats> {
@@ -583,7 +484,7 @@ export async function getGlobalStats(): Promise<GlobalStats> {
     .select('id')
     .eq('status', 'completed');
 
-  const ids = (sessionIds ?? []).map(s => s.id);
+  const ids = (sessionIds ?? []).map((s: { id: number }) => s.id);
   let totalVolumeKg = 0;
 
   if (ids.length > 0) {
@@ -591,7 +492,7 @@ export async function getGlobalStats(): Promise<GlobalStats> {
       .from('workout_session_exercises')
       .select('id')
       .in('session_id', ids);
-    const seIds = (seRows ?? []).map(se => se.id);
+    const seIds = (seRows ?? []).map((se: { id: number }) => se.id);
 
     if (seIds.length > 0) {
       const { data: sets } = await supabase
@@ -601,8 +502,10 @@ export async function getGlobalStats(): Promise<GlobalStats> {
         .eq('is_completed', true)
         .not('actual_weight_kg', 'is', null)
         .not('actual_reps', 'is', null);
-      totalVolumeKg = (sets ?? []).reduce((sum, s) =>
-        sum + ((s.actual_weight_kg ?? 0) * (s.actual_reps ?? 0)), 0
+      totalVolumeKg = (sets ?? []).reduce(
+        (sum: number, s: { actual_weight_kg: number; actual_reps: number }) =>
+          sum + (s.actual_weight_kg * s.actual_reps),
+        0
       );
     }
   }
@@ -615,9 +518,8 @@ export async function getGlobalStats(): Promise<GlobalStats> {
     .order('completed_at', { ascending: false });
 
   const uniqueDates = [...new Set(
-    (completedSessions ?? []).map(s => s.completed_at!.slice(0, 10))
+    (completedSessions ?? []).map((s: { completed_at: string }) => s.completed_at.slice(0, 10))
   )];
-  const dateRows = uniqueDates.map(d => ({ d }));
 
   function getMondayStr(dateStr: string): string {
     const d = new Date(dateStr + 'T00:00:00');
@@ -627,7 +529,7 @@ export async function getGlobalStats(): Promise<GlobalStats> {
     return d.toISOString().slice(0, 10);
   }
 
-  const weekSet = new Set(dateRows.map(r => getMondayStr(r.d)));
+  const weekSet = new Set(uniqueDates.map(d => getMondayStr(d)));
   const sortedWeeks = Array.from(weekSet).sort();
 
   let currentStreak = 0;
@@ -675,7 +577,7 @@ export async function getLastSessionSetsForExercise(exerciseName: string, curren
 
   if (!seRows || seRows.length === 0) return [];
 
-  const sessionIds = [...new Set(seRows.map(se => se.session_id))];
+  const sessionIds = [...new Set(seRows.map((se: { session_id: number }) => se.session_id))];
   const { data: sessions } = await supabase
     .from('workout_sessions')
     .select('id, completed_at')
@@ -688,7 +590,7 @@ export async function getLastSessionSetsForExercise(exerciseName: string, curren
   if (!sessions || sessions.length === 0) return [];
 
   const lastSessionId = sessions[0].id;
-  const sessionExercise = seRows.find(se => se.session_id === lastSessionId);
+  const sessionExercise = seRows.find((se: { session_id: number }) => se.session_id === lastSessionId);
   if (!sessionExercise) return [];
 
   const { data: sets } = await supabase
@@ -701,28 +603,16 @@ export async function getLastSessionSetsForExercise(exerciseName: string, curren
   return (sets ?? []) as LastSessionSet[];
 }
 
-export async function getTodayCompletedSessions(): Promise<WorkoutSessionDetail[]> {
+export async function getTodayCompletedSessions(): Promise<WorkoutSession[]> {
   const today = new Date().toISOString().slice(0, 10);
-  const { data: sessions } = await supabase
+  const { data } = await supabase
     .from('workout_sessions')
     .select('id, template_id, name, notes, rating, status, started_at, completed_at, created_at')
     .eq('status', 'completed')
     .gte('completed_at', today + 'T00:00:00.000Z')
     .lt('completed_at', today + 'T23:59:59.999Z')
     .order('completed_at', { ascending: false });
-
-  return Promise.all(
-    (sessions ?? []).map(async session => {
-      const exercises = await getWorkoutSessionExercises(session.id);
-      const exercisesWithSets = await Promise.all(
-        exercises.map(async exercise => ({
-          exercise,
-          sets: await getWorkoutSessionSets(exercise.id),
-        }))
-      );
-      return { session: session as WorkoutSession, exercises: exercisesWithSets };
-    })
-  );
+  return (data ?? []) as WorkoutSession[];
 }
 
 export async function getPersonalRecords(): Promise<ExercisePR[]> {
@@ -733,8 +623,8 @@ export async function getPersonalRecords(): Promise<ExercisePR[]> {
 
   if (!sessions || sessions.length === 0) return [];
 
-  const sessionIds = sessions.map(s => s.id);
-  const sessionMap = new Map(sessions.map(s => [s.id, s.completed_at]));
+  const sessionIds = sessions.map((s: { id: number }) => s.id);
+  const sessionMap = new Map(sessions.map((s: { id: number; completed_at: string }) => [s.id, s.completed_at]));
 
   const { data: seRows } = await supabase
     .from('workout_session_exercises')
@@ -743,8 +633,8 @@ export async function getPersonalRecords(): Promise<ExercisePR[]> {
 
   if (!seRows || seRows.length === 0) return [];
 
-  const seIds = seRows.map(se => se.id);
-  const seMap = new Map(seRows.map(se => [se.id, se]));
+  const seIds = seRows.map((se: { id: number }) => se.id);
+  const seMap = new Map(seRows.map((se: { id: number; session_id: number; exercise_name: string; category: string | null }) => [se.id, se]));
 
   const { data: sets } = await supabase
     .from('workout_session_sets')
@@ -783,7 +673,7 @@ export async function getExerciseVolumeSummary(): Promise<ExerciseVolume[]> {
 
   if (!sessions || sessions.length === 0) return [];
 
-  const sessionIds = sessions.map(s => s.id);
+  const sessionIds = sessions.map((s: { id: number }) => s.id);
   const { data: seRows } = await supabase
     .from('workout_session_exercises')
     .select('id, exercise_name, category')
@@ -791,8 +681,8 @@ export async function getExerciseVolumeSummary(): Promise<ExerciseVolume[]> {
 
   if (!seRows || seRows.length === 0) return [];
 
-  const seIds = seRows.map(se => se.id);
-  const seMap = new Map(seRows.map(se => [se.id, se]));
+  const seIds = seRows.map((se: { id: number }) => se.id);
+  const seMap = new Map(seRows.map((se: { id: number; exercise_name: string; category: string | null }) => [se.id, se]));
 
   const { data: sets } = await supabase
     .from('workout_session_sets')
@@ -820,12 +710,7 @@ export async function getExerciseVolumeSummary(): Promise<ExerciseVolume[]> {
   });
 }
 
-export async function getWeeklyFrequency(): Promise<{
-  average_per_week: number;
-  total_sessions: number;
-  weeks_active: number;
-  first_session_at: string | null;
-}> {
+export async function getWeeklyFrequency(): Promise<number> {
   const { data } = await supabase
     .from('workout_sessions')
     .select('completed_at')
@@ -834,21 +719,12 @@ export async function getWeeklyFrequency(): Promise<{
     .order('completed_at');
 
   const rows = data ?? [];
-  if (rows.length === 0) return { average_per_week: 0, total_sessions: 0, weeks_active: 0, first_session_at: null };
+  if (rows.length === 0) return 0;
 
-  const firstSessionAt = rows[0].completed_at!;
-  const firstDate = new Date(firstSessionAt);
+  const firstDate = new Date(rows[0].completed_at);
   const now = new Date();
-  const diffMs = now.getTime() - firstDate.getTime();
-  const weeks = Math.max(diffMs / (1000 * 60 * 60 * 24 * 7), 1);
-  const average = rows.length / weeks;
-
-  return {
-    average_per_week: Math.round(average * 10) / 10,
-    total_sessions: rows.length,
-    weeks_active: Math.ceil(weeks),
-    first_session_at: firstSessionAt,
-  };
+  const weeks = Math.max((now.getTime() - firstDate.getTime()) / (1000 * 60 * 60 * 24 * 7), 1);
+  return Math.round((rows.length / weeks) * 10) / 10;
 }
 
 export async function getExerciseWeightHistory(exerciseName: string): Promise<ExerciseWeightHistory[]> {
@@ -860,8 +736,8 @@ export async function getExerciseWeightHistory(exerciseName: string): Promise<Ex
 
   if (!sessions || sessions.length === 0) return [];
 
-  const sessionIds = sessions.map(s => s.id);
-  const sessionMap = new Map(sessions.map(s => [s.id, s]));
+  const sessionIds = sessions.map((s: { id: number }) => s.id);
+  const sessionMap = new Map(sessions.map((s: { id: number; name: string; completed_at: string }) => [s.id, s]));
 
   const { data: seRows } = await supabase
     .from('workout_session_exercises')
@@ -871,8 +747,8 @@ export async function getExerciseWeightHistory(exerciseName: string): Promise<Ex
 
   if (!seRows || seRows.length === 0) return [];
 
-  const seIds = seRows.map(se => se.id);
-  const seToSession = new Map(seRows.map(se => [se.id, se.session_id]));
+  const seIds = seRows.map((se: { id: number }) => se.id);
+  const seToSession = new Map(seRows.map((se: { id: number; session_id: number }) => [se.id, se.session_id]));
 
   const { data: sets } = await supabase
     .from('workout_session_sets')
@@ -882,7 +758,7 @@ export async function getExerciseWeightHistory(exerciseName: string): Promise<Ex
     .not('actual_weight_kg', 'is', null);
 
   return (sets ?? [])
-    .map(s => {
+    .map((s: { session_exercise_id: number; set_order: number; actual_weight_kg: number; actual_reps: number | null; target_set_type: string }) => {
       const sessionId = seToSession.get(s.session_exercise_id);
       const session = sessionMap.get(sessionId!);
       return {
@@ -894,10 +770,10 @@ export async function getExerciseWeightHistory(exerciseName: string): Promise<Ex
         target_set_type: s.target_set_type,
       };
     })
-    .sort((a, b) => a.completed_at.localeCompare(b.completed_at) || a.set_order - b.set_order) as ExerciseWeightHistory[];
+    .sort((a: ExerciseWeightHistory, b: ExerciseWeightHistory) =>
+      a.completed_at.localeCompare(b.completed_at) || a.set_order - b.set_order
+    ) as ExerciseWeightHistory[];
 }
-
-// ─── Historical Session ───────────────────────────────────────────────────────
 
 export async function saveHistoricalSession(params: {
   date: string;
@@ -957,8 +833,6 @@ export async function saveHistoricalSession(params: {
 
   return session.id;
 }
-
-// ─── Utils ────────────────────────────────────────────────────────────────────
 
 export async function hasTemplates(): Promise<boolean> {
   const { count } = await supabase

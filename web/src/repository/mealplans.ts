@@ -1,6 +1,6 @@
-import { getUserId } from '@/lib/webUserId';
+import { getUserId } from '@/lib/userId';
 import { supabase } from '@/lib/supabase';
-import type { MealPlan, MealPlanDay, MealPlanEntry } from '@/database';
+import type { MealPlan, MealPlanDay, MealPlanEntry } from '@/types';
 
 export async function getMealPlans(): Promise<MealPlan[]> {
   const { data, error } = await supabase
@@ -25,10 +25,7 @@ export async function addMealPlan(name: string, plan_type: 'weekly' | 'cycle'): 
 }
 
 export async function deleteMealPlan(id: number): Promise<void> {
-  const { error } = await supabase
-    .from('meal_plans')
-    .delete()
-    .eq('id', id);
+  const { error } = await supabase.from('meal_plans').delete().eq('id', id);
   if (error) throw error;
 }
 
@@ -54,10 +51,7 @@ export async function addMealPlanDay(mealPlanId: number, dayOrder: number, label
 }
 
 export async function deleteMealPlanDay(id: number): Promise<void> {
-  const { error } = await supabase
-    .from('meal_plan_days')
-    .delete()
-    .eq('id', id);
+  const { error } = await supabase.from('meal_plan_days').delete().eq('id', id);
   if (error) throw error;
 }
 
@@ -84,9 +78,7 @@ export async function addMealPlanEntry(entry: {
   fat: number | null;
 }): Promise<void> {
   const userId = await getUserId();
-  const { error } = await supabase
-    .from('meal_plan_entries')
-    .insert({ ...entry, user_id: userId });
+  const { error } = await supabase.from('meal_plan_entries').insert({ ...entry, user_id: userId });
   if (error) throw error;
 }
 
@@ -107,10 +99,7 @@ export async function updateMealPlanEntry(
 }
 
 export async function deleteMealPlanEntry(id: number): Promise<void> {
-  const { error } = await supabase
-    .from('meal_plan_entries')
-    .delete()
-    .eq('id', id);
+  const { error } = await supabase.from('meal_plan_entries').delete().eq('id', id);
   if (error) throw error;
 }
 
@@ -141,17 +130,17 @@ export async function getActivePlanEntriesForToday(completedIds?: number[]): Pro
   remainingTotals: { kcal: number; protein: number; carbs: number; fat: number };
 }> {
   const weekday = new Date().getDay();
+  const empty = { kcal: 0, protein: 0, carbs: 0, fat: 0 };
 
   const { data: activeDays, error: adError } = await supabase
     .from('meal_plan_active_days')
     .select('meal_plan_day_id')
     .eq('weekday', weekday);
   if (adError || !activeDays || activeDays.length === 0) {
-    const empty = { kcal: 0, protein: 0, carbs: 0, fat: 0 };
     return { entries: [], consumedTotals: empty, remainingTotals: empty };
   }
 
-  const dayIds = activeDays.map((r) => r.meal_plan_day_id);
+  const dayIds = activeDays.map((r: { meal_plan_day_id: number }) => r.meal_plan_day_id);
   const { data, error } = await supabase
     .from('meal_plan_entries')
     .select('*')
@@ -171,7 +160,7 @@ export async function getActivePlanEntriesForToday(completedIds?: number[]): Pro
         carbs: acc.carbs + (e.carbs ?? 0),
         fat: acc.fat + (e.fat ?? 0),
       }),
-      { kcal: 0, protein: 0, carbs: 0, fat: 0 }
+      { ...empty }
     );
 
   return {

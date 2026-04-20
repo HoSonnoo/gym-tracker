@@ -115,7 +115,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setIsGuest(false);
         // Segnala nuovo login solo dopo il caricamento iniziale
         // (evita di triggerare il redirect all'avvio se c'è già una sessione)
-        if (initialLoadDone.current && (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED')) {
+        if (initialLoadDone.current && event === 'SIGNED_IN') {
           setJustLoggedIn(true);
         }
       } else if (event === 'SIGNED_OUT') {

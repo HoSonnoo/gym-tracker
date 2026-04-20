@@ -22,13 +22,13 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   ActivityIndicator,
   Alert,
-  Modal,
   ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
 } from 'react-native';
+import WebModal from '@/components/WebModal';
 
 
 type SessionExerciseWithSets = {
@@ -381,7 +381,7 @@ function CompletedSessionDetailModal({
       : sum, 0);
 
   return (
-    <Modal visible animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
+    <WebModal visible animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
       <View style={completedStyles.container}>
         <View style={completedStyles.handle} />
         <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={completedStyles.content}>
@@ -434,7 +434,7 @@ function CompletedSessionDetailModal({
           <Text style={completedStyles.closeBtnText}>Chiudi</Text>
         </TouchableOpacity>
       </View>
-    </Modal>
+    </WebModal>
   );
 }
 
@@ -535,30 +535,42 @@ export default function TodayScreen() {
   const loadScreenData = useCallback(async () => {
     setLoading(true);
     try {
-      const [templatesData, activeSessionData, empty, completedToday] = await Promise.all([
+      const [templatesRes, activeSessionRes, emptyRes, completedTodayRes] = await Promise.allSettled([
         getWorkoutTemplates(),
         getActiveWorkoutSession(),
         isDatabaseEmpty(),
         getTodayCompletedSessions(),
       ]);
-      setTemplates(templatesData);
+
+      if (templatesRes.status === 'fulfilled') setTemplates(templatesRes.value);
+      else console.error('Home: errore templates:', templatesRes.reason?.message, templatesRes.reason?.code, templatesRes.reason);
+
+      const activeSessionData = activeSessionRes.status === 'fulfilled' ? activeSessionRes.value : null;
+      if (activeSessionRes.status === 'rejected') console.error('Home: errore sessione attiva:', activeSessionRes.reason?.message, activeSessionRes.reason?.code);
       setActiveSession(activeSessionData);
-      setDbEmpty(empty);
-      setTodayCompletedSessions(completedToday);
+
+      if (emptyRes.status === 'fulfilled') setDbEmpty(emptyRes.value);
+      else console.error('Home: errore isDatabaseEmpty:', emptyRes.reason?.message, emptyRes.reason?.code);
+
+      if (completedTodayRes.status === 'fulfilled') setTodayCompletedSessions(completedTodayRes.value);
+      else console.error('Home: errore sessioni oggi:', completedTodayRes.reason?.message, completedTodayRes.reason?.code);
+
       if (!activeSessionData) {
         setSessionData([]);
         return;
       }
-      const exercises = await getWorkoutSessionExercises(activeSessionData.id);
-      const exercisesWithSets = await Promise.all(
-        exercises.map(async (exercise) => ({
-          exercise,
-          sets: await getWorkoutSessionSets(exercise.id),
-        }))
-      );
-      setSessionData(exercisesWithSets);
-    } catch {
-      Alert.alert('Errore', 'Impossibile caricare la schermata di oggi.');
+      try {
+        const exercises = await getWorkoutSessionExercises(activeSessionData.id);
+        const exercisesWithSets = await Promise.all(
+          exercises.map(async (exercise) => ({
+            exercise,
+            sets: await getWorkoutSessionSets(exercise.id),
+          }))
+        );
+        setSessionData(exercisesWithSets);
+      } catch (err: any) {
+        console.error('Home: errore dati sessione:', err?.message, err?.code);
+      }
     } finally {
       setLoading(false);
     }
@@ -579,9 +591,14 @@ export default function TodayScreen() {
       const sessionId = await startWorkoutSessionFromTemplate(templateId);
       await loadScreenData();
       router.push(`/workout-session/${sessionId}`);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Impossibile avviare la sessione.';
-      Alert.alert('Errore', message);
+    } catch (error: any) {
+      console.error('Errore avvio sessione:', error?.message, error?.code, error);
+      const message = error instanceof Error ? error.message : (error?.message ?? 'Impossibile avviare la sessione.');
+      if (typeof window !== 'undefined') {
+        window.alert(`Errore: ${message}`);
+      } else {
+        Alert.alert('Errore', message);
+      }
     } finally {
       setStartingSession(false);
     }

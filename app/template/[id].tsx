@@ -1,4 +1,5 @@
 import { Colors } from '@/constants/Colors';
+import WebModal from '@/components/WebModal';
 import {
   addExerciseToTemplate,
   clearTemplateSuperset,
@@ -20,6 +21,7 @@ import {
   Alert,
   FlatList,
   Modal,
+  Platform,
   Pressable,
   StyleSheet,
   Text,
@@ -69,7 +71,7 @@ function DraggableItem({
   onClearSuperset,
   onLayout,
 }: DraggableItemProps) {
-  const isInSuperset = item.superset_group_id !== null;
+  const isInSuperset = item.superset_group_id != null;
   const translateY = useSharedValue(0);
   const scale = useSharedValue(1);
   const zIndex = useSharedValue(0);
@@ -352,46 +354,42 @@ type SupersetPickerModalProps = {
 
 function SupersetPickerModal({ visible, candidates, onSelect, onClose }: SupersetPickerModalProps) {
   return (
-    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
-      <View style={ssPickerStyles.overlay}>
-        <View style={ssPickerStyles.sheet}>
-          <View style={ssPickerStyles.handle} />
-          <Text style={ssPickerStyles.title}>Scegli l'esercizio da abbinare</Text>
-          <Text style={ssPickerStyles.subtitle}>
-            Seleziona un altro esercizio del template per creare una super serie
+    <WebModal visible={visible} animationType="slide" onRequestClose={onClose}>
+      <View style={ssPickerStyles.handle} />
+      <Text style={ssPickerStyles.title}>Scegli l'esercizio da abbinare</Text>
+      <Text style={ssPickerStyles.subtitle}>
+        Seleziona un altro esercizio del template per creare una super serie
+      </Text>
+      {candidates.length === 0 ? (
+        <View style={ssPickerStyles.emptyBox}>
+          <Text style={ssPickerStyles.emptyText}>
+            Nessun esercizio disponibile da abbinare.{'\n'}
+            Aggiungi altri esercizi al template prima.
           </Text>
-          {candidates.length === 0 ? (
-            <View style={ssPickerStyles.emptyBox}>
-              <Text style={ssPickerStyles.emptyText}>
-                Nessun esercizio disponibile da abbinare.{'\n'}
-                Aggiungi altri esercizi al template prima.
+        </View>
+      ) : (
+        candidates.map((ex) => (
+          <Pressable
+            key={ex.id}
+            style={ssPickerStyles.exerciseRow}
+            onPress={() => { onSelect(ex); onClose(); }}
+          >
+            <View style={{ flex: 1 }}>
+              <Text style={ssPickerStyles.exerciseName}>{ex.exercise_name}</Text>
+              <Text style={ssPickerStyles.exerciseCategory}>
+                {ex.exercise_category ?? 'Nessuna categoria'}
               </Text>
             </View>
-          ) : (
-            candidates.map((ex) => (
-              <Pressable
-                key={ex.id}
-                style={ssPickerStyles.exerciseRow}
-                onPress={() => { onSelect(ex); onClose(); }}
-              >
-                <View style={{ flex: 1 }}>
-                  <Text style={ssPickerStyles.exerciseName}>{ex.exercise_name}</Text>
-                  <Text style={ssPickerStyles.exerciseCategory}>
-                    {ex.exercise_category ?? 'Nessuna categoria'}
-                  </Text>
-                </View>
-                <View style={ssPickerStyles.addBadge}>
-                  <Text style={ssPickerStyles.addBadgeText}>Abbina</Text>
-                </View>
-              </Pressable>
-            ))
-          )}
-          <TouchableOpacity style={ssPickerStyles.closeButton} onPress={onClose} activeOpacity={0.8}>
-            <Text style={ssPickerStyles.closeButtonText}>Annulla</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-    </Modal>
+            <View style={ssPickerStyles.addBadge}>
+              <Text style={ssPickerStyles.addBadgeText}>Abbina</Text>
+            </View>
+          </Pressable>
+        ))
+      )}
+      <TouchableOpacity style={ssPickerStyles.closeButton} onPress={onClose} activeOpacity={0.8}>
+        <Text style={ssPickerStyles.closeButtonText}>Annulla</Text>
+      </TouchableOpacity>
+    </WebModal>
   );
 }
 
@@ -491,7 +489,7 @@ function DraggableExerciseList({
   return (
     <View>
       {items.map((item, index) => {
-        const partnerName = item.superset_group_id !== null
+        const partnerName = item.superset_group_id != null
           ? (items.find(
               (e) => e.superset_group_id === item.superset_group_id && e.id !== item.id
             )?.exercise_name ?? null)
@@ -542,17 +540,29 @@ export default function TemplateDetailScreen() {
 
   const loadData = useCallback(async () => {
     if (!templateId || Number.isNaN(templateId)) return;
-    try {
-      const [templateData, templateExercisesData, exercisesData] = await Promise.all([
-        getWorkoutTemplateById(templateId),
-        getTemplateExercises(templateId),
-        getExercises(),
-      ]);
-      setTemplate(templateData);
-      setTemplateExercises(templateExercisesData);
-      setAllExercises(exercisesData);
-    } catch (error) {
-      console.error('Errore caricamento:', error);
+    // Usa allSettled così un errore su template/esercizi del template
+    // non impedisce il caricamento del catalogo esercizi (e viceversa).
+    const [templateResult, templateExercisesResult, exercisesResult] = await Promise.allSettled([
+      getWorkoutTemplateById(templateId),
+      getTemplateExercises(templateId),
+      getExercises(),
+    ]);
+    if (templateResult.status === 'fulfilled') setTemplate(templateResult.value);
+    else {
+      const e = templateResult.reason;
+      console.error('Errore caricamento template:', e?.message, '| code:', e?.code, '| details:', e?.details, e);
+    }
+
+    if (templateExercisesResult.status === 'fulfilled') setTemplateExercises(templateExercisesResult.value);
+    else {
+      const e = templateExercisesResult.reason;
+      console.error('Errore caricamento esercizi template:', e?.message, '| code:', e?.code, '| details:', e?.details, e);
+    }
+
+    if (exercisesResult.status === 'fulfilled') setAllExercises(exercisesResult.value);
+    else {
+      const e = exercisesResult.reason;
+      console.error('Errore caricamento catalogo esercizi:', e?.message, '| code:', e?.code, '| details:', e?.details, e);
     }
   }, [templateId]);
 
@@ -615,9 +625,7 @@ export default function TemplateDetailScreen() {
           await addExerciseToTemplate(templateId, exercise.id);
           await loadData();
         } catch (error) {
-          const message = error instanceof Error
-            ? error.message
-            : 'Errore durante l\'aggiunta.';
+          const message = (error as any)?.message ?? (error as any)?.code ?? 'Errore durante l\'aggiunta.';
           Alert.alert('Impossibile aggiungere l\'esercizio', message);
         }
       };
@@ -628,14 +636,20 @@ export default function TemplateDetailScreen() {
       );
 
       if (alreadyPresent) {
-        Alert.alert(
-          'Esercizio già presente',
-          `"${exercise.name}" è già nel template. Vuoi aggiungerlo di nuovo?`,
-          [
-            { text: 'Annulla', style: 'cancel' },
-            { text: 'Aggiungi', onPress: doAdd },
-          ]
-        );
+        if (Platform.OS === 'web') {
+          if (window.confirm(`"${exercise.name}" è già nel template. Vuoi aggiungerlo di nuovo?`)) {
+            doAdd();
+          }
+        } else {
+          Alert.alert(
+            'Esercizio già presente',
+            `"${exercise.name}" è già nel template. Vuoi aggiungerlo di nuovo?`,
+            [
+              { text: 'Annulla', style: 'cancel' },
+              { text: 'Aggiungi', onPress: doAdd },
+            ]
+          );
+        }
       } else {
         await doAdd();
       }
@@ -645,25 +659,28 @@ export default function TemplateDetailScreen() {
 
   const handleRemoveExerciseFromTemplate = useCallback(
     (item: TemplateExercise) => {
-      Alert.alert(
-        'Rimuovi esercizio',
-        `Vuoi rimuovere "${item.exercise_name}" da questo template?`,
-        [
-          { text: 'Annulla', style: 'cancel' },
-          {
-            text: 'Rimuovi',
-            style: 'destructive',
-            onPress: async () => {
-              try {
-                await removeExerciseFromTemplate(item.id);
-                await loadData();
-              } catch {
-                Alert.alert('Errore', 'Impossibile rimuovere l\'esercizio.');
-              }
-            },
-          },
-        ]
-      );
+      const doRemove = async () => {
+        try {
+          await removeExerciseFromTemplate(item.id);
+          await loadData();
+        } catch (err) {
+          console.error('Errore rimozione esercizio:', err);
+          Alert.alert('Errore', 'Impossibile rimuovere l\'esercizio.');
+        }
+      };
+      if (Platform.OS === 'web') {
+        // window.confirm viene bloccato dai browser moderni — esegui direttamente
+        doRemove();
+      } else {
+        Alert.alert(
+          'Rimuovi esercizio',
+          `Vuoi rimuovere "${item.exercise_name}" da questo template?`,
+          [
+            { text: 'Annulla', style: 'cancel' },
+            { text: 'Rimuovi', style: 'destructive', onPress: doRemove },
+          ]
+        );
+      }
     },
     [loadData]
   );
@@ -682,25 +699,27 @@ export default function TemplateDetailScreen() {
 
   const handleClearSuperset = useCallback(
     async (item: TemplateExercise) => {
-      Alert.alert(
-        'Rimuovi super serie',
-        `Vuoi rimuovere l'abbinamento di "${item.exercise_name}"?`,
-        [
-          { text: 'Annulla', style: 'cancel' },
-          {
-            text: 'Rimuovi',
-            style: 'destructive',
-            onPress: async () => {
-              try {
-                await clearTemplateSuperset(item.id);
-                await loadData();
-              } catch {
-                Alert.alert('Errore', 'Impossibile rimuovere la super serie.');
-              }
-            },
-          },
-        ]
-      );
+      const doClear = async () => {
+        try {
+          await clearTemplateSuperset(item.id);
+          await loadData();
+        } catch {
+          Alert.alert('Errore', 'Impossibile rimuovere la super serie.');
+        }
+      };
+      if (Platform.OS === 'web') {
+        // window.confirm viene bloccato dai browser moderni — esegui direttamente
+        doClear();
+      } else {
+        Alert.alert(
+          'Rimuovi super serie',
+          `Vuoi rimuovere l'abbinamento di "${item.exercise_name}"?`,
+          [
+            { text: 'Annulla', style: 'cancel' },
+            { text: 'Rimuovi', style: 'destructive', onPress: doClear },
+          ]
+        );
+      }
     },
     [loadData]
   );
@@ -903,7 +922,7 @@ export default function TemplateDetailScreen() {
           candidates={templateExercises.filter(
             (ex) =>
               ex.id !== supersetPickerTarget?.id &&
-              ex.superset_group_id === null
+              ex.superset_group_id == null
           )}
           onSelect={(partner) => {
             if (supersetPickerTarget) handlePairSuperset(supersetPickerTarget, partner);

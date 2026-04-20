@@ -1292,6 +1292,7 @@ export default function WorkoutSessionScreen() {
   const [summaryData, setSummaryData] = useState<WorkoutSessionDetail | null>(null);
   const [isReorderMode, setIsReorderMode] = useState(false);
   const reorderItemHeightRef = useRef<number>(64);
+  const [showCancelConfirm, setShowCancelConfirm] = useState(false);
 
   // ── Data loading ──────────────────────────────────────────────────────────────
 
@@ -1559,25 +1560,17 @@ export default function WorkoutSessionScreen() {
   }, [session, remainingSetsCount, router]);
 
   const handleCancelSession = () => {
-    Alert.alert(
-      'Annulla allenamento',
-      'Vuoi annullare questo allenamento? I dati inseriti andranno persi.',
-      [
-        { text: 'Continua ad allenarti', style: 'cancel' },
-        {
-          text: 'Annulla allenamento',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              await cancelWorkoutSession(sessionId);
-              router.back();
-            } catch {
-              Alert.alert('Errore', 'Impossibile annullare la sessione.');
-            }
-          },
-        },
-      ]
-    );
+    setShowCancelConfirm(true);
+  };
+
+  const confirmCancelSession = async () => {
+    setShowCancelConfirm(false);
+    try {
+      await cancelWorkoutSession(sessionId);
+      router.back();
+    } catch {
+      Alert.alert('Errore', 'Impossibile annullare la sessione.');
+    }
   };
 
 
@@ -2015,6 +2008,39 @@ export default function WorkoutSessionScreen() {
           onClose={() => router.back()}
         />
       )}
+
+      {/* Dialog conferma annulla allenamento — usa Modal nativo su mobile, overlay su web */}
+      <Modal
+        visible={showCancelConfirm}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowCancelConfirm(false)}
+      >
+        <View style={styles.confirmOverlay}>
+          <View style={styles.confirmSheet}>
+            <Text style={styles.confirmTitle}>Annulla allenamento</Text>
+            <Text style={styles.confirmMessage}>
+              Vuoi annullare questo allenamento? I dati inseriti andranno persi.
+            </Text>
+            <View style={styles.confirmActions}>
+              <TouchableOpacity
+                style={styles.confirmKeepBtn}
+                onPress={() => setShowCancelConfirm(false)}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.confirmKeepText}>Continua ad allenarti</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.confirmCancelBtn}
+                onPress={confirmCancelSession}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.confirmCancelText}>Annulla allenamento</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
     </GestureHandlerRootView>
   );
@@ -2110,6 +2136,15 @@ const styles = StyleSheet.create({
   },
   finishButton: { backgroundColor: Colors.dark.primary, borderRadius: 16, paddingVertical: 16, alignItems: 'center', justifyContent: 'center', marginTop: 18, marginBottom: 12 },
   finishButtonText: { color: '#ffffff', fontSize: 16, fontWeight: '800' },
+  confirmOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', alignItems: 'center', justifyContent: 'center', padding: 24 },
+  confirmSheet: { backgroundColor: Colors.dark.surface, borderRadius: 20, padding: 24, width: '100%', maxWidth: 400, gap: 12 },
+  confirmTitle: { color: Colors.dark.text, fontSize: 18, fontWeight: '800' },
+  confirmMessage: { color: Colors.dark.textMuted, fontSize: 15, lineHeight: 22 },
+  confirmActions: { gap: 10, marginTop: 4 },
+  confirmKeepBtn: { backgroundColor: Colors.dark.primary, borderRadius: 14, paddingVertical: 14, alignItems: 'center' },
+  confirmKeepText: { color: '#ffffff', fontSize: 15, fontWeight: '700' },
+  confirmCancelBtn: { borderRadius: 14, paddingVertical: 14, alignItems: 'center', borderWidth: 1, borderColor: Colors.dark.danger, backgroundColor: 'rgba(239,68,68,0.06)' },
+  confirmCancelText: { color: Colors.dark.danger, fontSize: 15, fontWeight: '700' },
   disabledButton: { opacity: 0.6 },
   addExerciseButton: { marginTop: 16, backgroundColor: Colors.dark.surface, borderRadius: 16, borderWidth: 1, borderColor: 'rgba(126,71,255,0.35)', borderStyle: 'dashed', paddingVertical: 16, alignItems: 'center', justifyContent: 'center' },
   addExerciseButtonText: { color: Colors.dark.primary, fontSize: 15, fontWeight: '700' },

@@ -20,6 +20,7 @@ import React, { useCallback, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Dimensions,
+  Platform,
   ScrollView,
   StyleSheet,
   Text,
@@ -27,8 +28,12 @@ import {
   View,
 } from 'react-native';
 import Svg, { Circle, Line, Path, Text as SvgText } from 'react-native-svg';
+import { WEB_SIDEBAR_WIDTH } from '@/components/AppSidebar';
 
-const SCREEN_W = Dimensions.get('window').width;
+// Su web la larghezza disponibile è limitata dalla sidebar e dal max-width del contenuto
+const SCREEN_W = Platform.OS === 'web'
+  ? Math.min(Dimensions.get('window').width - WEB_SIDEBAR_WIDTH, 860)
+  : Dimensions.get('window').width;
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 

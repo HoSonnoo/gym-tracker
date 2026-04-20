@@ -1,6 +1,6 @@
-import { getUserId } from '@/lib/webUserId';
+import { getUserId } from '@/lib/userId';
 import { supabase } from '@/lib/supabase';
-import type { Exercise } from '@/database';
+import type { Exercise } from '@/types';
 
 export async function getExercises(): Promise<Exercise[]> {
   const userId = await getUserId();

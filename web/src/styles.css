@@ -1,0 +1,117 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * {
+    box-sizing: border-box;
+  }
+
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: #3f3f46;
+    border-radius: 3px;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background: #52525b;
+  }
+}
+
+@layer components {
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg font-medium text-sm transition-all duration-150 disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+
+  .btn-primary {
+    @apply btn bg-brand-500 hover:bg-brand-600 text-white;
+  }
+
+  .btn-secondary {
+    @apply btn bg-zinc-800 hover:bg-zinc-700 text-zinc-100 border border-zinc-700;
+  }
+
+  .btn-danger {
+    @apply btn bg-red-600 hover:bg-red-700 text-white;
+  }
+
+  .btn-ghost {
+    @apply btn hover:bg-zinc-800 text-zinc-400 hover:text-zinc-100;
+  }
+
+  .card {
+    @apply bg-zinc-900 border border-zinc-800 rounded-xl p-4;
+  }
+
+  .input {
+    @apply w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-zinc-100 placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent text-sm;
+  }
+
+  .label {
+    @apply block text-sm font-medium text-zinc-400 mb-1;
+  }
+
+  .badge {
+    @apply inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium;
+  }
+
+  .badge-green {
+    @apply badge bg-brand-500/20 text-brand-400;
+  }
+
+  .badge-zinc {
+    @apply badge bg-zinc-800 text-zinc-400;
+  }
+
+  .page-header {
+    @apply text-2xl font-bold text-zinc-100 mb-6;
+  }
+
+  .section-title {
+    @apply text-lg font-semibold text-zinc-200 mb-3;
+  }
+
+  .stat-card {
+    @apply card flex flex-col gap-1;
+  }
+
+  .stat-value {
+    @apply text-2xl font-bold text-zinc-100;
+  }
+
+  .stat-label {
+    @apply text-xs text-zinc-500 uppercase tracking-wide;
+  }
+
+  .divider {
+    @apply border-t border-zinc-800 my-4;
+  }
+
+  .spinner {
+    @apply w-5 h-5 border-2 border-zinc-600 border-t-brand-500 rounded-full animate-spin;
+  }
+
+  .empty-state {
+    @apply flex flex-col items-center justify-center py-16 text-zinc-500 gap-3;
+  }
+
+  .nav-link {
+    @apply flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-150 cursor-pointer;
+  }
+
+  .nav-link-active {
+    @apply nav-link bg-brand-500/15 text-brand-400;
+  }
+
+  .nav-link-inactive {
+    @apply nav-link text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100;
+  }
+}

@@ -9,7 +9,9 @@
       "Bash(grep -r \"from.*web\" \"/c/Users/a.polizzi/Desktop/App/Vyro\" --include=\"*.ts\" --include=\"*.tsx\" ! -path \"*/node_modules/*\")",
       "Bash(grep:*)",
       "Bash(python3 -c \"import json,sys; d=json.load\\(sys.stdin\\); print\\(d.get\\('expo', {}\\).get\\('platforms', 'not set'\\)\\); print\\(d.get\\('expo', {}\\).get\\('web', 'not set'\\)\\)\")",
-      "Bash(node -e \"const d=require\\('./app.json'\\); console.log\\('output:', d.expo?.web?.output\\); console.log\\('bundler:', d.expo?.web?.bundler\\);\")"
+      "Bash(node -e \"const d=require\\('./app.json'\\); console.log\\('output:', d.expo?.web?.output\\); console.log\\('bundler:', d.expo?.web?.bundler\\);\")",
+      "Bash(npx tsc *)",
+      "Bash(npm install *)"
     ]
   },
   "hooks": {

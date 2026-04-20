@@ -14,13 +14,13 @@ import { useCallback, useState } from 'react';
 import {
   Alert,
   FlatList,
-  Modal,
   Pressable,
   StyleSheet,
   Text,
   TextInput,
   View,
 } from 'react-native';
+import WebModal from '@/components/WebModal';
 
 // ─── Screen ───────────────────────────────────────────────────────────────────
 
@@ -83,25 +83,22 @@ const handleAddTemplate = useCallback(async () => {
 
   const handleDeleteTemplate = useCallback(
     (template: WorkoutTemplate) => {
-      Alert.alert(
-        'Rimuovi template',
-        `Vuoi eliminare "${template.name}"?`,
-        [
+      const doDelete = async () => {
+        try {
+          await deleteWorkoutTemplate(template.id);
+          await loadTemplates();
+        } catch {
+          Alert.alert('Impossibile rimuovere il template', 'Si è verificato un errore.');
+        }
+      };
+      if (typeof window !== 'undefined') {
+        if (window.confirm(`Vuoi eliminare "${template.name}"?`)) doDelete();
+      } else {
+        Alert.alert('Rimuovi template', `Vuoi eliminare "${template.name}"?`, [
           { text: 'Annulla', style: 'cancel' },
-          {
-            text: 'Elimina',
-            style: 'destructive',
-            onPress: async () => {
-              try {
-                await deleteWorkoutTemplate(template.id);
-                await loadTemplates();
-              } catch {
-                Alert.alert('Impossibile rimuovere il template', 'Si è verificato un errore.');
-              }
-            },
-          },
-        ]
-      );
+          { text: 'Elimina', style: 'destructive', onPress: doDelete },
+        ]);
+      }
     },
     [loadTemplates]
   );
@@ -176,7 +173,7 @@ const handleAddTemplate = useCallback(async () => {
         <Text style={styles.templatesButtonArrow}>›</Text>
       </Pressable>
 
-      <Modal
+      <WebModal
         visible={showTemplates}
         animationType="slide"
         presentationStyle="pageSheet"
@@ -219,7 +216,7 @@ const handleAddTemplate = useCallback(async () => {
             }
           />
         </View>
-      </Modal>
+      </WebModal>
     </View>
   );
 }

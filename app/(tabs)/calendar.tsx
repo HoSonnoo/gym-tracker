@@ -14,7 +14,6 @@ import React, { useCallback, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
-  Modal,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -22,6 +21,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import WebModal from '@/components/WebModal';
 
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -126,7 +126,7 @@ function SessionDetailModal({ sessionId, unit, onClose, onDeleted }: SessionDeta
   }, [detail]);
 
   return (
-    <Modal visible={sessionId !== null} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
+    <WebModal visible={sessionId !== null} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
       <View style={modalStyles.container}>
         <View style={modalStyles.handle} />
 
@@ -229,7 +229,7 @@ function SessionDetailModal({ sessionId, unit, onClose, onDeleted }: SessionDeta
           </ScrollView>
         )}
       </View>
-    </Modal>
+    </WebModal>
   );
 }
 
@@ -417,7 +417,7 @@ export default function CalendarScreen() {
         <Text style={screenStyles.sessionsButtonArrow}>›</Text>
       </Pressable>
 
-      <Modal
+      <WebModal
         visible={showSessions}
         animationType="slide"
         presentationStyle="pageSheet"
@@ -483,7 +483,7 @@ export default function CalendarScreen() {
             </View>
           )}
         </View>
-      </Modal>
+      </WebModal>
 
       <SessionDetailModal
         sessionId={selectedSessionId}
