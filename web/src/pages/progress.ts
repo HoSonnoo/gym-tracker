@@ -4,8 +4,7 @@ import {
   getExerciseVolumeSummary,
   getWeeklyFrequency,
 } from '@/repository/workouts';
-import { getBodyWeightLogs, upsertBodyWeightLog, deleteBodyWeightLog } from '@/repository/health';
-import type { ExercisePR, ExerciseVolume, BodyWeightLog } from '@/types';
+import type { ExercisePR, ExerciseVolume } from '@/types';
 
 export async function renderProgress(): Promise<HTMLElement> {
   const el = document.createElement('div');
@@ -24,12 +23,11 @@ export async function renderProgress(): Promise<HTMLElement> {
 
 async function loadProgress(container: HTMLElement): Promise<void> {
   try {
-    const [stats, prs, volumes, weeklyFreq, weightLogs] = await Promise.all([
+    const [stats, prs, volumes, weeklyFreq] = await Promise.all([
       getGlobalStats(),
       getPersonalRecords(),
       getExerciseVolumeSummary(),
       getWeeklyFrequency(),
-      getBodyWeightLogs(),
     ]);
 
     container.innerHTML = `
@@ -39,29 +37,6 @@ async function loadProgress(container: HTMLElement): Promise<void> {
         <div class="stat-card"><div class="stat-value">${formatVolume(stats.totalVolumeKg)}</div><div class="stat-label">Volume totale</div></div>
         <div class="stat-card"><div class="stat-value">${stats.currentStreak} 🔥</div><div class="stat-label">Streak</div></div>
         <div class="stat-card"><div class="stat-value">${weeklyFreq.toFixed(1)}</div><div class="stat-label">Sessioni / sett.</div></div>
-      </div>
-
-      <!-- Body weight -->
-      <div class="card mb-4">
-        <h2 class="section-title">Peso corporeo</h2>
-        <div id="weight-form" class="flex gap-2 mb-4">
-          <input id="weight-date" type="date" class="input w-36" value="${new Date().toISOString().slice(0, 10)}" />
-          <input id="weight-value" type="number" step="0.1" class="input w-24" placeholder="kg" />
-          <select id="weight-phase" class="input w-28">
-            <option value="">— fase —</option>
-            <option value="bulk">Bulk</option>
-            <option value="cut">Cut</option>
-          </select>
-          <button id="save-weight-btn" class="btn-primary shrink-0">Salva</button>
-        </div>
-        <div id="weight-list">
-          ${weightLogs.length === 0
-            ? '<p class="text-zinc-500 text-sm">Nessun log.</p>'
-            : `<div class="flex flex-col gap-1 max-h-48 overflow-y-auto">
-                ${weightLogs.slice(0, 20).map(w => weightRow(w)).join('')}
-               </div>`
-          }
-        </div>
       </div>
 
       <!-- PRs -->
@@ -87,60 +62,9 @@ async function loadProgress(container: HTMLElement): Promise<void> {
       </div>
     `;
 
-    // Save weight
-    container.querySelector('#save-weight-btn')?.addEventListener('click', async () => {
-      const date = (container.querySelector('#weight-date') as HTMLInputElement).value;
-      const value = parseFloat((container.querySelector('#weight-value') as HTMLInputElement).value);
-      const phase = (container.querySelector('#weight-phase') as HTMLSelectElement).value as 'bulk' | 'cut' | '';
-      if (!date || isNaN(value)) return;
-      await upsertBodyWeightLog(date, value, null, phase || null);
-      await refreshWeightList(container);
-    });
-
-    // Delete weight
-    bindWeightDelete(container);
-
   } catch (err) {
     container.innerHTML = `<p class="text-red-400 text-sm">Errore: ${err}</p>`;
   }
-}
-
-async function refreshWeightList(container: HTMLElement): Promise<void> {
-  const logs = await getBodyWeightLogs();
-  const listEl = container.querySelector('#weight-list') as HTMLElement;
-  if (logs.length === 0) {
-    listEl.innerHTML = '<p class="text-zinc-500 text-sm">Nessun log.</p>';
-    return;
-  }
-  listEl.innerHTML = `
-    <div class="flex flex-col gap-1 max-h-48 overflow-y-auto">
-      ${logs.slice(0, 20).map(w => weightRow(w)).join('')}
-    </div>
-  `;
-  bindWeightDelete(container);
-}
-
-function bindWeightDelete(container: HTMLElement): void {
-  container.querySelectorAll('.delete-weight-btn').forEach(btn => {
-    btn.addEventListener('click', async () => {
-      await deleteBodyWeightLog(Number((btn as HTMLElement).dataset['id']));
-      await refreshWeightList(container);
-    });
-  });
-}
-
-function weightRow(w: BodyWeightLog): string {
-  const phase = w.phase ? `<span class="badge-zinc ml-2">${w.phase}</span>` : '';
-  return `
-    <div class="flex items-center justify-between py-1.5 border-b border-zinc-800 last:border-0">
-      <div class="flex items-center gap-2">
-        <span class="text-sm text-zinc-400">${w.date}</span>
-        <span class="font-medium text-zinc-100">${w.weight_kg} kg</span>
-        ${phase}
-      </div>
-      <button class="delete-weight-btn btn-ghost text-xs text-red-400" data-id="${w.id}">✕</button>
-    </div>
-  `;
 }
 
 function prRow(pr: ExercisePR): string {

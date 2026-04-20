@@ -1,6 +1,7 @@
 import { supabase } from '@/lib/supabase';
 import { getUserId } from '@/lib/userId';
 import { navigate } from '@/router';
+import { deleteWorkoutSession } from '@/repository/workouts';
 
 type SessionRow = {
   id: number;
@@ -129,9 +130,23 @@ export async function renderCalendar(): Promise<HTMLElement> {
       sessionsEl.innerHTML = daySessions.map(s => `
         <div class="flex items-center justify-between py-2 border-b border-zinc-800 last:border-0">
           <span class="text-sm text-zinc-200">${s.name}</span>
-          <span class="badge-${s.status === 'completed' ? 'green' : 'zinc'}">${s.status}</span>
+          <div class="flex items-center gap-2">
+            <span class="badge-${s.status === 'completed' ? 'green' : 'zinc'}">${s.status}</span>
+            <button class="delete-session-btn btn-ghost text-xs text-red-400 hover:text-red-300" data-id="${s.id}" title="Elimina allenamento">✕</button>
+          </div>
         </div>
       `).join('');
+
+      sessionsEl.querySelectorAll('.delete-session-btn').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          if (!confirm('Eliminare questo allenamento? I dati non saranno recuperabili.')) return;
+          const id = Number((btn as HTMLElement).dataset['id']);
+          await deleteWorkoutSession(id);
+          await loadSessions();
+          renderGrid();
+          showDayInfo();
+        });
+      });
     }
 
     // Show start button only for today or future

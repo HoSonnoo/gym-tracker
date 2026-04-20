@@ -2,12 +2,16 @@ import { getUserId } from '@/lib/userId';
 import { supabase } from '@/lib/supabase';
 import type { FoodItem, NutritionLog } from '@/types';
 
+function pgErr(error: { message?: string; details?: string; code?: string }): Error {
+  return new Error(error.message ?? JSON.stringify(error));
+}
+
 export async function getFoodItems(): Promise<FoodItem[]> {
   const { data, error } = await supabase
     .from('food_items')
     .select('*')
     .order('name');
-  if (error) throw error;
+  if (error) throw pgErr(error);
   return (data ?? []) as FoodItem[];
 }
 
@@ -49,7 +53,7 @@ export async function deleteFoodItem(id: number): Promise<void> {
     .from('food_items')
     .delete()
     .eq('id', id);
-  if (error) throw error;
+  if (error) throw pgErr(error);
 }
 
 export async function getNutritionLogsByDate(date: string): Promise<NutritionLog[]> {
@@ -58,7 +62,7 @@ export async function getNutritionLogsByDate(date: string): Promise<NutritionLog
     .select('*')
     .eq('date', date)
     .order('created_at');
-  if (error) throw error;
+  if (error) throw pgErr(error);
   return (data ?? []) as NutritionLog[];
 }
 
@@ -74,10 +78,13 @@ export async function addNutritionLog(log: {
   fat: number | null;
 }): Promise<void> {
   const userId = await getUserId();
+  // food_item_id column does not exist in nutrition_logs — omit it
+  const { food_item_id: _unused, ...rest } = log;
+  void _unused;
   const { error } = await supabase
     .from('nutrition_logs')
-    .insert({ ...log, user_id: userId });
-  if (error) throw error;
+    .insert({ ...rest, user_id: userId });
+  if (error) throw pgErr(error);
 }
 
 export async function deleteNutritionLog(id: number): Promise<void> {
@@ -85,7 +92,7 @@ export async function deleteNutritionLog(id: number): Promise<void> {
     .from('nutrition_logs')
     .delete()
     .eq('id', id);
-  if (error) throw error;
+  if (error) throw pgErr(error);
 }
 
 export async function getWaterLogByDate(date: string): Promise<number> {
@@ -93,7 +100,7 @@ export async function getWaterLogByDate(date: string): Promise<number> {
     .from('water_logs')
     .select('ml')
     .eq('date', date);
-  if (error) throw error;
+  if (error) throw pgErr(error);
   return (data ?? []).reduce((sum: number, row: { ml: number | null }) => sum + (row.ml ?? 0), 0);
 }
 
@@ -102,7 +109,7 @@ export async function addWaterLog(date: string, ml: number): Promise<void> {
   const { error } = await supabase
     .from('water_logs')
     .insert({ date, ml, user_id: userId });
-  if (error) throw error;
+  if (error) throw pgErr(error);
 }
 
 export async function resetWaterLog(date: string): Promise<void> {
@@ -110,5 +117,5 @@ export async function resetWaterLog(date: string): Promise<void> {
     .from('water_logs')
     .delete()
     .eq('date', date);
-  if (error) throw error;
+  if (error) throw pgErr(error);
 }

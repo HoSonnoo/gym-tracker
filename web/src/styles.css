@@ -48,7 +48,7 @@
   }
 
   .card {
-    @apply bg-zinc-900 border border-zinc-800 rounded-xl p-4;
+    @apply bg-[#181C23] border border-[#2C3442] rounded-xl p-4;
   }
 
   .input {
@@ -92,7 +92,7 @@
   }
 
   .divider {
-    @apply border-t border-zinc-800 my-4;
+    @apply border-t border-[#2C3442] my-4;
   }
 
   .spinner {
@@ -104,7 +104,7 @@
   }
 
   .nav-link {
-    @apply flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-150 cursor-pointer;
+    @apply flex items-center gap-3 px-3 py-2.5 rounded-lg text-lg font-medium transition-all duration-150 cursor-pointer;
   }
 
   .nav-link-active {
