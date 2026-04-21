@@ -18,7 +18,17 @@
       "Bash(powershell.exe *)",
       "Bash(git add *)",
       "Bash(git commit -m ' *)",
-      "Bash(git push *)"
+      "Bash(git push *)",
+      "Bash(git *)",
+      "Read(//c/Users/a.polizzi/.claude/projects/C--Users-a.polizzi-Desktop-App-Vyro/**)",
+      "Read(//c/Users/a.polizzi/.claude/projects/C--Users-a.polizzi-Desktop-App-Vyro/memory/**)",
+      "PowerShell(pip show *)",
+      "PowerShell(npm list *)",
+      "PowerShell(npm install *)",
+      "PowerShell(npm root *)",
+      "PowerShell($env:NODE_PATH = \"C:\\\\Users\\\\a.polizzi\\\\AppData\\\\Roaming\\\\npm\\\\node_modules\"; node -e \"const XLSX = require\\('xlsx'\\); const wb = XLSX.readFile\\('C:/Users/a.polizzi/Desktop/App/Vyro/CHECKLIST.xlsx'\\); console.log\\('Sheets:', wb.SheetNames\\); const ws = wb.Sheets[wb.SheetNames[0]]; const data = XLSX.utils.sheet_to_json\\(ws, {header:1, defval:''}\\); data.slice\\(0,80\\).forEach\\(\\(row,i\\) => console.log\\(i, JSON.stringify\\(row\\)\\)\\);\")",
+      "PowerShell($env:NODE_PATH = \"C:\\\\Users\\\\a.polizzi\\\\AppData\\\\Roaming\\\\npm\\\\node_modules\"; node -e \"const XLSX = require\\('xlsx'\\); const wb = XLSX.readFile\\('C:/Users/a.polizzi/Desktop/App/Vyro/CHECKLIST.xlsx'\\); const ws = wb.Sheets[wb.SheetNames[0]]; const data = XLSX.utils.sheet_to_json\\(ws, {header:1, defval:''}\\); data.slice\\(79\\).forEach\\(\\(row,i\\) => console.log\\(i+79, JSON.stringify\\(row\\)\\)\\);\")",
+      "PowerShell($env:NODE_PATH = \"C:\\\\Users\\\\a.polizzi\\\\AppData\\\\Roaming\\\\npm\\\\node_modules\"; node -e \"const XLSX = require\\('xlsx'\\); const wb = XLSX.readFile\\('C:/Users/a.polizzi/Desktop/App/Vyro/CHECKLIST.xlsx'\\); const ws = wb.Sheets[wb.SheetNames[0]]; const data = XLSX.utils.sheet_to_json\\(ws, {header:1, defval:''}\\); data.slice\\(142\\).forEach\\(\\(row,i\\) => console.log\\(i+142, JSON.stringify\\(row\\)\\)\\); console.log\\('\\\\n=== Sheet 2 ==='\\); const ws2 = wb.Sheets[wb.SheetNames[1]]; const data2 = XLSX.utils.sheet_to_json\\(ws2, {header:1, defval:''}\\); data2.forEach\\(\\(row,i\\) => console.log\\(i, JSON.stringify\\(row\\)\\)\\);\")"
     ]
   },
   "hooks": {
