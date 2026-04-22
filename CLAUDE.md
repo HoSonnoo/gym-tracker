@@ -13,6 +13,20 @@ npm run lint       # Run ESLint (expo config)
 eas build          # Production build via EAS
 ```
 
+### Checklist
+
+```bash
+npm run checklist:update -- B7=✓ C108=~   # Aggiorna celle specifiche di CHECKLIST.xlsx
+npm run checklist:sync                     # Mostra diff MD → xlsx (dry run)
+npm run checklist:sync:apply               # Applica il diff al xlsx
+```
+
+I due script in `scripts/` modificano `CHECKLIST.xlsx` tramite manipolazione XML diretta, preservando colori e formattazione. Non rigenerare mai l'xlsx da zero (SheetJS o altri tool perdono gli stili).
+
+Valori accettati per `checklist:update`: `✓` o `x` (fatto), `~` o `p` (parziale), vuoto o `n` (non fatto).
+
+`checklist:sync` usa fuzzy matching per allineare gli stati `[x]`/`[~]`/`[ ]` del CHECKLIST.md con le colonne Mobile (B) e Web (C) dell'xlsx. Richiede sempre revisione del dry run prima di applicare.
+
 No test runner is configured — there are no test files in this repo.
 
 ## Architecture

@@ -1,5 +1,5 @@
 import NutritionGuide, { NUTRITION_GUIDE_KEY } from '@/components/NutritionGuide';
-import { SUPABASE_ANON_KEY, SUPABASE_URL } from '@/lib/supabase';
+import WebModal from '@/components/WebModal';
 import { Colors } from '@/constants/Colors';
 import {
   addFoodItem,
@@ -35,10 +35,11 @@ import {
   type NutritionLog,
   type Recipe
 } from '@/database';
+import { readFileAsBase64 } from '@/lib/fileReader';
+import { SUPABASE_ANON_KEY, SUPABASE_URL } from '@/lib/supabase';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useFocusEffect } from '@react-navigation/native';
 import * as DocumentPicker from 'expo-document-picker';
-import { readFileAsBase64 } from '@/lib/fileReader';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
@@ -51,7 +52,6 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import WebModal from '@/components/WebModal';
 import Animated, {
   Easing,
   interpolateColor,
@@ -3651,7 +3651,7 @@ export default function NutritionScreen() {
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
       >
-        <Text style={styles.pageTitle}>Alimentazione</Text>
+        <Text style={styles.pageTitle}>Nutrizione</Text>
 
         <SegmentedControl active={section} onChange={setSection} />
 

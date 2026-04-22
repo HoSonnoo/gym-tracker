@@ -2,14 +2,14 @@ import { Colors } from '@/constants/Colors';
 import { requestNotificationPermissions } from '@/lib/notifications';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRouter } from 'expo-router';
-import React, { useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import {
-    Dimensions,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View,
+  Dimensions,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -34,7 +34,7 @@ const SLIDES = [
   },
   {
     emoji: '🥗',
-    title: 'Gestisci\nl\'alimentazione',
+    title: 'Gestisci\nl\'nutrizione',
     description: 'Traccia i pasti giornalieri, l\'acqua e il peso corporeo. Importa piani alimentari in PDF e monitora le fasi di Bulk e Cut.',
     color: 'rgba(245,158,11,0.08)',
     border: 'rgba(245,158,11,0.25)',

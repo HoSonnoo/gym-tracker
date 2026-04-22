@@ -4,6 +4,8 @@ import { useUserPreferences, type WeightUnit } from '@/context/UserPreferencesCo
 import { exportAllData, exportAllDataCSV, importData, resetSelective, type ImportMode, type ResetOptions } from '@/database';
 import { useGuestLimits } from '@/hooks/use-guest-limits';
 import { supabase } from '@/lib/supabase';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { ONBOARDING_KEY } from '@/app/onboarding';
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system/legacy';
 import { useRouter } from 'expo-router';
@@ -768,6 +770,17 @@ export default function SettingsScreen() {
         {/* APP */}
         <SectionHeader title="APP" />
         <SettingsCard>
+          <Row label="Rivedi onboarding" subtitle="Ripeti il tour guidato dell'app">
+            <TouchableOpacity
+              style={styles.dataButton}
+              onPress={async () => {
+                await AsyncStorage.removeItem(ONBOARDING_KEY);
+                router.replace('/onboarding');
+              }}
+            >
+              <Text style={styles.dataButtonText}>Apri</Text>
+            </TouchableOpacity>
+          </Row>
           <Row label="Versione" isLast>
             <Text style={styles.versionText}>1.0.0</Text>
           </Row>

@@ -1273,6 +1273,7 @@ export default function WorkoutSessionScreen() {
   const scrollRef = useRef<ScrollView | null>(null);
   const setCardRefsMap = useRef<Record<number, View | null>>({});
   const scrollYRef = useRef(0);
+  const isFirstLoadRef = useRef(true);
 
   const [loading, setLoading] = useState(true);
   const [session, setSession] = useState<WorkoutSession | null>(null);
@@ -1301,7 +1302,11 @@ export default function WorkoutSessionScreen() {
       setLoading(false);
       return;
     }
-    setLoading(true);
+    const isFirst = isFirstLoadRef.current;
+    if (isFirst) {
+      isFirstLoadRef.current = false;
+      setLoading(true);
+    }
     try {
       const sessionFromDb = await getWorkoutSessionById(sessionId);
       setSession(sessionFromDb);
@@ -1337,7 +1342,7 @@ export default function WorkoutSessionScreen() {
     } catch {
       Alert.alert('Errore', 'Impossibile caricare la sessione di allenamento.');
     } finally {
-      setLoading(false);
+      if (isFirst) setLoading(false);
     }
   }, [sessionId]);
 
@@ -1452,6 +1457,18 @@ export default function WorkoutSessionScreen() {
         }
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         await loadSessionData();
+
+        // Auto-collassa l'esercizio se tutte le sue serie sono ora completate
+        const ownerItem = sessionData.find((item) => item.sets.some((s) => s.id === set.id));
+        if (ownerItem) {
+          const allDone = ownerItem.sets.every((s) =>
+            s.id === set.id ? true : s.is_completed === 1
+          );
+          if (allDone) {
+            setCollapsedExercises((prev) => new Set([...prev, ownerItem.exercise.id]));
+          }
+        }
+
         scrollToTop();
       } catch {
         Alert.alert('Errore', 'Impossibile salvare la serie.');

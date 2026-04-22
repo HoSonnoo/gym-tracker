@@ -1,6 +1,7 @@
+import WebModal from '@/components/WebModal';
 import { Colors } from '@/constants/Colors';
 import { SUPABASE_ANON_KEY, SUPABASE_URL } from '@/lib/supabase';
-import React, { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   Animated,
   Easing,
@@ -13,7 +14,6 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import WebModal from '@/components/WebModal';
 
 const PRIMARY = '#7e47ff';
 const PROXY_URL = `${SUPABASE_URL}/functions/v1/anthropic-proxy`;
@@ -26,7 +26,7 @@ FUNZIONALITÀ DELL'APP che conosci:
 - ALLENAMENTI: creazione template con esercizi e serie, sessioni reali da template, timer recupero con notifica, drag & drop ordine esercizi, personal record automatici
 - NUTRIZIONE: diario alimentare giornaliero, catalogo alimenti con Open Food Facts, piano alimentare (importabile da PDF tramite AI), tracciamento acqua, peso corporeo con fasi Bulk/Cut, ricette manuali o da PDF
 - PROGRESSI: grafici PR, volume, frequenza, peso corporeo, attività (passi/distanza/calorie da Apple Salute)
-- CALENDARIO: storico sessioni e alimentazione
+- CALENDARIO: storico sessioni e nutrizione
 - ACCOUNT: registrazione email, accesso Google/Apple, modalità ospite con limiti, sync cloud Supabase, backup/export dati JSON e CSV, import dati, reset selettivo
 
 RISPONDI a:

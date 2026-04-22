@@ -1,6 +1,6 @@
 import { Colors } from '@/constants/Colors';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import React, { useState } from 'react';
+import { useState } from 'react';
 import {
   Pressable,
   ScrollView,
@@ -31,7 +31,7 @@ const STEPS = [
   {
     emoji: '⚖️',
     title: 'Peso corporeo',
-    description: 'Grafico del tuo peso nel tempo con le fasi Bulk e Cut colorate diversamente. Aggiungi pesate storiche dal tab Corpo in Alimentazione.',
+    description: 'Grafico del tuo peso nel tempo con le fasi Bulk e Cut colorate diversamente. Aggiungi pesate storiche dal tab Corpo in Nutrizione.',
   },
   {
     emoji: '🏃',

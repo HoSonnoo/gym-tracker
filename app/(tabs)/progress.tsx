@@ -1,3 +1,4 @@
+import { WEB_SIDEBAR_WIDTH } from '@/components/AppSidebar';
 import ProgressGuide, { PROGRESS_GUIDE_KEY } from '@/components/ProgressGuide';
 import { Colors } from '@/constants/Colors';
 import { formatWeight, useUserPreferences } from '@/context/UserPreferencesContext';
@@ -28,7 +29,6 @@ import {
   View,
 } from 'react-native';
 import Svg, { Circle, Line, Path, Text as SvgText } from 'react-native-svg';
-import { WEB_SIDEBAR_WIDTH } from '@/components/AppSidebar';
 
 // Su web la larghezza disponibile è limitata dalla sidebar e dal max-width del contenuto
 const SCREEN_W = Platform.OS === 'web'
@@ -530,7 +530,7 @@ function WeightPhasePanel({ logs, unit, emptyMessage }: {
     return (
       <View style={styles.emptyCard}>
         <Text style={styles.emptyTitle}>{emptyMessage}</Text>
-        <Text style={styles.emptyText}>Registra il tuo peso con la fase corrispondente dalla sezione Alimentazione.</Text>
+        <Text style={styles.emptyText}>Registra il tuo peso con la fase corrispondente dalla sezione Nutrizione.</Text>
       </View>
     );
   }

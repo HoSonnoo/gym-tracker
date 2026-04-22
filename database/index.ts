@@ -1689,7 +1689,7 @@ export async function removeExerciseFromSession(sessionExerciseId: number): Prom
   await database.runAsync(`DELETE FROM workout_session_exercises WHERE id = ?`, [sessionExerciseId]);
 }
 
-// ─── Alimentazione — Tipi ─────────────────────────────────────────────────────
+// ─── Nutrizione — Tipi ─────────────────────────────────────────────────────
 
 export type FoodItem = {
   id: number;
@@ -1726,7 +1726,7 @@ export type BodyWeightLog = {
   created_at: string;
 };
 
-// ─── Alimentazione — Food Items ───────────────────────────────────────────────
+// ─── Nutrizione — Food Items ───────────────────────────────────────────────
 
 export async function getFoodItems(): Promise<FoodItem[]> {
   const database = await getDb();
@@ -1767,7 +1767,7 @@ export async function deleteFoodItem(id: number): Promise<void> {
   await database.runAsync(`DELETE FROM food_items WHERE id = ?`, [id]);
 }
 
-// ─── Alimentazione — Nutrition Logs ──────────────────────────────────────────
+// ─── Nutrizione — Nutrition Logs ──────────────────────────────────────────
 
 export async function getNutritionLogsByDate(date: string): Promise<NutritionLog[]> {
   const database = await getDb();
@@ -1801,7 +1801,7 @@ export async function deleteNutritionLog(id: number): Promise<void> {
   await database.runAsync(`DELETE FROM nutrition_logs WHERE id = ?`, [id]);
 }
 
-// ─── Alimentazione — Water Logs ───────────────────────────────────────────────
+// ─── Nutrizione — Water Logs ───────────────────────────────────────────────
 
 export async function getWaterLogByDate(date: string): Promise<number> {
   const database = await getDb();
@@ -1828,7 +1828,7 @@ export async function resetWaterLog(date: string): Promise<void> {
   );
 }
 
-// ─── Alimentazione — Body Weight ──────────────────────────────────────────────
+// ─── Nutrizione — Body Weight ──────────────────────────────────────────────
 
 export async function getBodyWeightLogs(phase?: 'bulk' | 'cut' | null): Promise<BodyWeightLog[]> {
   const database = await getDb();
@@ -2112,7 +2112,7 @@ export async function exportAllData(): Promise<ExportData> {
     })
   );
 
-  // Alimentazione
+  // Nutrizione
   const food_items = await getFoodItems();
   const nutrition_logs = await database.getAllAsync<NutritionLog>(
     `SELECT * FROM nutrition_logs ORDER BY date DESC, created_at DESC`

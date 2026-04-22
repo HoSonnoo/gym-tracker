@@ -1,5 +1,5 @@
 # Vyro — Checklist di sviluppo
-> Aggiornata al 2026-04-21 — allineata al codice reale
+> Aggiornata al 2026-04-22 — allineata al codice reale
 
 ---
 
@@ -186,6 +186,7 @@
 - [x] Login / registrazione email
 - [x] Reset password via email
 - [x] OAuth Google
+- [x] Modalità ospite (guest) con limiti
 - [~] Login Apple (bottone UI presente, flusso OAuth web non verificato)
 - [~] Tier utente: letto da Supabase, non mostrato in UI
 

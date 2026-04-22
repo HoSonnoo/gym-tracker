@@ -1,5 +1,4 @@
 import { Colors } from '@/constants/Colors';
-import React from 'react';
 import {
   Pressable,
   ScrollView,
@@ -30,12 +29,12 @@ export default function NutritionGuide({
       contentContainerStyle={styles.content}
       showsVerticalScrollIndicator={false}
     >
-      <Text style={styles.pageTitle}>Alimentazione</Text>
+      <Text style={styles.pageTitle}>Nutrizione</Text>
 
       {/* Welcome card */}
       <View style={styles.welcomeCard}>
         <Text style={styles.welcomeEmoji}>🥗</Text>
-        <Text style={styles.welcomeTitle}>Benvenuto in Alimentazione</Text>
+        <Text style={styles.welcomeTitle}>Benvenuto in Nutrizione</Text>
         <Text style={styles.welcomeText}>
           Traccia i tuoi pasti, gestisci piani alimentari e monitora il corpo.
           Inizia aggiungendo i tuoi primi alimenti.

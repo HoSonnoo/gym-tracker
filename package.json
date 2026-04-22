@@ -8,7 +8,11 @@
     "android": "expo start --android",
     "ios": "expo start --ios",
     "web": "expo start --web",
-    "lint": "expo lint"
+    "lint": "expo lint",
+    "checklist:update": "node scripts/update-checklist.mjs",
+    "checklist:sync": "node scripts/sync-checklist.mjs",
+    "checklist:sync:apply": "node scripts/sync-checklist.mjs --apply",
+    "guide:update": "node scripts/generate-guide.mjs"
   },
   "dependencies": {
     "@expo/vector-icons": "^15.0.3",
